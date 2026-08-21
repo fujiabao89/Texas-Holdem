@@ -37,9 +37,9 @@
       "parameters": {
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          { "context": "CI / repository-hygiene" },
-          { "context": "CI / workflow-lint" },
-          { "context": "PR Policy / branch-and-pr-policy" }
+          { "context": "repository-hygiene", "integration_id": 15368 },
+          { "context": "workflow-lint", "integration_id": 15368 },
+          { "context": "branch-and-pr-policy", "integration_id": 15368 }
         ]
       }
     }
