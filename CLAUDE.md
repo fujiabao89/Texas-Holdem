@@ -17,6 +17,15 @@
 5. 每次修改都提供适当的测试。涉及规则、全下、边池、牌力、重连、幂等或事件序列时，必须增加对应测试。
 6. 只提交任务相关文件；不夹带格式化、重命名或依赖升级等无关改动。
 
+## 提交与推送前的本地审查门禁
+
+完成实现后、执行 `git add`、`git commit` 或 `git push` 前，必须调用由 [DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](./DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) 创建的 DeepSeek Harness 本地审查 Agent。
+
+- 审查范围必须覆盖已暂存、未暂存和未跟踪的任务相关文件。
+- 只有最终结果为 `PRE_PUSH_REVIEW: PASS` 才可暂存、提交和推送；`BLOCKED` 或 `NEEDS_DECISION` 必须先处理并重新审查。
+- 审查 Agent 只读，不得让其修改实现、暂存、提交或推送。紧急豁免仅由用户明确批准，并在提交信息或 PR 中记录原因。
+- 交付摘要必须附上审查结论及已处理的 P0/P1/P2 发现；不要把 P3 建议伪装为已修复事项。
+
 ## 必须上报 Codex 的情况
 
 - 需要改变协议、领域模型、数据模型、目录边界或产品规则。

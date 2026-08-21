@@ -16,6 +16,15 @@
 4. 发现架构缺口时，记录证据与建议并交给 Codex；不要以临时代码绕过既定边界。
 5. 交付前运行本任务要求的最小充分测试，并报告改动、验证结果、限制和冲突风险。
 
+## 提交与推送前的本地审查门禁
+
+完成实现后、执行 `git add`、`git commit` 或 `git push` 前，必须调用由 [DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](./DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) 创建的 DeepSeek Harness 本地审查 Agent。
+
+- 审查必须包含已暂存、未暂存和未跟踪的任务相关文件。
+- 只有最终结果为 `PRE_PUSH_REVIEW: PASS` 才可暂存、提交和推送；`BLOCKED` 或 `NEEDS_DECISION` 必须先修复或交给 Codex / 用户决定，再重新审查。
+- 审查 Agent 只能读取和报告，禁止让它修改实现、暂存、提交或推送。紧急豁免仅由用户明确批准，并在提交信息或 PR 中记录原因。
+- 交付时报告审查结论、P0/P1/P2 的处理情况与仍存在的 P3 建议。
+
 ## 特别禁止
 
 - 不与 Claude Code 同时修改同一个功能模块的核心文件。
