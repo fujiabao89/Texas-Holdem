@@ -50,6 +50,7 @@ jobs:
         shell: bash
         run: |
           git diff --check HEAD^ HEAD
+          ruby -e "require 'yaml'; YAML.safe_load(File.read('.coderabbit.yaml'), aliases: true)"
           jq empty .github/rulesets/main.json
           jq empty .greptile/config.json
           jq empty .greptile/files.json
