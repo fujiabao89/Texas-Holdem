@@ -30,10 +30,10 @@ jobs:
             exit 0
           fi
 
-          pattern='^(feat|fix|chore|docs|refactor|test|hotfix)/WEB-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$'
+          pattern='^(feat|fix|chore|docs|refactor|test|hotfix)/TEX-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$'
           if [[ ! "$BRANCH" =~ $pattern ]]; then
             echo "Invalid branch: $BRANCH"
-            echo "Expected: <type>/WEB-<number>-<kebab-case-summary>"
+            echo "Expected: <type>/TEX-<number>-<kebab-case-summary>"
             exit 1
           fi
 
@@ -44,7 +44,7 @@ jobs:
             exit 1
           fi
 
-          ticket="$(grep -oE 'WEB-[0-9]+' <<< "$BRANCH")"
+          ticket="$(grep -oE 'TEX-[0-9]+' <<< "$BRANCH")"
           if ! grep -Eiq "Linear:[[:space:]]*${ticket}" <<< "$PR_BODY"; then
             echo "PR body must contain: Linear: $ticket"
             exit 1
