@@ -8,7 +8,7 @@
 - **主责**：Claude Code
 - **前置**：TEX-15。
 - **要做什么**：实现 HTTP/WS Schema、推导类型、命令/事件/Snapshot/Error 信封和按玩家投影。
-- **关键点**：`commandId`、`expectedSequence`、`tableId`、`handId` 与字符串序列号；客户端和服务端不得维护平行 DTO。
+- **关键点**：所有 WS 变更命令使用 `requestId`；`SUBMIT_ACTION` 另使用 `actionId` 与 `expectedSequence`。事件使用 `tournamentId`、`handId` 与字符串序列号；客户端和服务端不得维护平行 DTO。
 - **完成标准**：不兼容版本和非法字段安全拒绝；其他玩家底牌、Deck、Burn Card、Token 永不进入未授权 Payload。
 - **权威参考**：`docs/02-protocol-spec.md` §4～§14。
 
@@ -48,7 +48,7 @@
 - **主责**：Claude Code
 - **前置**：TEX-20。
 - **要做什么**：实现 WebSocket 认证、心跳、单活跃连接、Snapshot + Event Stream、幂等命令和重连。
-- **关键点**：重复 `commandId` 只执行一次；漏序、积压和过期状态必须重取 Snapshot。
+- **关键点**：同一 `requestId` 的相同命令复用原结果；同一 `actionId`、相同业务 Payload 的动作至多执行一次并返回原结果，复用键但 Payload 不同则拒绝。漏序、积压和过期状态必须重取 Snapshot。
 - **完成标准**：刷新、切网、后台恢复均能回到合法最新状态；多设备不能并发操纵同一玩家。
 - **权威参考**：`docs/02-protocol-spec.md` §6～§10、§14；`docs/04-game-server-architecture.md` §7、§9、§11。
 
