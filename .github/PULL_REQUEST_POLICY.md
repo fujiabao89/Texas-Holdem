@@ -14,7 +14,7 @@
 
 ## 必需检查与审阅
 
-- `CI / repository-hygiene`、`CI / workflow-lint` 与 `PR Policy / branch-and-pr-policy` 必须通过。
+- `CI / repository-hygiene`、`CI / workflow-lint` 与 `PR Policy / branch-and-pr-policy` 必须通过。变更依赖清单时，`Dependency Review / dependency-review` 也必须通过。
 - 每个 PR 至少需要一项批准；新的推送会使已有批准失效。
 - 所有审阅线程必须解决。
 - 涉及 `packages/poker-engine`、`packages/protocol`、服务端基础设施、`.github` 或 `docs` 的变更将请求相应 CODEOWNER 审阅。
