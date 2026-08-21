@@ -1,0 +1,9 @@
+# 默认所有权：仓库所有者。团队扩展后以 GitHub 团队替换或补充本文件。
+* @fujiabao89
+
+# 高风险或跨模块边界：需要项目所有者审阅。
+/packages/poker-engine/ @fujiabao89
+/packages/protocol/ @fujiabao89
+/apps/game-server/src/infrastructure/ @fujiabao89
+/.github/ @fujiabao89
+/docs/ @fujiabao89

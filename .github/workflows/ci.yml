@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-hygiene:
+    name: repository-hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify required governance files
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_files=(
+            AGENTS.md
+            CONTRIBUTING.md
+            .github/CODEOWNERS
+            .github/PULL_REQUEST_POLICY.md
+            .github/PULL_REQUEST_TEMPLATE.md
+            .github/dependabot.yml
+            .github/RULESET.md
+            .github/rulesets/main.json
+          )
+          for file in "${required_files[@]}"; do
+            test -f "$file"
+          done
+
+      - name: Check whitespace errors
+        shell: bash
+        run: |
+          git diff --check HEAD^ HEAD
+          jq empty .github/rulesets/main.json
+
+  workflow-lint:
+    name: workflow-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/actionlint@v1.7.7
+
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run available quality scripts
+        shell: bash
+        run: |
+          if [[ ! -f package.json ]]; then
+            echo "No root package.json yet; skipping application quality scripts."
+            exit 0
+          fi
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm run lint --if-present
+          pnpm run typecheck --if-present
+          pnpm run test --if-present
