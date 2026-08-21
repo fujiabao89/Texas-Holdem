@@ -5,9 +5,9 @@
 ## 提交前提
 
 1. 每项工作必须关联一个 Linear 任务。
-2. Linear 任务标题与分支名必须完全一致：`<type>/WEB-<number>-<kebab-case-summary>`。
+2. Linear 任务标题与分支名必须完全一致：`<type>/TEX-<number>-<kebab-case-summary>`。
 3. PR 标题必须与源分支名完全一致，便于 Linear、分支与 PR 的一一追踪。
-4. PR 描述必须包含 `Linear: WEB-<number>`；Dependabot 更新不受此项约束。
+4. PR 描述必须包含 `Linear: TEX-<number>`；Dependabot 更新不受此项约束。
 5. 一个 PR 只解决一个可审查的目标，不夹带无关格式化、重构或依赖升级。
 
 允许的 `type`：`feat`、`fix`、`chore`、`docs`、`refactor`、`test`、`hotfix`。
