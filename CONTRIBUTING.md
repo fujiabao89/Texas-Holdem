@@ -2,7 +2,7 @@
 
 ## Default branch
 
-`main` is the protected integration branch. Do not commit feature work directly to it.
+`main` is the integration branch. Do not commit feature work directly to it.
 
 ## Branch and Linear task naming
 
