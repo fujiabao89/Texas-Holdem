@@ -29,3 +29,9 @@ Workflow:
 4. Keep the issue title and branch name identical for the life of the work.
 
 Use lowercase letters, digits, and hyphens in the summary; avoid spaces, underscores, and Chinese punctuation.
+
+## Work tracking and public feedback
+
+Linear is the only work-tracking system for this repository. GitHub Issues are disabled to avoid duplicate work items; create product work, defects, chores and planning tasks in the `Texas Hold'em` Linear team.
+
+Do not use Linear, GitHub Issues, pull requests or public discussions to disclose vulnerabilities. Follow [SECURITY.md](./SECURITY.md) and use GitHub Private Vulnerability Reporting instead.

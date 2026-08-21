@@ -12,7 +12,7 @@
     {
       "actor_id": 5,
       "actor_type": "RepositoryRole",
-      "bypass_mode": "always"
+      "bypass_mode": "pull_request"
     }
   ],
   "rules": [
@@ -26,16 +26,19 @@
       "type": "pull_request",
       "parameters": {
         "dismiss_stale_reviews_on_push": true,
+        "require_extra_approval_for_unattributed_changes": true,
         "require_code_owner_review": false,
         "require_last_push_approval": true,
         "required_approving_review_count": 1,
-        "required_review_thread_resolution": true
+        "required_review_thread_resolution": true,
+        "allowed_merge_methods": ["squash"]
       }
     },
     {
       "type": "required_status_checks",
       "parameters": {
         "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
         "required_status_checks": [
           { "context": "repository-hygiene", "integration_id": 15368 },
           { "context": "workflow-lint", "integration_id": 15368 },

@@ -8,6 +8,6 @@
 - 至少一项批准，新的推送会撤销旧批准，并要求解决所有审阅线程。
 - 必须通过 `CI / repository-hygiene`、`CI / workflow-lint` 与 `PR Policy / branch-and-pr-policy`。
 - 禁止删除和强制推送 `main`。
-- 管理员保留仅用于紧急恢复的 bypass；使用后必须留下 Linear 和 PR 记录。
+- 管理员仅可通过 Pull Request 使用紧急 bypass；不得以 bypass 直接推送 `main`。使用后必须留下 Linear 和 PR 记录。
 
 分支命名不由 GitHub 原生 Ruleset 的通配符功能强制，而由 PR Policy 工作流验证，规则见 [`PULL_REQUEST_POLICY.md`](./PULL_REQUEST_POLICY.md)。
