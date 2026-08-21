@@ -17,6 +17,13 @@
 5. 每次修改都提供适当的测试。涉及规则、全下、边池、牌力、重连、幂等或事件序列时，必须增加对应测试。
 6. 只提交任务相关文件；不夹带格式化、重命名或依赖升级等无关改动。
 
+## 文档同步是实现的一部分
+
+1. 开工前阅读目标目录的 `README.md`；若任务改变该目录的职责、入口、公开接口、配置、运行或测试方式，必须在同一 PR 更新该 README。
+2. 根据变更性质同步更新对应文档目录：产品/任务 → `docs/00-project/` 或 `docs/01-product/`；架构/接口/数据流 → `docs/02-architecture/`、权威规格或 ADR；工程流程/测试/CI → `docs/03-engineering/`；安全 → `docs/04-security/`；部署/监控/发布 → `docs/05-operations/`。
+3. 不复制规则、协议或数据模型形成第二份事实；以 `docs/01-engine-spec.md` 至 `docs/06-testing-strategy.md` 为权威，其他说明使用链接引用。发现冲突必须暂停并上报 Codex。
+4. 交付摘要和 PR 必须列出已更新的文档；若未改动文档，必须写明已检查且无需更新的原因。未完成这项检查，不得将任务标记为完成。
+
 ## 提交与推送前的本地审查门禁
 
 完成实现后、执行 `git add`、`git commit` 或 `git push` 前，必须调用由 [DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](./DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) 创建的 DeepSeek Harness 本地审查 Agent。
@@ -42,4 +49,4 @@
 - 发现安全、作弊、公平性、审计或真钱合规风险。
 - Trae Work 已经占用相同文件或职责域。
 
-交付摘要应包含：Linear 任务、分支、实现范围、测试结果、风险和建议的后续任务。
+交付摘要应包含：Linear 任务、分支、实现范围、测试结果、已更新或已检查的文档、风险和建议的后续任务。

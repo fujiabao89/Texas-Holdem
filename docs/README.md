@@ -18,6 +18,7 @@
 | 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | 草稿（设计意图 · 未实现） |
 | 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 草稿（设计意图 · 未实现） |
 | 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 提交前本地审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略、输出契约与提交/推送门禁 | 治理基线 |
+| 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
 
 ## 产品层文档（非实现事实）
 
@@ -35,6 +36,7 @@
 - **实现 Game Server**：读 [04-game-server-architecture.md](./04-game-server-architecture.md) 全文；规则语义引用 01 §5/§13/§14，wire 契约引用 02 §4–§11，持久化引用 03；配套读《总规划》§3–§5。
 - **实现 Web 前端**：读 [05-frontend-spec.md](./05-frontend-spec.md) 全文；wire 契约与投影引用 02 §4–§11，规则语义与事件目录引用 01 §5.2/§6/§14，服务端计时与推送引用 04 §8/§9；配套读《总规划》§7。
 - **搭建测试体系**：读 [06-testing-strategy.md](./06-testing-strategy.md) 全文；规则测试范围引用 01 §5–§17，联机测试引用 02 §9/§12/§14 与 04 §5–§9，前端验收引用 05 §16；配套读《总规划》§9。
+- **执行 P0 任务**：先读 [P0 任务总览](./00-project/p0-task-overview.md)，再进入对应阶段任务卡；实现事实仍以 01–06 工程规格和 Linear 任务为准。
 - **提交或推送本地实现前**：使用 [DeepSeek Harness 审查 Agent 创建提示词](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) 创建并调用只读审查 Agent；Claude Code 与 Trae Work 的门禁规则见 `CLAUDE.md`、`TRAE.md`。
 - **规划文档体系**：见下方"待确认"。
 

@@ -16,6 +16,13 @@
 4. 发现架构缺口时，记录证据与建议并交给 Codex；不要以临时代码绕过既定边界。
 5. 交付前运行本任务要求的最小充分测试，并报告改动、验证结果、限制和冲突风险。
 
+## 文档同步职责
+
+1. 开工前读取目标目录 `README.md`。修改某目录的职责、测试资产、配置、运行方式或局部功能入口时，必须在同一 PR 同步该目录 README；只有稳定职责目录才创建新的 README，禁止为未来用途预建空说明文件。
+2. 按事实归属写入对应文档目录：产品/任务写 `docs/00-project/` 或 `docs/01-product/`，工程与测试写 `docs/03-engineering/`，安全写 `docs/04-security/`，部署与监控写 `docs/05-operations/`。架构、协议、数据模型或规则的权威文档变更必须先交 Codex 协调。
+3. 不维护平行说明或复制权威规格。发现 README、任务卡、代码或规格相互矛盾时，停止相关变更并报告冲突证据。
+4. 每个任务交付时必须报告：更新了哪些文档；或已检查哪些文档且为什么无需更新。文档未同步不得标记任务完成。
+
 ## 提交与推送前的本地审查门禁
 
 完成实现后、执行 `git add`、`git commit` 或 `git push` 前，必须调用由 [DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](./DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) 创建的 DeepSeek Harness 本地审查 Agent。
