@@ -1,0 +1,62 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "triggerOnUpdates": true,
+  "triggerOnDrafts": false,
+  "ignorePatterns": ".mcp.json\n.env\n.env.*\nnode_modules/**\ndist/**\nbuild/**\ncoverage/**\n**/*.generated.*\n**/*.lock",
+  "summarySection": {
+    "included": true,
+    "collapsible": true,
+    "defaultOpen": false
+  },
+  "instructions": "Review this TypeScript monorepo for correctness, security, data integrity, protocol compatibility, and test coverage. Report only concrete, actionable findings; do not report style-only preferences already handled by formatters or linters.",
+  "rules": [
+    {
+      "id": "poker-engine-purity",
+      "rule": "Keep poker-engine deterministic and pure: no network, database, UI, framework, clock, or non-injectable randomness dependencies. Rule changes must preserve card uniqueness and chip conservation.",
+      "scope": ["packages/poker-engine/**"],
+      "severity": "high"
+    },
+    {
+      "id": "poker-settlement-coverage",
+      "rule": "Changes to betting, all-in, side-pot, split-pot, hand evaluation, or state transitions require focused tests covering normal and edge cases.",
+      "scope": ["packages/poker-engine/**"],
+      "severity": "high"
+    },
+    {
+      "id": "protocol-source-of-truth",
+      "rule": "Protocol runtime schemas are the only source of wire types. Preserve protocol versioning, tableId, handId, monotonic event sequencing, commandId idempotency, and backward compatibility.",
+      "scope": ["packages/protocol/**"],
+      "severity": "high"
+    },
+    {
+      "id": "server-authority",
+      "rule": "Treat all client input as untrusted. The server must remain authoritative for game state and validate authorization, legal actions, expected sequence, and idempotency before mutation.",
+      "scope": ["apps/game-server/**"],
+      "severity": "high"
+    },
+    {
+      "id": "persistence-integrity",
+      "rule": "Persistence changes must preserve transaction atomicity, auditability, replay/recovery semantics, and protection of credentials or player data.",
+      "scope": ["apps/game-server/src/infrastructure/persistence/**"],
+      "severity": "high"
+    },
+    {
+      "id": "client-projection-only",
+      "rule": "The web client may render server projections and submit commands, but must not independently resolve poker outcomes or expose data unavailable to the player view.",
+      "scope": ["apps/web/**"],
+      "severity": "medium"
+    },
+    {
+      "id": "workflow-least-privilege",
+      "rule": "GitHub workflow changes must use least-privilege permissions, avoid secrets in logs, and preserve required checks and protected-branch policy.",
+      "scope": [".github/**"],
+      "severity": "high"
+    },
+    {
+      "id": "no-secrets-or-personal-data",
+      "rule": "Do not commit API keys, tokens, credentials, real player data, or sensitive operational logs. New configuration must use environment references and documented non-secret examples.",
+      "severity": "high"
+    }
+  ]
+}

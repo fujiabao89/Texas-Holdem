@@ -37,6 +37,10 @@ jobs:
             .github/dependabot.yml
             .github/RULESET.md
             .github/rulesets/main.json
+            .coderabbit.yaml
+            .greptile/config.json
+            .greptile/rules.md
+            .greptile/files.json
           )
           for file in "${required_files[@]}"; do
             test -f "$file"
@@ -46,7 +50,10 @@ jobs:
         shell: bash
         run: |
           git diff --check HEAD^ HEAD
+          ruby -e "require 'yaml'; YAML.safe_load(File.read('.coderabbit.yaml'), aliases: true)"
           jq empty .github/rulesets/main.json
+          jq empty .greptile/config.json
+          jq empty .greptile/files.json
 
   workflow-lint:
     name: workflow-lint

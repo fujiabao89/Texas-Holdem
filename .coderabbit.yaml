@@ -1,0 +1,78 @@
+# Version-controlled CodeRabbit policy. Keep high-signal findings actionable and
+# let CI / human reviewers remain the merge authority.
+language: zh-CN
+tone_instructions: >-
+  仅报告可复现、可操作且与本 PR 相关的问题。优先正确性、安全性、数据完整性、并发与兼容性；
+  不提出纯格式、个人偏好或未证实的性能建议。
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_instructions: >-
+    用中文概括行为变化、风险、测试和未覆盖项；不要修改 PR 模板中的 Linear 引用或验收信息。
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    drafts: false
+    ignore_usernames:
+      - dependabot[bot]
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/coverage/**"
+    - "!**/*.generated.*"
+    - "!**/*.lock"
+  path_instructions:
+    - path: "packages/poker-engine/**"
+      instructions: >-
+        验证引擎保持纯领域逻辑：不得依赖网络、数据库、UI 或框架。审查牌张唯一性、筹码守恒、
+        最小加注、全下/边池/分池、状态机转换和可注入且可复现的随机性；规则变化必须有针对性测试。
+    - path: "packages/protocol/**"
+      instructions: >-
+        Schema 是唯一通信事实来源。检查协议版本、tableId、handId、单调事件序列和 commandId；
+        避免破坏客户端兼容性或在客户端/服务端维护平行 DTO。
+    - path: "apps/game-server/**"
+      instructions: >-
+        服务端必须保持权威状态并校验所有客户端输入。重点审查鉴权、幂等、断线恢复、事务原子性、
+        审计和错误处理；不要把扑克规则复制到服务编排层。
+    - path: "apps/web/**"
+      instructions: >-
+        客户端只能展示服务端投影并提交命令，不得裁决牌局结果。审查重连、事件顺序、可访问性和敏感数据暴露。
+    - path: ".github/**"
+      instructions: >-
+        审查最小权限、可信 Action 来源、不可变版本引用、密钥处理及工作流是否与仓库治理规则一致。
+    - path: "docs/**"
+      instructions: >-
+        只报告会导致实现/安全/运维误解的文档问题；检查权威来源、链接和与已批准架构的一致性。
+  finishing_touches:
+    autofix:
+      enabled: false
+    unit_tests:
+      enabled: false
+    docstrings:
+      enabled: false
+
+knowledge_base:
+  web_search:
+    enabled: false
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - AGENTS.md
+      - CONTRIBUTING.md
+      - CODEX.md
+      - CLAUDE.md
+      - TRAE.md
+      - docs/**/*.md
+  learnings:
+    scope: local
+    approval_delay: 7
+  linear:
+    usage: enabled
+    team_keys:
+      - TEX
+  mcp:
+    usage: disabled

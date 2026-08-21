@@ -1,0 +1,24 @@
+{
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "description": "Authoritative multi-agent collaboration, architecture boundaries, security baseline, and definition of done."
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "description": "Branch, Linear task, and pull-request naming convention."
+    },
+    {
+      "path": "docs/README.md",
+      "description": "Index of authoritative engineering specifications."
+    },
+    {
+      "path": "德州扑克项目总规划.md",
+      "description": "Product intent and approved technical planning context."
+    },
+    {
+      "path": ".github/PULL_REQUEST_POLICY.md",
+      "description": "Required review, testing, and merge policy."
+    }
+  ]
+}
