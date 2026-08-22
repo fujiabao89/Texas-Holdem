@@ -1,0 +1,13 @@
+{
+  "name": "@texas-holdem/poker-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "纯扑克规则领域包：牌、牌堆、随机源与牌型评估（不依赖网络、数据库、UI 或框架）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  }
+}

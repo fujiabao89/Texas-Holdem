@@ -4,7 +4,7 @@
 > 规划核对：2026-08-21（Engineering Documentation Agent）——项目尚无代码，本文全文为**设计意图**，未与任何实现核对
 > 权威范围：本文是 Poker Engine 纯规则行为的唯一权威来源——牌堆与发牌、下注与最小加注、Pot/Side Pot/Split、Hand 状态机、Hand Evaluator、Tournament 淘汰与排名、Game Events、RNG 与 Engine Invariants。范围之外的事实（Room、WebSocket 协议、持久化、AI、UI）见 [工程文档总索引](./README.md)。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§2/§3/§4/§6/§9）；《德州扑克项目规划_区块6-10_v0.2.docx》§6/§9（仅在《总规划》未覆盖处补充）；《德州扑克项目规划_区块1-5_v0.1.docx》§2（牌型顺序等基础规则）
-> 对应代码：`packages/poker-engine/`（**待创建**；规划目录 `cards/ deck/ hand/ betting/ pot/ evaluator/ tournament/ state/ events/ actions/ rng/`，见《区块6-10 v0.2》§10.6）
+> 对应代码：`packages/poker-engine/src/`。TEX-13 已实现 `cards/`（Card、标准 52 张 Deck、随机源、七选五 Hand Evaluator）；其余子域（下注、Pot、状态机、Tournament、Game Events、Timer）随 TEX-14 / TEX-15 落地。目录实际布局与现状见 §3。
 > 上级索引：[工程文档总索引](./README.md)
 
 > **【设计意图 · 未实现】** 本文主要来自已确认规划文档；规划未覆盖但实现必需的工程裁决记录在 §20/§21。尚无代码可核对。实现落地后第一件事：逐条对照实现回填真实行为，把"设计意图"改为"现状"，并删除本标记。当前无开放 TBD。
@@ -59,21 +59,18 @@
 - 无其他运行时依赖：该 package **不得依赖 UI、网络、数据库、AI**（《总规划》§6）。P0 不启用 BOT，但 `participant.kind = HUMAN | BOT` 从第一天建模（《总规划》§6）。
 - Engine 不依赖 `poker-math`；Equity/Pot Odds 等确定性计算服务于 P1 的 AI Context，不是 Engine 的规则输入（《总规划》§8）。
 
-包内目录（《区块6-10 v0.2》§10.6）：
+包内目录（《区块6-10 v0.2》§10.6 为规划目录；以仓库实际布局为准，见下）。实际布局（`packages/poker-engine/src/`，随各自任务落地并更新本文）：
 
-| 目录 | 内容 |
-| --- | --- |
-| `cards/` | 牌与牌面表示 |
-| `deck/` | 牌堆与洗牌 |
-| `hand/` | 单手流程 |
-| `betting/` | 下注规则与 `LegalActions` |
-| `pot/` | Pot / Side Pot |
-| `evaluator/` | 牌型评估 |
-| `tournament/` | 盲注、淘汰、排名、冠军 |
-| `state/` | `GameState` |
-| `events/` | Game Events |
-| `actions/` | Action 类型与校验 |
-| `rng/` | `RandomSource` 接口 |
+| 目录 | 内容 | 状态 |
+| --- | --- | --- |
+| `cards/` | 牌与牌面表示、牌堆与洗牌、随机源接口、牌型评估 | TEX-13 已落地（统一落于此，暂未拆分） |
+| `engine/` | 牌局状态、回合推进、状态转换和规则协调 | 占位 · TEX-14 |
+| `rules/` | 盲注、合法动作、下注、全下和摊牌等可单独验证的规则 | 占位 · TEX-14 |
+| `pots/` | 主池、边池、分池和结算分配规则 | 占位 · TEX-14 |
+| `events/` | 不可变的扑克领域事件 | 占位 · TEX-15 |
+| `timer/` | 行动时限与时间银行的领域模型 | 占位 · TEX-14/15 |
+
+> **工程裁决（TEX-13，2026-08-22）**：Card、标准 52 张 Deck、随机源与 Hand Evaluator 统一落在 `cards/`，**暂不拆分**规划中的 `deck/`、`evaluator/`、`rng/` 三个子目录；后续任务若需拆分，以本文更新为准。《区块6-10 v0.2》§10.6 的 `deck/ hand/ betting/ pot/ evaluator/ tournament/ state/ actions/ rng/` 为规划目录，不再代表仓库实际结构。
 
 ## 4. 数据模型
 
