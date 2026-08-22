@@ -1,0 +1,21 @@
+{
+  "name": "@texas-holdem/game-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "游戏服务运行时（Node.js + Fastify + @fastify/websocket）",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.3.0",
+    "fastify": "^5.12.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.0"
+  }
+}

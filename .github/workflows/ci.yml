@@ -83,4 +83,5 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm run lint --if-present
           pnpm run typecheck --if-present
+          pnpm run build --if-present
           pnpm run test --if-present
