@@ -7,3 +7,4 @@
 ## 索引
 
 - [monorepo-and-quality-baseline.md](./monorepo-and-quality-baseline.md)：pnpm monorepo、Turborepo、TypeScript、ESLint、Prettier、环境变量样例与质量命令说明。
+- [pull-request-and-linear-naming.md](./pull-request-and-linear-naming.md)：Linear、分支与 GitHub Pull Request 的编号和标题关联规则。

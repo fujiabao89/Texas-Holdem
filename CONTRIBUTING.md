@@ -4,15 +4,27 @@
 
 `main` is the integration branch. Do not commit feature work directly to it.
 
-## Branch and Linear task naming
+## Linear、branch 与 Pull Request 命名
 
-The Linear issue title **must be exactly the same as its GitHub branch name**:
+Linear 通过标题开头的任务编号识别关联。Linear 任务标题与 GitHub PR 标题都必须使用：
 
 ```
-<type>/<TEAM-ISSUE>-<kebab-case-summary>
+[TEX-<number>] <可读摘要>
 ```
 
-For this project, Linear issues belong to the `Texas Hold'em` team, so the identifier is assigned by Linear and uses the `TEX-<number>` form. Examples:
+例如：
+
+```
+[TEX-52] Health Check 文档板块：快速启动 P1 + 状态文档与配置模板校准
+```
+
+Git 分支保持适合 Git 的 kebab-case 格式：
+
+```
+<type>/TEX-<number>-<kebab-case-summary>
+```
+
+例如：
 
 ```
 feat/TEX-1-hand-history-import
@@ -24,11 +36,12 @@ Allowed branch types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `hotfi
 
 Workflow:
 1. Create the Linear issue in the `Texas Hold'em` team.
-2. Use its generated identifier in the branch/task title.
-3. Create the matching Git branch from `main`.
-4. Keep the issue title and branch name identical for the life of the work.
+2. Use its generated `TEX-<number>` in both the Linear title and the branch name.
+3. Set the PR title to exactly match the Linear title; do not use the branch name as the PR title.
+4. Create the matching Git branch from `main`.
+5. Keep the same `TEX-<number>` in the Linear task, branch, PR title and PR body for the life of the work.
 
-Use lowercase letters, digits, and hyphens in the summary; avoid spaces, underscores, and Chinese punctuation.
+Use lowercase letters, digits and hyphens in the **branch** summary. The Linear/PR title summary is human-readable and may use spaces and Chinese punctuation.
 
 ## Work tracking and public feedback
 

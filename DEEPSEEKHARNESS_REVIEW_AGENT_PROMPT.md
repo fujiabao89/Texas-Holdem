@@ -36,7 +36,7 @@
 
 本仓库必须检查的领域与治理不变量：
 
-- 分支名与 Linear 任务标题必须一致，格式为 `<type>/TEX-<number>-<kebab-case-summary>`；不得直接向 `main` 开发。
+- Linear 任务标题与 PR 标题必须一致，格式为 `[TEX-<number>] <可读摘要>`；分支格式为 `<type>/TEX-<number>-<kebab-case-summary>`。三者的 `TEX-<number>` 必须一致；不得直接向 `main` 开发。
 - 纯扑克规则只能属于 `packages/poker-engine`，不得依赖网络、数据库、UI 或框架；随机性必须可注入、可测试。
 - 通信 Schema 与推导类型只属于 `packages/protocol`，客户端和服务端不得维护平行 DTO。
 - `apps/game-server` 保持权威状态并验证所有客户端输入；`apps/web` 只展示服务端投影并提交命令，绝不裁决牌局。

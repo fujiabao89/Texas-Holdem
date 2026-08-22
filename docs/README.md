@@ -20,6 +20,7 @@
 | 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 提交前本地审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略、输出契约与提交/推送门禁 | 治理基线 |
 | 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
 | 工程 | [03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md) | pnpm monorepo、Turbo、质量命令、共享配置与环境变量 | TEX-11 工程地基 | 已实现 |
+| 工程 | [03-engineering/pull-request-and-linear-naming.md](./03-engineering/pull-request-and-linear-naming.md) | Linear、分支与 GitHub PR 的命名关联 | 开发流程与 PR 校验 | 已实现 |
 
 ## 产品层文档（非实现事实）
 
