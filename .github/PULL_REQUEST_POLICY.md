@@ -5,8 +5,8 @@
 ## 提交前提
 
 1. 每项工作必须关联一个 Linear 任务。
-2. Linear 任务标题与分支名必须完全一致：`<type>/TEX-<number>-<kebab-case-summary>`。
-3. PR 标题必须与源分支名完全一致，便于 Linear、分支与 PR 的一一追踪。
+2. Linear 任务标题使用 `[TEX-<number>] <可读摘要>`；分支名使用 `<type>/TEX-<number>-<kebab-case-summary>`。两者的 `TEX-<number>` 必须一致。
+3. PR 标题必须与 Linear 任务标题完全一致，且以 `[TEX-<number>] ` 开头；不得以源分支名作为 PR 标题。PR 标题的编号必须与源分支一致，以便 Linear、分支与 PR 的一一追踪。
 4. PR 描述必须包含 `Linear: TEX-<number>`；Dependabot 更新不受此项约束。
 5. 一个 PR 只解决一个可审查的目标，不夹带无关格式化、重构或依赖升级。
 

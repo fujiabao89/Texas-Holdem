@@ -1,0 +1,32 @@
+{
+  "name": "texas-holdem",
+  "version": "0.1.0",
+  "private": true,
+  "description": "极简、白色主体、响应式的 No-Limit Texas Hold'em Web 游戏（pnpm monorepo）",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "dev": "turbo run dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^22.20.0",
+    "eslint": "^10.0.0",
+    "eslint-plugin-react-hooks": "^7.1.0",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.0",
+    "turbo": "^2.10.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.0"
+  }
+}

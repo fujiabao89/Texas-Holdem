@@ -15,7 +15,7 @@ jobs:
     name: branch-and-pr-policy
     runs-on: ubuntu-latest
     steps:
-      - name: Validate branch, title, and Linear reference
+      - name: Validate branch, Linear-style title, and Linear reference
         env:
           ACTOR: ${{ github.actor }}
           BRANCH: ${{ github.head_ref }}
@@ -37,15 +37,16 @@ jobs:
             exit 1
           fi
 
-          if [[ "$PR_TITLE" != "$BRANCH" ]]; then
-            echo "PR title must exactly match the source branch."
-            echo "Branch: $BRANCH"
-            echo "Title:  $PR_TITLE"
+          ticket="$(grep -oE 'TEX-[0-9]+' <<< "$BRANCH")"
+          title_pattern="^\\[${ticket}\\][[:space:]].+"
+          if [[ ! "$PR_TITLE" =~ $title_pattern ]]; then
+            echo "PR title must start with: [$ticket] "
+            echo "Example: [$ticket] Human-readable summary"
+            echo "Title: $PR_TITLE"
             exit 1
           fi
 
-          ticket="$(grep -oE 'TEX-[0-9]+' <<< "$BRANCH")"
-          if ! grep -Eiq "Linear:[[:space:]]*${ticket}" <<< "$PR_BODY"; then
+          if ! grep -Eiq "^[[:space:]]*Linear:[[:space:]]*${ticket}([^[:alnum:]-]|$)" <<< "$PR_BODY"; then
             echo "PR body must contain: Linear: $ticket"
             exit 1
           fi

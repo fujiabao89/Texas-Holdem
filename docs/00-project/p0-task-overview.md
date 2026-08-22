@@ -50,7 +50,7 @@ flowchart TD
 
 `TEX-23` 只依赖 `TEX-17`，因此可与 `TEX-19` 至 `TEX-22` 的服务端链并行；`TEX-24` 同时等待 `TEX-19` 和 `TEX-23`，`TEX-25` 同时等待 `TEX-21` 和 `TEX-24`，`TEX-27` 还等待 `TEX-22`。
 
-只有当前任务的依赖全部完成且目录范围没有和其他 Agent 冲突时，才可将它移入 `In Progress`。每个任务使用与标题完全相同的 Git 分支；Linear 自动建议的分支字段不是权威命名。
+只有当前任务的依赖全部完成且目录范围没有和其他 Agent 冲突时，才可将它移入 `In Progress`。每个任务使用 `<type>/TEX-<number>-<kebab-case-summary>` 形式的 Git 分支；Linear/PR 标题使用 `[TEX-<number>] <可读摘要>`，两者 `TEX-<number>` 必须一致，但分支与标题格式不同（见 [CONTRIBUTING.md](../../CONTRIBUTING.md)）。Linear 自动建议的分支字段不是权威命名。
 
 ## 4. 任务地图
 

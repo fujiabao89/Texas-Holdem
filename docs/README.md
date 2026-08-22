@@ -1,11 +1,11 @@
 # 工程文档总索引
 
 > 状态：草稿
-> 更新：2026-08-21
+> 更新：2026-08-22
 
 本目录是工程文档的唯一入口。规范：**一个事实只有一个权威来源**，其他文档链接引用而不是重写；产品层文档（规划书）留在仓库根目录，在本索引链接并标注"产品意图，非实现事实"。
 
-> 项目现状：尚无代码（2026-08-21 核对）。`packages/`、`apps/`、`tests/` 均未创建，本文档体系内的工程文档均为**设计意图 · 未实现**。
+> 项目现状（2026-08-22 核对）：TEX-11 已建立 pnpm monorepo 工程地基——`apps/web` 与 `apps/game-server` 可安装、可 lint / typecheck / build / test（见 [docs/03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md)）；扑克规则、协议、服务端与前端业务逻辑仍未实现。本文档体系内的工程规格（01–06）仍为**设计意图 · 未实现**。
 
 ## 文档地图
 
@@ -19,6 +19,8 @@
 | 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 草稿（设计意图 · 未实现） |
 | 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 提交前本地审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略、输出契约与提交/推送门禁 | 治理基线 |
 | 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
+| 工程 | [03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md) | pnpm monorepo、Turbo、质量命令、共享配置与环境变量 | TEX-11 工程地基 | 已实现 |
+| 工程 | [03-engineering/pull-request-and-linear-naming.md](./03-engineering/pull-request-and-linear-naming.md) | Linear、分支与 GitHub PR 的命名关联 | 开发流程与 PR 校验 | 已实现 |
 
 ## 产品层文档（非实现事实）
 
