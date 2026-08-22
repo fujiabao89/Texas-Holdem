@@ -81,7 +81,7 @@ jobs:
           fi
           corepack enable
           pnpm install --frozen-lockfile
-          pnpm run lint --if-present
-          pnpm run typecheck --if-present
-          pnpm run build --if-present
-          pnpm run test --if-present
+          pnpm run lint
+          pnpm run typecheck
+          pnpm run build
+          pnpm run test
