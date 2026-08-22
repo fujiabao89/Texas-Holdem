@@ -24,14 +24,11 @@
 3. 不复制规则、协议或数据模型形成第二份事实；以 `docs/01-engine-spec.md` 至 `docs/06-testing-strategy.md` 为权威，其他说明使用链接引用。发现冲突必须暂停并上报 Codex。
 4. 交付摘要和 PR 必须列出已更新的文档；若未改动文档，必须写明已检查且无需更新的原因。未完成这项检查，不得将任务标记为完成。
 
-## 提交与推送前的本地审查门禁
+## DeepSeek Harness 审查
 
-完成实现后、执行 `git add`、`git commit` 或 `git push` 前，必须调用由 [DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](./DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) 创建的 DeepSeek Harness 本地审查 Agent。
+开发完成后的 DeepSeek Harness 审查由用户手动启动。Claude Code 不得自行调用 [DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](./DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) 所定义的审查 Agent，也不得把该审查作为 `git add`、`git commit`、`git push` 或创建 PR 的前置门禁。
 
-- 审查范围必须覆盖已暂存、未暂存和未跟踪的任务相关文件。
-- 只有最终结果为 `PRE_PUSH_REVIEW: PASS` 才可暂存、提交和推送；`BLOCKED` 或 `NEEDS_DECISION` 必须先处理并重新审查。
-- 审查 Agent 只读，不得让其修改实现、暂存、提交或推送。紧急豁免仅由用户明确批准，并在提交信息或 PR 中记录原因。
-- 交付摘要必须附上审查结论及已处理的 P0/P1/P2 发现；不要把 P3 建议伪装为已修复事项。
+收到用户提供的审查结果后，按普通 PR 审查意见处理：修复适用问题、运行相称验证、提交并推送；随后在对应的原始审查评论线程回复。交付摘要只报告用户已提供且已处理的审查结果，不将未启动的审查表述为已通过。
 
 ## Pull Request 描述要求
 
@@ -40,7 +37,13 @@
 - 逐项填写问题/目标、解决方式和关键变更文件；每个文件或目录必须说明改动与原因/影响。
 - 填写与分支编号一致的 `Linear: TEX-<number>`、实际验证命令及结果、审阅关注点、风险和回滚方案。
 - 明确用户影响、非范围与未运行验证的原因；不得提交空表格、`待填写`、过期示例或泛泛描述。
-- PR 标题必须与 Linear 任务标题完全一致，并以 `[TEX-<number>] ` 开头；其编号必须与源分支一致。PR 保持草稿，直到实现、DeepSeek Harness 审查和 PR 描述均已完成。
+- PR 标题必须与 Linear 任务标题完全一致，并以 `[TEX-<number>] ` 开头；其编号必须与源分支一致。PR 保持草稿，直到实现和 PR 描述均已完成。
+
+## PR 审查意见修改后的回复
+
+凡是处理 GitHub PR 审查意见的任务——包括人工审阅、GitHub 自动化与 CodeRabbit 的意见——都必须逐条完成对应修改和相称验证，提交并推送到该 PR 的源分支；**仅在推送完成后**，再在每条已处理意见的原始审查评论线程回复：`已修正`。
+
+不得在未推送、未实际修复或错误线程中回复“已修正”。若某条意见经核实无需修改，必须在其原始线程说明理由。交付摘要必须列出已处理意见及回复状态；未完成评论回复不得交付或标记任务完成。
 
 ## 必须上报 Codex 的情况
 

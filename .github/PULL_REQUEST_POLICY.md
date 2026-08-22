@@ -17,6 +17,8 @@
 - `CI / repository-hygiene`、`CI / workflow-lint` 与 `PR Policy / branch-and-pr-policy` 必须通过。变更依赖清单时，`Dependency Review / dependency-review` 也必须通过。
 - 每个 PR 至少需要一项批准；新的推送会使已有批准失效。
 - 所有审阅线程必须解决。
+- 对需要修改的人工、GitHub 自动化或 CodeRabbit 审查意见，完成修改与验证并推送到 PR 源分支后，必须在对应的原始审查评论线程回复 `已修正`；无需修改时必须在原线程说明依据。
+- DeepSeek Harness 审查仅由用户手动启动，不是 Agent 提交、推送或创建 PR 的前置门禁；用户提供其审查结果后，按上述审查意见闭环处理。
 - 涉及 `packages/poker-engine`、`packages/protocol`、服务端基础设施、`.github` 或 `docs` 的变更将请求相应 CODEOWNER 审阅。
 - 当仓库仍只有一位维护者时，管理员可使用 Ruleset bypass 合并；必须在 PR 中说明原因，并在后续有第二位维护者时停止这种常规使用。
 
