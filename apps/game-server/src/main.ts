@@ -7,8 +7,9 @@ const app = buildApp();
 
 app.listen({ port, host }, (err, address) => {
   if (err) {
-    app.log.error(err);
+    // buildApp() 使用 logger: false，app.log.error 是 no-op；启动失败需落到 stderr。
+    console.error(`game-server failed to start on ${host}:${port}`, err);
     process.exit(1);
   }
-  app.log.info(`game-server listening at ${address}`);
+  console.log(`game-server listening at ${address}`);
 });
