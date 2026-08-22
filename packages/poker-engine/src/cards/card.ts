@@ -66,7 +66,7 @@ export interface Card {
  * 从不可信来源拿值时应先用 {@link isCard} 校验。
  */
 export function createCard(suit: Suit, rank: Rank): Card {
-  return { suit, rank };
+  return Object.freeze({ suit, rank });
 }
 
 /** 运行时校验一个未知值是否为合法 Card（rank ∈ [2,14] 且 suit ∈ 四种花色）。 */
@@ -101,7 +101,7 @@ export function parseCard(code: string): Card {
   if (rank === undefined || suit === undefined) {
     throw new Error(`非法牌名：${code}`);
   }
-  return { suit, rank: rank as Rank };
+  return createCard(suit, rank as Rank);
 }
 
 /** 两张牌是否相等（花色与牌面值相同）。 */

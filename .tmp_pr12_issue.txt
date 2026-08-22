@@ -1,0 +1,308 @@
+ISSUE COMMENTS COUNT 6
+============================================================
+USER linear-code[bot]
+<!-- linear-linkback -->
+<p><a href="https://linear.app/texas-holdem/issue/TEX-13">TEX-13</a></p>
+============================================================
+USER coderabbitai[bot]
+<!-- coderabbit-security-review-denial-nudge -->
+> [!WARNING]
+> Your free Security trial is over. An organization admin can [activate billing](https://app.coderabbit.ai/settings/billing) to continue.
+============================================================
+USER coderabbitai[bot]
+<!-- This is an auto-generated comment: summarize by coderabbit.ai -->
+<!-- review_stack_entry_start -->
+
+[![Review Change Stack](https://storage.googleapis.com/coderabbit_public_assets/review-stack-in-coderabbit-ui.svg)](https://app.coderabbit.ai/change-stack/fujiabao89/Texas-Holdem/pull/12?utm_source=github_walkthrough&utm_medium=github&utm_campaign=change_stack)
+
+<!-- review_stack_entry_end -->
+<!-- walkthrough_start -->
+
+<details>
+<summary>📝 Walkthrough</summary>
+
+## Walkthrough
+
+本 PR 新增 `@texas-holdem/poker-engine` 包，并实现 `cards/` 子域。该子域包含卡牌模型、随机源、标准牌堆和七选五牌力评估器，同时补充测试、构建配置、公共导出和项目文档。
+
+### Changes
+
+**Cards 子域**
+
+|Layer / File(s)|Summary|
+|---|---|
+|**包配置、入口与实现说明** <br> `docs/01-engine-spec.md`, `docs/README.md`, `packages/poker-engine/README.md`, `packages/poker-engine/package.json`, `packages/poker-engine/src/README.md`, `packages/poker-engine/src/cards/README.md`, `packages/poker-engine/src/index.ts`, `packages/poker-engine/src/cards/index.ts`, `packages/poker-engine/tests/README.md`, `packages/poker-engine/tsconfig*.json`|新增包元数据、构建与类型检查配置、公共入口和 Cards 导出，并更新工程状态、接口说明、随机性约定和测试说明。|
+|**卡牌、随机源与牌堆实现** <br> `packages/poker-engine/src/cards/card.ts`, `packages/poker-engine/src/cards/card.test.ts`, `packages/poker-engine/src/cards/random-source.ts`, `packages/poker-engine/src/cards/random-source.test.ts`, `packages/poker-engine/src/cards/deck.ts`, `packages/poker-engine/src/cards/deck.test.ts`|实现标准卡牌、编码解析、卡牌校验、安全随机源、可复现随机源、标准 52 张牌堆、Fisher–Yates 洗牌和耗尽错误，并覆盖相关测试。|
+|**七选五牌力评估与比较** <br> `packages/poker-engine/src/cards/hand-evaluator.ts`, `packages/poker-engine/src/cards/hand-evaluator.test.ts`|实现九种牌型识别、5–7 张输入校验、最佳五张选择、比较键、A2345 轮顺处理、胜负判定和对应异常测试。|
+
+**Estimated code review effort:** 4 (Complex) | ~60 minutes
+
+<!-- final_review_risk_start -->
+**Merge Risk:** _🟡 Moderate_ · up to `84e14`
+
+当前 PR 新增的牌对象仍可在运行时被外部修改，可能破坏牌堆的唯一性与守恒；部分非法输入也可能抛出错误类型不一致。另有文档链接指向错误路径，因此当前版本不宜直接合并，应先修复这些问题。
+<!-- final_review_risk_end -->
+
+### Sequence Diagram(s)
+
+```mermaid
+sequenceDiagram
+  participant 调用方
+  participant Deck
+  participant RandomSource
+  participant HandEvaluator
+  调用方->>Deck: shuffle(rng)
+  Deck->>RandomSource: nextInt(maxExclusive)
+  RandomSource-->>Deck: 返回随机索引
+  调用方->>Deck: draw()
+  Deck-->>调用方: 返回 Card
+  调用方->>HandEvaluator: evaluateHand(cards)
+  HandEvaluator-->>调用方: 返回 HandEvaluation
+```
+
+</details>
+
+<!-- walkthrough_end -->
+<!-- pre_merge_checks_walkthrough_start -->
+
+<details>
+<summary>🚥 Pre-merge checks | ✅ 4 | ❌ 1</summary>
+
+### ❌ Failed checks (1 warning)
+
+|     Check name     | Status     | Explanation                                                                                                                                                                                                              | Resolution                                                                         |
+| :----------------: | :--------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------- |
+| Docstring Coverage | ⚠️ Warning | Docstring coverage is 70.00% which is insufficient. The required threshold is 80.00%. Docstring coverage is scoped to functions touched by this diff. Analyzed 20 functions across 10 files. (9 skipped: 9 unsupported.) | Write docstrings for the functions missing them to satisfy the coverage threshold. |
+
+<details>
+<summary>✅ Passed checks (4 passed)</summary>
+
+|         Check name         | Status   | Explanation                                                              |
+| :------------------------: | :------- | :----------------------------------------------------------------------- |
+|     Linked Issues check    | ✅ Passed | Check skipped because no linked issues were found for this pull request. |
+| Out of Scope Changes check | ✅ Passed | Check skipped because no linked issues were found for this pull request. |
+|      Description Check     | ✅ Passed | Check skipped - CodeRabbit’s high-level summary is enabled.              |
+|         Title check        | ✅ Passed | 标题准确概括了本 PR 的主要变更：实现扑克牌模型、牌堆和牌型评估。                                       |
+
+</details>
+
+</details>
+
+<!-- pre_merge_checks_walkthrough_end -->
+<!-- tips_start -->
+
+---
+
+Thanks for using [CodeRabbit](https://coderabbit.ai?utm_source=oss&utm_medium=github&utm_campaign=fujiabao89/Texas-Holdem&utm_content=12)! It's free for OSS, and your support helps us grow. If you like it, consider giving us a shout-out.
+
+<details>
+<summary>❤️ Share</summary>
+
+- [X](https://twitter.com/intent/tweet?text=I%20just%20used%20%40coderabbitai%20for%20my%20code%20review%2C%20and%20it%27s%20fantastic%21%20It%27s%20free%20for%20OSS%20and%20offers%20a%20free%20trial%20for%20the%20proprietary%20code.%20Check%20it%20out%3A&url=https%3A//coderabbit.ai)
+- [Mastodon](https://mastodon.social/share?text=I%20just%20used%20%40coderabbitai%20for%20my%20code%20review%2C%20and%20it%27s%20fantastic%21%20It%27s%20free%20for%20OSS%20and%20offers%20a%20free%20trial%20for%20the%20proprietary%20code.%20Check%20it%20out%3A%20https%3A%2F%2Fcoderabbit.ai)
+- [Reddit](https://www.reddit.com/submit?title=Great%20tool%20for%20code%20review%20-%20CodeRabbit&text=I%20just%20used%20CodeRabbit%20for%20my%20code%20review%2C%20and%20it%27s%20fantastic%21%20It%27s%20free%20for%20OSS%20and%20offers%20a%20free%20trial%20for%20proprietary%20code.%20Check%20it%20out%3A%20https%3A//coderabbit.ai)
+- [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fcoderabbit.ai&mini=true&title=Great%20tool%20for%20code%20review%20-%20CodeRabbit&summary=I%20just%20used%20CodeRabbit%20for%20my%20code%20review%2C%20and%20it%27s%20fantastic%21%20It%27s%20free%20for%20OSS%20and%20offers%20a%20free%20trial%20for%20proprietary%20code)
+
+</details>
+
+
+<sub>Comment `@coderabbitai help` to get the list of available commands.</sub>
+
+<!-- tips_end -->
+============================================================
+USER qodo-code-review[bot]
+<!-- qodo:billing-blocked -->
+
+**ⓘ Qodo reviews are paused because your trial has ended.** Ask your workspace admin to add credits to resume reviews. [Manage billing](https://app.qodo.ai/account/billing/manage-subscription?traffic_source=pr_comment)
+============================================================
+USER fujiabao89
+@codex review
+
+Review this PR against the current codebase, project constraints, and PR acceptance criteria.
+
+Focus on confirmed issues involving:
+- correctness
+- security / authorization
+- data integrity
+- error handling
+- concurrency
+- regressions
+- missing or incorrect tests
+
+Classify findings as P0, P1, P2, or P3.
+
+Only report actionable findings that are supported by the current code.
+Avoid speculative refactors, style preferences, and out-of-scope redesigns.
+
+@coderabbitai review
+
+Review this PR for confirmed correctness, security, authorization, data-integrity, regression, and test issues.
+
+Prioritize P0/P1 findings.
+Avoid speculative refactors, style-only suggestions, and out-of-scope redesigns.
+============================================================
+USER coderabbitai[bot]
+<!-- This is an auto-generated reply by CodeRabbit -->
+<!-- CodeRabbit review command invocation: a02e03af-86cc-422a-9f88-ef2b61789691 -->
+<details>
+<summary>🧩 Analysis chain</summary>
+
+🏁 Script executed:
+
+```shell
+#!/bin/bash
+set -euo pipefail
+
+echo '=== PR metadata ==='
+gh pr view 12 --json number,title,baseRefName,headRefName,files --jq '{number,title,baseRefName,headRefName,files:[.files[].path]}'
+
+echo '=== Changed file summary ==='
+git diff --stat "origin/$(gh pr view 12 --json baseRefName --jq .baseRefName)...HEAD"
+
+echo '=== Changed paths ==='
+git diff --name-status "origin/$(gh pr view 12 --json baseRefName --jq .baseRefName)...HEAD"
+
+echo '=== TypeScript outlines ==='
+fd -e ts . packages/poker-engine 2>/dev/null | sort | while IFS= read -r file; do
+  echo "--- $file"
+  ast-grep outline "$file" --items all 2>/dev/null || true
+done
+
+echo '=== Workspace scripts and package manifests ==='
+for file in package.json pnpm-workspace.yaml packages/poker-engine/package.json packages/poker-engine/tsconfig.json packages/poker-engine/tsconfig.build.json; do
+  if [ -f "$file" ]; then
+    echo "--- $file"
+    cat -n "$file"
+  fi
+done
+```
+
+Length of output: 12213
+
+---
+
+🏁 Script executed:
+
+```shell
+#!/bin/bash
+set -euo pipefail
+
+echo '=== Card, Deck, and random-source implementation ==='
+for file in \
+  packages/poker-engine/src/cards/card.ts \
+  packages/poker-engine/src/cards/deck.ts \
+  packages/poker-engine/src/cards/random-source.ts; do
+  echo "--- $file"
+  cat -n "$file"
+done
+
+echo '=== Evaluator implementation ==='
+cat -n packages/poker-engine/src/cards/hand-evaluator.ts
+
+echo '=== New unit tests ==='
+for file in \
+  packages/poker-engine/src/cards/card.test.ts \
+  packages/poker-engine/src/cards/deck.test.ts \
+  packages/poker-engine/src/cards/random-source.test.ts \
+  packages/poker-engine/src/cards/hand-evaluator.test.ts; do
+  echo "--- $file"
+  cat -n "$file"
+done
+
+echo '=== Test and compiler configuration ==='
+for file in vitest.config.ts tsconfig.base.json tsconfig.test.json; do
+  if [ -f "$file" ]; then
+    echo "--- $file"
+    cat -n "$file"
+  fi
+done
+
+echo '=== PR diff ==='
+base="$(gh pr view 12 --json baseRefName --jq .baseRefName)"
+git diff --find-renames --find-copies "origin/$base...HEAD" -- \
+  packages/poker-engine \
+  package.json \
+  pnpm-lock.yaml \
+  vitest.config.ts \
+  tsconfig.base.json \
+  tsconfig.test.json \
+  docs/01-engine-spec.md \
+  docs/README.md
+```
+
+Length of output: 82574
+
+---
+
+🏁 Script executed:
+
+```shell
+#!/bin/bash
+set -euo pipefail
+
+echo '=== Engine specification: card, deck, evaluator, RNG, and invariants ==='
+rg -n -A28 -B4 \
+  '(^## (7|10|15|17)\.|牌堆守恒|不可变|Deck|toArray|Card|非法牌|重复牌)' \
+  docs/01-engine-spec.md
+
+echo '=== Deck and Card API use sites, excluding the implementation under review ==='
+rg -n -A3 -B3 \
+  --glob '!packages/poker-engine/src/cards/deck.ts' \
+  --glob '!packages/poker-engine/src/cards/card.ts' \
+  --glob '!packages/poker-engine/src/cards/deck.test.ts' \
+  --glob '!packages/poker-engine/src/cards/card.test.ts' \
+  '\.toArray\s*\(|\bcreateCard\s*\(|\bcardCode\s*\(|\bevaluateHand\s*\(' \
+  .
+
+echo '=== Tests that guard the identified boundaries ==='
+rg -n -A4 -B4 \
+  --glob '**/*.test.ts' \
+  '(toArray|Object\.freeze|readonly|cyclic|circular|JSON\.stringify|InvalidCardError|Deck)' \
+  packages tests apps 2>/dev/null || true
+
+echo '=== Relevant source ranges ==='
+sed -n '58,120p' packages/poker-engine/src/cards/card.ts | cat -n
+sed -n '22,68p' packages/poker-engine/src/cards/deck.ts | cat -n
+sed -n '64,132p' packages/poker-engine/src/cards/hand-evaluator.ts | cat -n
+```
+
+Length of output: 36438
+
+---
+
+</details>
+
+`@fujiabao89` 已完成审查。未发现 P0 问题。
+
+### P1 — `Deck.toArray()` 泄漏内部 Card 引用，可破坏牌堆不变量
+
+`packages/poker-engine/src/cards/deck.ts` Line 65 只复制了数组，不复制其中的 `Card` 对象。`Card` 的 `readonly` 只在 TypeScript 类型层生效。运行时调用方可以修改返回 Card，直接污染 `Deck.cards`。
+
+可复现：
+
+```ts
+const deck = new Deck();
+const snapshot = deck.toArray();
+
+(snapshot[0] as { rank: number }).rank = 14;
+// 初始第一张为 2s。此时 Deck 内同时存在两个 As，且不再存在 2s。
+```
+
+这违反了规格中的卡牌唯一性和牌堆守恒不变量。后续 `draw()` 会从已损坏的牌堆发牌。
+
+请使 Card 在运行时不可变，或让 `toArray()` 返回每张 Card 的独立副本。请添加测试，修改 `toArray()` 返回值后仍验证牌堆保持 52 张唯一标准牌。
+
+### P2 — 循环无效输入不会抛出声明的 `InvalidCardError`
+
+`packages/poker-engine/src/cards/hand-evaluator.ts` Line 67 在构造 `InvalidCardError` 时执行 `JSON.stringify(card)`。如果无效 Card 是循环对象，`JSON.stringify` 会先抛出原生 `TypeError`。`evaluateHand()` 因此不满足“无效 Card 抛明确错误”的公开契约。
+
+请使用不会抛错的错误描述，或在序列化失败时使用固定占位文本。请添加循环对象输入测试，并断言抛出 `InvalidCardError`。
+
+<details>
+<summary>✅ Action performed</summary>
+
+Review finished.
+
+> Note: CodeRabbit is an incremental review system and does not re-review already reviewed commits. This command is applicable only when automatic reviews are paused.
+
+</details>

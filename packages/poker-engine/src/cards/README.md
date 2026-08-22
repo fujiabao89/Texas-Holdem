@@ -1,6 +1,6 @@
 # Cards
 
-牌值模型、牌堆、洗牌策略和牌力评估。规则权威见 [docs/01-engine-spec.md](../../../docs/01-engine-spec.md) §7（牌堆/发牌）、§10（Hand Evaluator）、§15（RNG 与可复现性）；本目录 README 只链接引用，不重复规则正文。
+牌值模型、牌堆、洗牌策略和牌力评估。规则权威见 [docs/01-engine-spec.md](../../../../docs/01-engine-spec.md) §7（牌堆/发牌）、§10（Hand Evaluator）、§15（RNG 与可复现性）；本目录 README 只链接引用，不重复规则正文。
 
 ## 公开接口
 
@@ -15,4 +15,4 @@
 
 ## 测试
 
-本子域的单元测试与源码同包（`src/**/*.test.ts`），由根 [vitest.config.ts](../../../vitest.config.ts) 的 unit 层收集，`pnpm test:unit` 运行；Seed 工具见 [tests/support](../../../../tests/support/README.md)。
+本子域的单元测试与源码同包（`src/**/*.test.ts`），由根 [vitest.config.ts](../../../../vitest.config.ts) 的 unit 层收集，`pnpm test:unit` 运行；Seed 工具见 [tests/support](../../../../tests/support/README.md)。

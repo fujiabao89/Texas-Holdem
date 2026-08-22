@@ -88,3 +88,15 @@ describe("抽牌与耗尽", () => {
     expect(deck.size).toBe(0);
   });
 });
+
+describe("Card 运行时不可变", () => {
+  it("修改 toArray() 返回的 Card 不影响牌堆集合", () => {
+    const deck = new Deck();
+    const before = deck.toArray().map(cardKey);
+    const card = deck.toArray()[0]!;
+    expect(() => {
+      (card as { rank: number }).rank = 3;
+    }).toThrow(TypeError);
+    expect(deck.toArray().map(cardKey)).toEqual(before);
+  });
+});

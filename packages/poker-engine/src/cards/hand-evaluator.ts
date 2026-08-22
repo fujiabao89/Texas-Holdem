@@ -64,9 +64,21 @@ export class InvalidHandCountError extends Error {
 /** 输入非法：存在无效 Card（rank/suit 越界）。 */
 export class InvalidCardError extends Error {
   constructor(card: unknown) {
-    const desc = typeof card === "string" ? card : JSON.stringify(card);
-    super(`evaluateHand: 非法牌 ${desc}`);
+    super(`evaluateHand: 非法牌 ${safeDescribe(card)}`);
     this.name = "InvalidCardError";
+  }
+}
+
+/** 安全描述一个不可信值：序列化失败（如循环对象）时回退到类型标签，绝不抛错。 */
+function safeDescribe(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    const json = JSON.stringify(value);
+    return json ?? Object.prototype.toString.call(value);
+  } catch {
+    return Object.prototype.toString.call(value);
   }
 }
 
@@ -85,10 +97,12 @@ export class DuplicateCardError extends Error {
 export function evaluateHand(cards: readonly Card[]): HandEvaluation {
   validateInput(cards);
   const subsets = combinationsOfFive(cards);
+  // 平局时偏好“后出现的”、“更靠公共牌”的子集（输入约定为 Hole Cards 在前、Community Cards 在后），
+  // 使公共牌完整成牌（board plays）时 bestFiveCards 反映公共牌。权威 §10。
   let best = evaluateFive(subsets[0]);
   for (let i = 1; i < subsets.length; i++) {
     const current = evaluateFive(subsets[i]);
-    if (compareEvaluations(current, best) > 0) {
+    if (compareEvaluations(current, best) >= 0) {
       best = current;
     }
   }
@@ -114,6 +128,7 @@ export function decideOutcome(hand: HandEvaluation, opponent: HandEvaluation): "
   return cmp > 0 ? "win" : cmp < 0 ? "lose" : "tie";
 }
 
+/** 校验输入：牌数在 5–7、各牌合法、互不重复；不满足则抛对应错误。 */
 function validateInput(cards: readonly Card[]): void {
   if (cards.length < 5 || cards.length > 7) {
     throw new InvalidHandCountError(cards.length);
@@ -202,6 +217,7 @@ function evaluateFive(cards: readonly Card[]): HandEvaluation {
   };
 }
 
+/** 返回按牌值降序排列的新数组。 */
 function descendingRanks(ranks: readonly number[]): number[] {
   return [...ranks].sort((a, b) => b - a);
 }

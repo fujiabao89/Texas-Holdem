@@ -13,4 +13,4 @@
 
 随机性约定：规则测试使用可复现 seed（[tests/support](../../support/README.md)），禁止非注入式随机源与系统时间（docs/06-testing-strategy.md §2.1）；确定性回归 Fixture 按 docs/06 §3.4 组织。
 
-TEX-13 的 Card / Deck / 随机源 / Hand Evaluator 属纯函数，其单元测试与源码同包，位于 `src/**/*.test.ts`（unit 层，`pnpm test:unit`）。本 `tests/` 目录（rules 层）等待下注、底池、状态机等规则/性质测试（TEX-14 / TEX-15）落地后再填充。
+TEX-13 的 Card / Deck / 随机源 / Hand Evaluator 属于纯领域逻辑，其单元测试与源码同包，位于 `src/**/*.test.ts`（unit 层，`pnpm test:unit`）。本 `tests/` 目录（rules 层）等待下注、底池、状态机等规则/性质测试（TEX-14 / TEX-15）落地后再填充。

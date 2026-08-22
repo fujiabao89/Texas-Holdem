@@ -176,16 +176,24 @@ describe("A2345 顺子与普通顺子", () => {
 });
 
 describe("board plays：最佳五张完全来自公共牌", () => {
+  // 输入顺序遵循 §10：Hole Cards 在前、Community Cards 在后。
   it("公共牌成顺时，组成牌型的是公共牌", () => {
-    const result = ev("5c", "6d", "7h", "8s", "9h", "2c", "2d");
+    const result = ev("2c", "2d", "5c", "6d", "7h", "8s", "9h");
     expect(result.rank).toBe(HandRank.Straight);
     expect(codesOf(result)).toEqual(["5c", "6d", "7h", "8s", "9h"]);
   });
 
   it("公共牌成同花时，组成牌型的是公共牌", () => {
-    const result = ev("2h", "5h", "9h", "Jh", "Kh", "2c", "3d");
+    const result = ev("2c", "3d", "2h", "5h", "9h", "Jh", "Kh");
     expect(result.rank).toBe(HandRank.Flush);
     expect(codesOf(result)).toEqual(["2h", "5h", "9h", "Jh", "Kh"]);
+  });
+
+  it("手牌与公共牌都成同值顺子时，偏好公共牌成牌", () => {
+    // hole=9s,2d；公共牌 5c,6d,7h,8s,9h。两个 9 高顺子等值，应选公共牌成牌。
+    const result = ev("9s", "2d", "5c", "6d", "7h", "8s", "9h");
+    expect(result.rank).toBe(HandRank.Straight);
+    expect(codesOf(result)).toEqual(["5c", "6d", "7h", "8s", "9h"]);
   });
 });
 
@@ -197,8 +205,9 @@ describe("不同 5 张组合中选择真正最强的五张", () => {
     expect(codesOf(result)).toEqual(["Ah", "Kh", "Th", "9h", "8h"]);
   });
 
-  it("在三条与顺子之间选择更强的顺子", () => {
-    const result = ev("5c", "6d", "7h", "8s", "9h", "5s", "5h");
+  it("在三条与顺子之间选择更强的顺子（公共牌成牌）", () => {
+    // hole=5s,5h（可成三条）；community=5c,6d,7h,8s,9h（成 9 高顺子）。顺子更强且公共牌成牌。
+    const result = ev("5s", "5h", "5c", "6d", "7h", "8s", "9h");
     expect(result.rank).toBe(HandRank.Straight);
     expect(codesOf(result)).toEqual(["5c", "6d", "7h", "8s", "9h"]);
   });
@@ -241,6 +250,20 @@ describe("非法输入", () => {
     const invalid = { suit: "spades", rank: 15 } as unknown as Card;
     expect(() =>
       evaluateHand([invalid, parseCard("2c"), parseCard("3d"), parseCard("4s"), parseCard("5h")]),
+    ).toThrow(InvalidCardError);
+  });
+
+  it("循环对象作为无效 Card 抛 InvalidCardError（而非原生 TypeError）", () => {
+    const circular: { suit: string; rank: number; self?: unknown } = { suit: "spades", rank: 15 };
+    circular.self = circular;
+    expect(() =>
+      evaluateHand([
+        circular as unknown as Card,
+        parseCard("2c"),
+        parseCard("3d"),
+        parseCard("4s"),
+        parseCard("5h"),
+      ]),
     ).toThrow(InvalidCardError);
   });
 });
