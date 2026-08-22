@@ -75,4 +75,25 @@ test.describe("docs/06 §9 门禁自测", () => {
       .poll(() => diagnostics.consoleErrors.some((entry) => entry.includes(ALLOW_SENTINEL)))
       .toBe(true);
   });
+
+  test("白名单豁免：全局正则的 lastIndex 状态不使重复错误触发门禁", async ({
+    page,
+    diagnostics,
+  }) => {
+    // 带 g 标志的正则 test() 会保留 lastIndex：两条相同错误若交替
+    // 匹配/不匹配，第二条会在 teardown 被门禁误判（回归守护）。
+    diagnostics.allow(/TEX-TEST-GATE-ALLOW-GLOBAL/g);
+    await page.goto("/");
+    await page.evaluate(() => {
+      console.error("TEX-TEST-GATE-ALLOW-GLOBAL intentional error 1");
+      console.error("TEX-TEST-GATE-ALLOW-GLOBAL intentional error 2");
+    });
+    await expect
+      .poll(
+        () =>
+          diagnostics.consoleErrors.filter((entry) => entry.includes("TEX-TEST-GATE-ALLOW-GLOBAL"))
+            .length,
+      )
+      .toBe(2);
+  });
 });

@@ -52,9 +52,15 @@ function toSafePath(url: string): string {
 }
 
 function isAllowed(message: string, allowlist: readonly (string | RegExp)[]): boolean {
-  return allowlist.some((pattern) =>
-    typeof pattern === "string" ? message.includes(pattern) : pattern.test(message),
-  );
+  return allowlist.some((pattern) => {
+    if (typeof pattern === "string") {
+      return message.includes(pattern);
+    }
+    // 带 g/y 标志的正则会在 test() 调用间保留 lastIndex，使重复出现的
+    // 相同消息交替匹配/不匹配；每次求值前重置，保证匹配无状态。
+    pattern.lastIndex = 0;
+    return pattern.test(message);
+  });
 }
 
 export const test = base.extend<{ diagnostics: DiagnosticsSummary }>({
