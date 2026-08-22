@@ -58,6 +58,13 @@ export function createFakeClock(options?: { now?: number | Date }): FakeClock {
     if (!Number.isFinite(delayMs) || delayMs < 0) {
       throw new Error(`createFakeClock.${kind}: 非法延迟 ${delayMs}ms`);
     }
+    // 零间隔 interval 会在 advance() 中被重排到同一时刻而无限选中，
+    // 导致测试进程挂起；显式拒绝（setTimeout 延迟 0 合法，只触发一次）。
+    if (kind === "interval" && delayMs === 0) {
+      throw new Error(
+        `createFakeClock.setInterval: 非法间隔 0ms；零间隔 interval 会使 advance() 无法终止，请使用正间隔`,
+      );
+    }
     const id = nextId++;
     timers.set(id, {
       id,

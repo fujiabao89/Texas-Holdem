@@ -20,7 +20,9 @@ export default defineConfig({
   outputDir: ".artifacts",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  // 禁用重试（含 CI）：docs/06 §2.1 规定重试只可用于诊断，
+  // 不得把"重试后通过"记为门禁通过；Flaky 用例等同失败。
+  retries: 0,
   workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? [["github"], ["list"]] : [["list"]],
   use: {

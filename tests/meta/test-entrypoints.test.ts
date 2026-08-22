@@ -75,4 +75,11 @@ describe("分层测试入口", () => {
     expect(existsSync(resolve(repoRoot, "tests/e2e/playwright.config.ts"))).toBe(true);
     expect(existsSync(resolve(repoRoot, "tests/simulator/run.ts"))).toBe(true);
   });
+
+  it("Playwright 门禁禁用重试：docs/06 §2.1 不得把重试后通过记为门禁通过", async () => {
+    const configModule = (await import(resolve(repoRoot, "tests/e2e/playwright.config.ts"))) as {
+      default?: { retries?: number };
+    };
+    expect(configModule.default?.retries).toBe(0);
+  });
 });

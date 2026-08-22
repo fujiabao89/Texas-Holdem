@@ -268,7 +268,7 @@ P0 容量目标固定为单实例 **100 Room / 1,000 WS**；首轮基准不以�
 
 CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工程基线】；Nightly/Release 的大规模任务可调用独立 Runner，但结果必须回传为同一提交的 Check。依赖缓存只加速安装，不缓存测试成功结论。
 
-已落地事实（2026-08-21，TEX-12）：`.github/workflows/ci.yml` 的 `quality` job 在 lint/typecheck/build 后按层独立调用 `pnpm test:unit`、`test:rules`、`test:integration`、`test:ws` 与 `pnpm test:sim -- --seed <固定值>`（Simulator Smoke；引擎落地前为受控跳过）；独立 `e2e` job 安装 Chromium 后运行 `pnpm test:e2e`（当前为基础设施冒烟）。完整 Integration、Multiplayer/WS、全量 E2E 与 Nightly/RC 阶段按上表随对应业务任务启用。
+已落地事实（2026-08-21，TEX-12）：`.github/workflows/ci.yml` 的 `quality` job 在 lint/typecheck/build 后按层独立调用 `pnpm test:unit`、`test:rules`、`test:integration`、`test:ws` 与 `pnpm test:sim -- --seed <固定值>`（Simulator Smoke；引擎落地前为受控跳过）；独立 `e2e` job 安装 Chromium 后运行 `pnpm test:e2e`（当前为基础设施冒烟与 §9 门禁自测），失败时经 `actions/upload-artifact` 上传失败产物；E2E 禁用重试（§2.1），未处理 console error / pageerror / 5xx 由 observability fixture 强制失败（白名单除外）。完整 Integration、Multiplayer/WS、全量 E2E 与 Nightly/RC 阶段按上表随对应业务任务启用。
 
 ## 12. 缺陷分级与发布门槛
 

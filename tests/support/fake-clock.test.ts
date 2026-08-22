@@ -84,6 +84,18 @@ describe("createFakeClock", () => {
     expect(() => createFakeClock({ now: Number.NaN })).toThrow(/非法起始时间/);
   });
 
+  it("零间隔 interval 被拒绝：advance() 会因同刻重排而无限循环（回归）", () => {
+    const clock = createFakeClock();
+    expect(() => clock.setInterval(() => undefined, 0)).toThrow(/非法间隔 0ms/);
+    expect(() => clock.setInterval(() => undefined, -1)).toThrow(/非法延迟/);
+    // setTimeout 延迟 0 仍合法：单次触发，不产生循环。
+    let fired = false;
+    clock.setTimeout(() => (fired = true), 0);
+    clock.advance(0);
+    expect(fired).toBe(true);
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
   it("纯同步可控：不推进则不触发", () => {
     const clock = createFakeClock();
     let fired = false;
