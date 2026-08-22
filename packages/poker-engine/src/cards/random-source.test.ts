@@ -37,6 +37,18 @@ describe("SeededRandomSource", () => {
     expect(() => new SeededRandomSource(1.5)).toThrow();
   });
 
+  it("拒绝超过 2^32 的区间（防止死循环）", () => {
+    const rng = new SeededRandomSource(1);
+    expect(() => rng.nextInt(0x1_0000_0001)).toThrow();
+  });
+
+  it("支持 maxExclusive = 2^32 边界", () => {
+    const rng = new SeededRandomSource(1);
+    const v = rng.nextInt(0x1_0000_0000);
+    expect(v).toBeGreaterThanOrEqual(0);
+    expect(v).toBeLessThan(0x1_0000_0000);
+  });
+
   it("对不整除 2^32 的区间无取模偏差（粗粒度均匀）", () => {
     const rng = new SeededRandomSource(7);
     const counts = [0, 0, 0, 0];

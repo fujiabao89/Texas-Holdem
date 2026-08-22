@@ -1,13 +1,13 @@
 # 01 · Poker Engine 规格（`packages/poker-engine`）
 
 > 状态：草稿
-> 规划核对：2026-08-21（Engineering Documentation Agent）——项目尚无代码，本文全文为**设计意图**，未与任何实现核对
+> 规划核对：2026-08-21（Engineering Documentation Agent）——编写时项目尚无代码，全文为设计意图；2026-08-22 经 TEX-13 实现 `cards/` 子域（§7 牌堆、§10 Hand Evaluator、§15 RNG、§17 相关不变量），其余章节仍为设计意图。
 > 权威范围：本文是 Poker Engine 纯规则行为的唯一权威来源——牌堆与发牌、下注与最小加注、Pot/Side Pot/Split、Hand 状态机、Hand Evaluator、Tournament 淘汰与排名、Game Events、RNG 与 Engine Invariants。范围之外的事实（Room、WebSocket 协议、持久化、AI、UI）见 [工程文档总索引](./README.md)。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§2/§3/§4/§6/§9）；《德州扑克项目规划_区块6-10_v0.2.docx》§6/§9（仅在《总规划》未覆盖处补充）；《德州扑克项目规划_区块1-5_v0.1.docx》§2（牌型顺序等基础规则）
 > 对应代码：`packages/poker-engine/src/`。TEX-13 已实现 `cards/`（Card、标准 52 张 Deck、随机源、七选五 Hand Evaluator）；其余子域（下注、Pot、状态机、Tournament、Game Events、Timer）随 TEX-14 / TEX-15 落地。目录实际布局与现状见 §3。
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【设计意图 · 未实现】** 本文主要来自已确认规划文档；规划未覆盖但实现必需的工程裁决记录在 §20/§21。尚无代码可核对。实现落地后第一件事：逐条对照实现回填真实行为，把"设计意图"改为"现状"，并删除本标记。当前无开放 TBD。
+> **【设计意图 · 部分实现】** 本文主要来自已确认规划文档；规划未覆盖但实现必需的工程裁决记录在 §20/§21。`cards/` 子域（§7 牌堆、§10 Hand Evaluator、§15 RNG、§17 相关不变量）已由 TEX-13 落地并与实现核对；其余章节（下注、Pot、状态机、Tournament、Game Events、Timer）仍为设计意图，待 TEX-14/15 实现后逐条回填。当前无开放 TBD。
 
 ## 1. Purpose
 

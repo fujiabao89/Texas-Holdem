@@ -9,7 +9,7 @@
  */
 import { randomInt } from "node:crypto";
 
-/** 随机整数上界语义：返回 [0, maxExclusive) 内均匀随机整数，maxExclusive 必须为正整数。 */
+/** 随机整数上界语义：返回 [0, maxExclusive) 内均匀随机整数；maxExclusive 必须为正整数且不超过实现的受支持上界，越界时实现需显式抛错（不得挂死）。 */
 export interface RandomSource {
   nextInt(maxExclusive: number): number;
 }
@@ -50,8 +50,10 @@ export class SeededRandomSource implements RandomSource {
   }
 
   nextInt(maxExclusive: number): number {
-    if (!Number.isSafeInteger(maxExclusive) || maxExclusive <= 0) {
-      throw new Error(`nextInt: maxExclusive 必须为正整数，收到 ${maxExclusive}`);
+    if (!Number.isSafeInteger(maxExclusive) || maxExclusive <= 0 || maxExclusive > UINT32_MAX) {
+      throw new Error(
+        `nextInt: maxExclusive 必须为 [1, ${UINT32_MAX}] 内整数，收到 ${maxExclusive}`,
+      );
     }
     const limit = UINT32_MAX - (UINT32_MAX % maxExclusive);
     let value = this.nextUint32();

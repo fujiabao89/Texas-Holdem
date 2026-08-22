@@ -8,4 +8,4 @@
 
 ## 尚待落地
 
-`rules/`、`engine/`、`pot/`、`events/`、`timer/` 目前为空目录说明，待 TEX-14 / TEX-15 填充。规则与接口定义一律链接 [docs/01-engine-spec.md](../../../docs/01-engine-spec.md)，不在子 README 重复。
+`rules/`、`engine/`、`pots/`、`events/`、`timer/` 目前为空目录说明，待 TEX-14 / TEX-15 填充。规则与接口定义一律链接 [docs/01-engine-spec.md](../../../docs/01-engine-spec.md)，不在子 README 重复。
