@@ -37,8 +37,8 @@ Allowed branch types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `hotfi
 Workflow:
 1. Create the Linear issue in the `Texas Hold'em` team.
 2. Use its generated `TEX-<number>` in both the Linear title and the branch name.
-3. Set the PR title to exactly match the Linear title; do not use the branch name as the PR title.
-4. Create the matching Git branch from `main`.
+3. Create the matching Git branch from `main`.
+4. Set the PR title to exactly match the Linear title; do not use the branch name as the PR title.
 5. Keep the same `TEX-<number>` in the Linear task, branch, PR title and PR body for the life of the work.
 
 Use lowercase letters, digits and hyphens in the **branch** summary. The Linear/PR title summary is human-readable and may use spaces and Chinese punctuation.

@@ -46,7 +46,7 @@ jobs:
             exit 1
           fi
 
-          if ! grep -Eiq "Linear:[[:space:]]*${ticket}" <<< "$PR_BODY"; then
+          if ! grep -Eiq "^[[:space:]]*Linear:[[:space:]]*${ticket}([^[:alnum:]-]|$)" <<< "$PR_BODY"; then
             echo "PR body must contain: Linear: $ticket"
             exit 1
           fi
