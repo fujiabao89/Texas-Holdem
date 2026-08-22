@@ -1,10 +1,10 @@
 # 06 · 测试方案与发布门槛（`tests/`）
 
-> 状态：草稿（实施基线 v0.3）
-> 规划核对：2026-08-21——项目尚无代码，本文全部为**设计意图**，未与实现核对
+> 状态：草稿（实施基线 v0.4；测试基础设施已按 TEX-12 落地，业务测试随对应任务回填）
+> 规划核对：2026-08-21——测试运行入口与工具（§2 命令、Seed/Fake Clock/Fixture/数据库隔离/E2E 失败产物）已实现并核对；其余章节在对应任务落地前仍为**设计意图**
 > 权威范围：本文是测试体系的唯一权威来源——测试分层与归属、确定性回归集、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级处理与发布门槛。范围之外的事实见对应文档：规则语义 [01](./01-engine-spec.md)、协议与错误码 [02](./02-protocol-spec.md)、持久化 [03](./03-data-model.md)、服务端运行时行为 [04](./04-game-server-architecture.md)、前端交互与验收界面 [05](./05-frontend-spec.md)。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§9/§10）；《德州扑克项目规划_区块6-10_v0.2.docx》§9/§10（仅在《总规划》未覆盖处补充）
-> 对应代码：`tests/`、各包内 `*.test.ts`（**待创建**；布局与命令见 §2）
+> 对应代码：`tests/`（support/meta/e2e/simulator，TEX-12 已落地）、根 `vitest.config.ts`（分层配置）、`tests/e2e/playwright.config.ts`（E2E）、各包内 `*.test.ts`
 > 上级索引：[工程文档总索引](./README.md)
 
 > **【设计意图 · 未实现】** 本文同时包含上游规划要求和为使其可执行而新增的工程基线；后者以“工程基线”标识，不反向改变 01–05 的业务语义。实现落地后须逐条回填真实命令、耗时与覆盖状态；任何偏离均应先更新本文或记录 ADR，不得让 CI 与文档长期分叉。当前测试策略 TBD 已全部裁决，记录见 §15。
@@ -30,16 +30,16 @@ Unit Test → Poker Rule Test → Integration Test → Multiplayer/WebSocket Tes
 
 | 层次 | 范围 | 归属（规划） | 框架与命令 | 本文章节 |
 | --- | --- | --- | --- | --- |
-| Unit Test | 纯函数与独立模块（Hand Evaluator、金额计算、`TournamentConfig` 校验等） | 与源码同包的 `*.test.ts` | Vitest；`pnpm test:unit`【工程基线】 | §3.1 |
-| Poker Rule Test | Engine 规则正确性（下注/Pot/淘汰/事件） | `packages/poker-engine/**/*.test.ts` | Vitest + fast-check；`pnpm test:rules`【工程基线】 | §3.1/§4 |
-| Integration Test | Engine × 串行执行器 × Scheduler × 持久化 | `apps/game-server/**/*.test.ts` | Vitest + 隔离测试库；`pnpm test:integration`【工程基线】 | §3.2/§6 |
-| Multiplayer/WebSocket Test | 多客户端一致性、Snapshot/Event、重连 | `apps/game-server/**/*.test.ts` + `tests/clients/` | Vitest + 可编程 WS 客户端；`pnpm test:ws`【工程基线】 | §6 |
-| E2E Test | 完整用户旅程（创建房间 → 完赛） | `tests/e2e/` | Playwright + axe-core；`pnpm test:e2e`【工程基线】 | §9 |
-| Long-running Simulation | 随机长跑与不变量自动断言 | `tests/simulator/` | 独立 Node CLI；`pnpm test:sim -- --seed ...`【工程基线】 | §5 |
-| Load / Soak Test | 多 Room/WS、突发命令、重连风暴与稳定性 | `tests/load/` | Artillery；`pnpm test:load`【工程基线】 | §10 |
+| Unit Test | 纯函数与独立模块（Hand Evaluator、金额计算、`TournamentConfig` 校验等） | 与源码同包的 `*.test.ts`，以及 `apps/*/tests/unit`、`tests/support`、`tests/meta` | Vitest；`pnpm test:unit`【工程基线，TEX-12 已落地】 | §3.1 |
+| Poker Rule Test | Engine 规则正确性（下注/Pot/淘汰/事件） | `packages/poker-engine/tests/**/*.test.ts` | Vitest + fast-check；`pnpm test:rules`【工程基线，TEX-12 已落地；引擎落地前受控跳过】 | §3.1/§4 |
+| Integration Test | Engine × 串行执行器 × Scheduler × 持久化 | `apps/game-server/tests/integration` | Vitest + 隔离测试库；`pnpm test:integration`【工程基线，TEX-12 已落地；用例落地前受控跳过】 | §3.2/§6 |
+| Multiplayer/WebSocket Test | 多客户端一致性、Snapshot/Event、重连 | `apps/game-server/tests/ws` + `tests/clients/` | Vitest + 可编程 WS 客户端；`pnpm test:ws`【工程基线，TEX-12 已落地；WS 实现落地前受控跳过】 | §6 |
+| E2E Test | 完整用户旅程（创建房间 → 完赛） | `tests/e2e/` | Playwright + axe-core；`pnpm test:e2e`【工程基线，TEX-12 已落地（含冒烟与失败产物）；业务旅程随前端任务回填】 | §9 |
+| Long-running Simulation | 随机长跑与不变量自动断言 | `tests/simulator/` | 独立 Node CLI；`pnpm test:sim -- --seed ...`【工程基线，TEX-12 已落地入口与 Seed 派生；长跑主循环由 TEX-16 实现】 | §5 |
+| Load / Soak Test | 多 Room/WS、突发命令、重连风暴与稳定性 | `tests/load/` | Artillery；`pnpm test:load`【工程基线，未实现】 | §10 |
 | Manual UI/Animation/UX Review | 真实设备人工验收 | 人工 | 不适用 | §9 |
 
-上游规划未指定测试工具；上表为基于既定 TypeScript/pnpm 技术栈作出的工程基线。根脚本必须作为唯一公共入口，包内命令可调整，但 CI、本地和文档不得各自维护不同命令。
+上游规划未指定测试工具；上表为基于既定 TypeScript/pnpm 技术栈作出的工程基线。根脚本必须作为唯一公共入口，包内命令可调整，但 CI、本地和文档不得各自维护不同命令。分层入口的落地事实（2026-08-21，TEX-12）：根 `vitest.config.ts` 以互斥 include 定义 unit/rules/integration/ws 四层（`pnpm test` 为 Vitest 层总入口），E2E 与 Simulator 分别为 Playwright 与独立 CLI；`tests/support/` 提供 Seed 解析、确定性 PRNG、Fake Clock、Fixture Builder 与测试数据库隔离工具（自带自测），`tests/meta/` 守护入口与分层互斥性；空层以 `passWithNoTests` 成功退出并明确输出未发现测试，不伪造结果。
 
 ### 2.1 测试可重复性与隔离原则【工程基线】
 
@@ -268,6 +268,8 @@ P0 容量目标固定为单实例 **100 Room / 1,000 WS**；首轮基准不以�
 
 CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工程基线】；Nightly/Release 的大规模任务可调用独立 Runner，但结果必须回传为同一提交的 Check。依赖缓存只加速安装，不缓存测试成功结论。
 
+已落地事实（2026-08-21，TEX-12）：`.github/workflows/ci.yml` 的 `quality` job 在 lint/typecheck/build 后按层独立调用 `pnpm test:unit`、`test:rules`、`test:integration`、`test:ws` 与 `pnpm test:sim -- --seed <固定值>`（Simulator Smoke；引擎落地前为受控跳过）；独立 `e2e` job 安装 Chromium 后运行 `pnpm test:e2e`（当前为基础设施冒烟）。完整 Integration、Multiplayer/WS、全量 E2E 与 Nightly/RC 阶段按上表随对应业务任务启用。
+
 ## 12. 缺陷分级与发布门槛
 
 ### 12.1 缺陷分级（《总规划》§9.2）
@@ -314,8 +316,9 @@ CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工�
 
 ## 14. Known Limitations（当前覆盖空白）
 
-- 项目尚无代码：全部测试资产待建（`tests/` 与各包测试目录未创建）。
-- Vitest、fast-check、Playwright、axe-core、Artillery、Simulator CLI 与 GitHub Actions 已作为工程基线选定，但尚未安装、配置或用实际耗时验证。
+- 测试基础设施（TEX-12，2026-08-21）已落地：Vitest 分层入口、fast-check、Playwright + axe-core、Seed/Fake Clock/Fixture Builder/数据库隔离工具与 E2E 失败产物；业务测试（规则、联机、投影、性能）随对应任务回填。
+- Artillery 与 Simulator 长跑主循环仍未安装/实现（`test:load` 未建、`test:sim` 当前受控跳过，TEX-16 接入）。
+- 覆盖率工具（`@vitest/coverage-v8`）尚未安装；§2.2 覆盖率门槛在首个业务包落地任务中启用并回填。
 - §2.2 覆盖率和 §10.1 性能数字是初始门槛；实现后仍需基于真实基准验证其可达性，调整必须留有评审记录且不得掩盖回归。
 - 动画/音效/下注手感依赖真实设备人工验收，无法全自动（《区块6-10 v0.2》§9.1）。
 - P0 无 BOT：AI 测试全部挂 P1（《总规划》§6）。

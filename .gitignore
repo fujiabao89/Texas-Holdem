@@ -15,6 +15,11 @@ coverage/
 out/
 *.tsbuildinfo
 
+# ===== 测试产物（Playwright 失败保留与报告）=====
+tests/e2e/.artifacts/
+playwright-report/
+test-results/
+
 # ===== 环境变量 =====
 .env
 .env.*

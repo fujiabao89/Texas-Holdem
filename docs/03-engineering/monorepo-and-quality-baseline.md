@@ -18,12 +18,17 @@
 
 | 命令 | 作用 |
 | --- | --- |
-| `pnpm lint` | 经 Turbo 对各包运行 ESLint（flat config：typescript-eslint + react-hooks） |
-| `pnpm typecheck` | 经 Turbo 对各包运行 `tsc --noEmit` |
+| `pnpm lint` | 经 Turbo 对各包运行 ESLint，并对 `tests/` 与根配置运行 ESLint（flat config：typescript-eslint + react-hooks） |
+| `pnpm typecheck` | 经 Turbo 对各包运行 `tsc --noEmit`，并对 `tests/` 与根配置运行 `tsc --noEmit -p tsconfig.test.json` |
 | `pnpm build` | 经 Turbo 构建：`apps/web` 为 `next build`，`apps/game-server` 为 `tsc` 产出 `dist/` |
-| `pnpm test` | 经 Turbo 运行各包测试（当前为 `apps/game-server` 的 vitest 冒烟测试） |
+| `pnpm test` | Vitest 分层总入口（unit + rules + integration + ws，根 `vitest.config.ts`，各层可独立调用） |
+| `pnpm test:unit` / `test:rules` / `test:integration` / `test:ws` | 分层独立入口（TEX-12）；空层以 `passWithNoTests` 受控跳过 |
+| `pnpm test:e2e` | Playwright E2E（自动启动 `apps/web` dev server；仅失败保留 trace/截图/视频/诊断摘要） |
+| `pnpm test:sim -- --seed <n>` | Headless Simulator 独立 CLI（引擎落地前受控跳过，不伪造结果） |
 
-安装与锁定：首次 `pnpm install` 生成 `pnpm-lock.yaml`；之后使用 `pnpm install --frozen-lockfile` 保证可复现。CI（`.github/workflows/ci.yml` 的 `quality` 任务）在干净环境执行 `pnpm install --frozen-lockfile` 后，依次运行 `lint`、`typecheck`、`build`、`test`。
+测试分层、归属与工具（Seed、Fake Clock、Fixture、数据库隔离）的权威说明见 [docs/06-testing-strategy.md](../06-testing-strategy.md) §2 与 [tests/README.md](../../tests/README.md)；测试入口自 TEX-12 起统一由根目录管理，包内不再维护独立测试脚本。
+
+安装与锁定：首次 `pnpm install` 生成 `pnpm-lock.yaml`；之后使用 `pnpm install --frozen-lockfile` 保证可复现。CI（`.github/workflows/ci.yml` 的 `quality` 任务）在干净环境执行 `pnpm install --frozen-lockfile` 后，依次运行 `lint`、`typecheck`、`build` 与各分层测试；`e2e` 任务安装 Chromium 后运行 Playwright。
 
 ## 共享配置
 
