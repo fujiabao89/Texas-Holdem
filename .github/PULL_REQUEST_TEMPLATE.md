@@ -64,4 +64,4 @@ Linear: TEX-123 <!-- 将 123 替换为分支名和 PR 标题中的实际编号 -
 - [ ] 已运行并记录最低充分验证；未运行项目已说明原因和风险。
 - [ ] 已更新所需的规格、ADR、目录说明或操作文档。
 - [ ] 已说明用户影响、非范围与剩余风险。
-- [ ] 若由 Claude Code 或 Trae Work 实现，DeepSeek Harness 本地审查结果为 `PRE_PUSH_REVIEW: PASS`。
+- [ ] 未由 Agent 自行启动 DeepSeek Harness 审查；如用户已提供审查结果，已按对应 PR 评论完成修改、推送与回复闭环。

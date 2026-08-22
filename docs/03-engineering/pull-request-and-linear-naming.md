@@ -13,3 +13,9 @@ Linear 通过标题起始位置的任务编号识别 GitHub Pull Request。每�
 | PR 描述 | 包含 `Linear: TEX-<number>` | `Linear: TEX-52` |
 
 GitHub 的 PR Policy 工作流会验证分支格式、PR 标题起始编号与分支编号一致，以及 PR 描述包含对应的 Linear 编号。工作流无法读取 Linear 任务正文，因此“PR 标题与 Linear 任务标题全文一致”由创建者和评审共同确认。
+
+## 审查意见闭环
+
+对人工审阅、GitHub 自动化或 CodeRabbit 提出的、需要修改的意见，必须先完成修改和相称验证，提交并推送到 PR 源分支，再在对应的原始审查评论线程回复 `已修正`。若确认无需修改，须在原线程说明依据。
+
+DeepSeek Harness 审查由用户手动启动，工程 Agent 不自行调用，也不将其作为提交、推送或创建 PR 的前置门禁。用户提供审查结果后，按上述流程处理。
