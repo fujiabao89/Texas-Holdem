@@ -1,13 +1,13 @@
 # 03 · 数据模型与持久化规格（`apps/game-server` / Supabase Postgres）
 
-> 状态：草稿（关键持久化决策已收敛，待实现核对）
-> 规划核对：2026-08-21（Engineering Documentation Agent）——项目尚无代码，本文全文为**设计意图**，未与任何实现核对
-> 权威范围：本文是持久化模型的唯一权威来源——内存运行 vs PostgreSQL 持久化的边界、写入节奏与失败语义、核心表（`rooms` / `room_players` / `tournaments` / `tournament_players` / `hands` / `hand_events` / `game_snapshots` / `ai_requests`）的字段级设计意图、敏感数据存放与暴露规则。范围之外的事实见 [工程文档总索引](./README.md)：Engine 内存状态域属 [01](./01-engine-spec.md) §4，wire Schema、投影与凭证契约属 [02](./02-protocol-spec.md) §5/§6/§9/§13，串行队列与 Timer 实现属 [04](./04-game-server-architecture.md)，AI 推理属 P1 `server/ai`。
+> 状态：草稿（表结构与持久化仓储已实现 · TEX-18；运行时写入编排/恢复语义仍为设计意图）
+> 规划核对：2026-08-21（Engineering Documentation Agent）；实现核对：2026-08-23（TEX-18）
+> 权威范围：本文是持久化模型的唯一权威来源——内存运行 vs PostgreSQL 持久化的边界、写入节奏与失败语义、核心表（`rooms` / `room_players` / `tournaments` / `tournament_players` / `hands` / `hand_events` / `game_snapshots` / `ai_requests`）的字段级设计与实现事实、敏感数据存放与暴露规则。范围之外的事实见 [工程文档总索引](./README.md)：Engine 内存状态域属 [01](./01-engine-spec.md) §4，wire Schema、投影与凭证契约属 [02](./02-protocol-spec.md) §5/§6/§9/§13，串行队列与 Timer 实现属 [04](./04-game-server-architecture.md)，AI 推理属 P1 `server/ai`。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§4.2/§5.1/§6/§7.2）；《德州扑克项目规划_区块6-10_v0.2.docx》§7.19/§8.5/§8.11/§8.12/§10.10/§10.11（仅在《总规划》未覆盖处补充）；《德州扑克项目规划_区块1-5_v0.1.docx》§1.5/§3.8/§4.2（身份与单人恢复的持久化侧面）
-> 对应代码：`apps/game-server/` Persistence 模块（**待创建**；访问层固定为 Drizzle ORM + `pg`，migration 使用 Drizzle Kit，见 §13 决策 1）
+> 对应代码：`apps/game-server/src/infrastructure/persistence/`（Drizzle schema、迁移、连接/事务、仓储；见该目录 README）
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【设计意图 · 未实现】** 本文全部内容来自已确认规划文档与 §13 工程裁决，尚无代码可核对。所有表名、字段名与类型均为设计意图占位（SQL 命名风格在实现时与 game-server 代码约定统一）。实现落地后第一件事：逐表对照实际 DDL 回填真实模型，把"设计意图"改为"现状"，并删除本标记。本文当前无未裁决的持久化 TBD。
+> **【实现现状 · TEX-18，2026-08-23】** §5 全部 8 张表、枚举、复合外键（含两个 DEFERRABLE 循环外键）、CHECK、部分唯一索引与最小权限已由版本化迁移落地并经真实 PostgreSQL 集成测试核对（§15 项 1/2/3/7 达成）；控制面原子写入与手末 Commit Bundle 仓储已实现（Bundle 内参赛者结果更新按 `id + tournament_id` 匹配并断言受影响行数，拒绝跨赛修改与静默无效更新，§7.4）。**仍为设计意图**：§4.2/§7.1–7.2 的运行时写入编排（异步 Writer/队列/watermark）、§4.3/§7.5 的恢复流程、§5.10 清理任务、§7.6–7.7 失败降级（属 TEX-19～TEX-22）。各表字段表与规格一致，实现补充以"实现注记"标出。
 
 ## 1. Purpose
 
@@ -83,6 +83,8 @@ P0 的持久化策略是"**内存运行 + 关键状态持久化**"（《区块6-
 
 总览：《区块6-10 v0.2》§10.10 点名 7 张记录表；本文增加 `room_players` 作为 Room 级身份与成员关系表，以便使 Host、重连凭证、昵称唯一性和跨场 Tournament 身份具有明确的外键语义。
 
+> **实现注记（TEX-18）**：8 张表已全部由迁移 `0000_init.sql` 落地（snake_case 列名与下表字段一一对应；`*At` → `*_at`）。所有外键 `ON DELETE RESTRICT`；`bigint` 列在 Drizzle 层以原生 `bigint` 处理。表定义不带 schema 前缀，目标 schema（生产 `game`、测试 `tex_test_<runId>`）由连接 `search_path` 决定，因此同一迁移可用于任意隔离 schema。
+
 | 表 | 目的 | 写入时机 | 内容敏感度 |
 | --- | --- | --- | --- |
 | `rooms` | 房间容器：邀请码、状态、配置、Host | 创建/状态转换 | 低（邀请码是 Locator 非凭证，[02](./02-protocol-spec.md) §5） |
@@ -111,6 +113,8 @@ P0 的持久化策略是"**内存运行 + 关键状态持久化**"（《区块6-
 
 Room 与首个 Host 的建立必须放在同一事务中：先插入 `rooms(host_player_id = NULL)`，再插入 `room_players`，最后回填 Host；复合外键设为 `DEFERRABLE INITIALLY DEFERRED`。
 
+> **实现注记（TEX-18）**：已实现——`RoomRepository.createRoomWithHost` 按上述三步单事务写入；DEFERRABLE 复合外键 `rooms_host_player_fk` 由手写迁移 `0001` 追加（Drizzle 无法表达循环依赖外键，故 Drizzle schema 中不声明）。邀请码以 CHECK 强制：MULTIPLAYER 必填且匹配 `^[A-HJKMNPQRSTUVWXYZ2-9]{6}$`（对 NULL 显式拒绝——`NULL ~ 正则` 为 NULL、CHECK 三值逻辑会放行）、SINGLE_PLAYER 必须 NULL。`CLOSED` 与 `closed_reason`/`closed_at`/`retention_expires_at` 的一致性由跨字段 CHECK 强制（`retention_expires_at >= closed_at` 弱校验，精确 180 天策略由应用层保证）；无真人关房经 Commit Bundle 的 `tournamentFinish.roomClosure` 在同一事务写齐关房元数据，缺失、错配、时间倒挂（`retention_expires_at < closed_at`）或空/含控制字符的原因码均在写入前被拒绝（§7.3）。
+
 P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand 记录：`rooms.id` 同时就是单人恢复契约中的 `gameId`，唯一 HUMAN 是 Host，BOT 使用同 Room 下的 `room_players(kind=BOT)` 和 `tournament_players`。不新建一套 `single_player_games` 表，不绕过本文的 Commit Bundle、Snapshot、AI 用量与保留策略。
 
 ### 5.2 `room_players`
@@ -130,6 +134,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 | `left_at` | timestamptz nullable | `status=LEFT` 时必填，`ACTIVE` 时必须为 NULL | 设计意图 |
 
 - 连接/在线状态仍只在内存；`room_players` 记录身份与成员关系，不使 PostgreSQL 成为 Presence 系统。
+
+> **实现注记（TEX-18）**：已实现。规格中 `token_digest`/`token_key_id` 标注 nullable，实现将"HUMAN 有凭证、BOT 无凭证"强化为 CHECK：`kind='HUMAN'` 时两者必填、`kind='BOT'` 时必须为 NULL；`octet_length(token_digest)=32` 亦由 CHECK 强制。`UNIQUE(room_id, id)` 供 `rooms_host_player_fk` 引用。HMAC 摘要计算/常数时间比较与 NFKC+小写 `display_name_key` 规范化（近似 case-fold，不声称防御所有 Unicode 同形字，与规格口径一致）由 persistence 模块工具提供；`playerToken` 的 CSPRNG 生成与下发属 TEX-19。
 - 服务端使用 CSPRNG 生成至少 256-bit 随机熵的 `playerToken`，仅在创建/加入 Room 的成功 HTTP 响应中返回原值。校验时对明确编码的 `room_id || player_id || playerToken` 按 `token_key_id` 计算 HMAC-SHA-256，并与 `token_digest` 常数时间比较。原 token 不可由摘要恢复；客户端丢失 token 即无法恢复该匿名身份，P0 不提供昵称找回。HMAC 校验密钥至少保留到其所属 Room 关闭；轮换策略不得使未关闭 Room 的现有 token 意外失效。
 - 用户输入在入库前完成长度、字符集与 Unicode 规范化校验；输出时仍必须按所在上下文转义。
 
@@ -147,6 +153,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 | `finished_at` | timestamptz nullable | `FINISHED`/`ABANDONED_NO_HUMAN` 时必填；结束后 Room 可回 Lobby 再开一场 | 《总规划》§5.1 |
 | `retention_expires_at` | timestamptz nullable | 终态时设为 `finished_at + 180 days`；`IN_GAME` 时为 NULL | §5.10/§13 决策 13 |
 | `last_committed_sequence` | bigint | Tournament 开始时为 0，表示尚无已提交 Hand/Snapshot；大于 0 时是最新已原子提交的手末 Event Sequence，必须与最新 Snapshot 对齐 | 恢复水位线 |
+
+> **实现注记（TEX-18）**：已实现。跨字段 CHECK 强制 `IN_GAME ↔ finished_at/retention_expires_at 为 NULL`、`champion 仅 FINISHED`、`last_committed_sequence >= 0`；`UNIQUE(id, room_id)` 供复合外键引用。DEFERRABLE 冠军外键 `tournaments_champion_tournament_player_fk` 由迁移 `0001` 追加。`TournamentRepository.createTournamentWithPlayers` 以单事务写入 Tournament（`last_committed_sequence=0`）与 locked players；Commit Bundle 的终局更新在写入前校验 `retention_expires_at >= finished_at` 与时间有效性（与 `tournaments_retention_check` 对齐，但前置拒绝而非整包写入后回滚）。
 
 ### 5.4 `tournament_players`
 
@@ -170,6 +178,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 - 连接状态（`ConnectionStatus`）**不落库**：连接是运行时概念，与 `PokerStatus` 解耦（[01](./01-engine-spec.md) §4.3；[02](./02-protocol-spec.md) §10）。
 - `playerToken` 与昵称永不进入日志（[02](./02-protocol-spec.md) §13）；凭证摘要仅位于 `room_players`，不复制到每场参赛记录。
 
+> **实现注记（TEX-18）**：已实现。`rank` 唯一性由部分唯一索引 `UNIQUE(tournament_id, rank) WHERE rank IS NOT NULL` 保证；`eliminated_hand_id` 的复合外键 `(eliminated_hand_id, tournament_id) → hands(id, tournament_id)` 已落地。`updated_at` 由仓储在更新时显式写入（无触发器）。昵称快照入库前经与 `room_players` 相同的 `validateDisplayName` 校验（本表无 DB CHECK 兜底，运行时输入不豁免）；手末 Commit Bundle 的结果更新按 `id + tournament_id` 匹配并断言恰好一行，跨赛 id 或未知 id 整体回滚（§7.4）。
+
 ### 5.5 `hands`
 
 | 字段 | 类型（设计意图） | 语义与约束 | 依据 |
@@ -187,6 +197,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 | `started_at` / `ended_at` | timestamptz | — | 设计意图 |
 
 - **隐藏信息不入此表**：Burn 牌面与未公开底牌只存在于 `hand_events` 诊断负载与 `game_snapshots.state`（服务器私有，§6）。
+
+> **实现注记（TEX-18）**：已实现。`community_cards` 以 CHECK 强制为 0–5 张 JSON 数组；`blind_level_index` 增加 `>= 0` CHECK；`hands(tournament_id, hand_number DESC)` 定向索引按 §5.9 建立。
 - 用户版 Hand History 从 `hands` + `hand_events` 读取时投影（[01](./01-engine-spec.md) §14；[02](./02-protocol-spec.md) §9）。
 
 ### 5.6 `hand_events`
@@ -204,6 +216,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 | `created_at` | timestamptz | — | 设计意图 |
 
 - 第一版即保存**完整**结构化 Event（§6.12），作为运行期动画流的持久化对应物，并服务 Hand History、AI 历史、调试与未来 Replay（[01](./01-engine-spec.md) §14）。运行期断线恢复使用内存 Snapshot/Event，不查这张表。
+
+> **实现注记（TEX-18）**：已实现。`id` 选用 `bigint GENERATED ALWAYS AS IDENTITY`（§5.6 允许实现自选）；`sequence`/`hand_sequence`/`schema_version` 增加 `> 0` CHECK；`UNIQUE(hand_id, hand_sequence)` 与 `(hand_id, tournament_id) → hands(id, tournament_id)` 复合外键已落地。
 - 不保存动画过程、窗口大小等纯前端 UI 状态（§10.10）。
 
 ### 5.7 `game_snapshots`
@@ -225,6 +239,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 - Snapshot 的状态边界是“结算、淘汰/Withdraw、盲注层级调整均已应用，下一手 `HAND_STARTED` 尚未发生”。这个边界必须在 Engine 序列化测试中固定。
 - checksum 输入使用统一的 canonical JSON/字节编码，字段顺序和数值表示必须可重现；排除 DB 自动生成的 identity/`created_at`，包含 Tournament/Hand/Sequence 等自然幂等键。
 - 进程崩溃后从最新可验证的已提交 Snapshot 恢复（§4.3）。P0 不使用该 Snapshot 之后、不属于完整手末提交的事件。
+
+> **实现注记（TEX-18）**：已实现。`octet_length(state_checksum/commit_checksum)=32`、`sequence > 0`、两个唯一约束（`(tournament_id, hand_id)`、`(tournament_id, sequence)`）均已落地。canonical JSON（键排序、BigInt 十进制）与 SHA-256 工具由 persistence 模块提供；Commit Bundle 仓储在提交前验证事件序列与水位线咬合并以 `commit_checksum` 判定幂等重试（§7.3/§7.4），恢复读取路径属 TEX-22。
 - 活跃 Tournament 保留全部 Snapshot 便于损坏时向前退回；Tournament 终态 7 天后删除中间 Snapshot，只保留 `sequence` 最大的最后一条；该最后 Snapshot 与 Tournament 其他历史在终态 180 天后一起删除（§5.10）。
 
 ### 5.8 `ai_requests`（P1）
@@ -247,6 +263,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 - 不存 API Key、Prompt/Response/Reasoning 原文或其他玩家的私有上下文（《区块6-10 v0.2》§8.5）。调试仅使用上述结构化用量、延迟、状态与降级原因；如未来确需保存原文，必须通过新的安全设计审查和独立表/保留策略，不得直接扩展本表。
 - 只有唯一合法动作时不调用 LLM → 不产生记录（《区块1-5 v0.1》§3.7）。
 
+> **实现注记（TEX-18）**：表与全部约束已随 `0000_init.sql` 按规格落地（含 `FALLBACK ↔ fallback_reason` CHECK、非负用量/延迟/成本 CHECK、`(tournament_id, tournament_player_id)` 与 `(hand_id, tournament_id)` 复合外键、`(tournament_id, created_at)` 索引）；P0 无写入方，P1 启用时无需再迁移。
+
 ### 5.9 通用约束、索引与变更规则
 
 - **NULL 默认规则**：除字段表显式写明 `nullable` 外，所有字段均为 `NOT NULL`；表中声明的默认值必须在 DDL 中落实，不只依赖应用层补值。
@@ -258,6 +276,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 - **数值边界**：`sequence`/筹码在 PostgreSQL 使用 `bigint`，但 Node.js/协议层不得默认转为可丢精度的 JS `number`。`sequence` 按 [02](./02-protocol-spec.md) §4.1 以十进制字符串传输；筹码仍是 wire `number`，因此配置、下注、Pot 与总筹码都必须在 `Number.MAX_SAFE_INTEGER` 内，入库前与 DB `CHECK` 双重验证。`numeric(18,8)` 成本以 decimal/string 处理，不用二进制浮点做账务聚合。
 - **必要索引**：先复用主键/唯一约束已有索引；另至少建立 `room_players(room_id, status, joined_at, id)`、`tournament_players(tournament_id)`、`hands(tournament_id, hand_number DESC)`、`ai_requests(tournament_id, created_at)`、`rooms(retention_expires_at) WHERE retention_expires_at IS NOT NULL` 和 `tournaments(retention_expires_at) WHERE retention_expires_at IS NOT NULL`。若查询规划器不能有效反向扫描现有 `(tournament_id, sequence)` 唯一索引，再增加 Snapshot 的定向索引。具体执行计划在真实数据量下用 `EXPLAIN (ANALYZE, BUFFERS)` 验证。
 - **Drizzle 落地规则**：Schema 定义与业务查询使用 Drizzle ORM，底层驱动固定为 `pg`；Commit Bundle 使用同一 `pg` Client/连接上的显式事务，不得跨连接拼接。Drizzle 无法表达的部分索引、DEFERRABLE 复合外键、CHECK 或 `SELECT ... FOR UPDATE` 使用受审查的 SQL migration/参数化 SQL，不得为了“纯 ORM”删弱约束。Drizzle Kit 生成的 SQL 必须纳入版本控制和 code review；禁止对生产库使用未审查的 schema push。
+
+> **实现注记（TEX-18）**：已按此落地——迁移 `0000`（Drizzle Kit 生成后人工审查修正）+ `0001`（DEFERRABLE 复合外键，手写）+ `0002`（最小权限，手写），全部纳入版本控制并登记于 Drizzle journal；生产执行走 `db:migrate`（drizzle-orm migrator + `DATABASE_SCHEMA`），不使用 schema push。审查清单（去 `public.` 前缀、复合 FK 晚于被引用唯一索引、UTF-8 无 BOM 等）见 `apps/game-server/src/infrastructure/persistence/migrations/README.md`。`SELECT ... FOR UPDATE` 经 Drizzle `.for("update")` 用于 Commit Bundle 的 Tournament 行锁。
 
 ### 5.10 保留与清理策略
 
@@ -322,6 +342,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 - P0 不引入 Supabase Auth，沿用 `playerId + playerToken`（《总规划》§6）。
 - 邀请码枚举由加入接口 Rate Limit 防御（[02](./02-protocol-spec.md) §13），与表结构无关。
 
+> **实现注记（TEX-18）**：已实现并测试——迁移 `0002` 以 `current_schema()` 动态执行：对 `PUBLIC`/`anon`/`authenticated` REVOKE schema 与全部表/序列权限（含 DEFAULT PRIVILEGES），仅向 `game_server` 角色授予 schema USAGE + 表 DML + 序列 USAGE。集成测试以 `SET ROLE anon/authenticated` 实测每张原始表读写均被 `permission denied` 拒绝，`game_server` 角色可正常运行。Supabase 部署时 `game_server` 需由 DBA 以 LOGIN + 密码预先创建（密码只进连接串）。
+
 ## 10. Failure Handling
 
 | 失败场景 | 检测方式 | 处理 | 对牌局可见的结果 |
@@ -377,6 +399,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 规划书是产品意图、非实现事实：本文所有实现类陈述在代码落地前一律视为设计意图（见文首标记）。
 
 ## 15. 实现验收门槛
+
+> **状态（TEX-18，2026-08-23）**：项 1、2、3、7 已达成并有真实 PostgreSQL 集成测试证据（`apps/game-server/tests/integration/`）；项 4、5、6、8、9、10、11 依赖运行时/恢复/凭证发放/投影/清理/单人模式，属后续任务，仍为设计意图。
 
 本文不在“创建了表”时完成，而在以下条件全部满足后才能由“设计意图”改为“实现现状”：
 

@@ -1,7 +1,7 @@
 # 06 · 测试方案与发布门槛（`tests/`）
 
-> 状态：草稿（实施基线 v0.4；测试基础设施已按 TEX-12 落地，业务测试随对应任务回填）
-> 规划核对：2026-08-21——测试运行入口与工具（§2 命令、Seed/Fake Clock/Fixture/数据库隔离/E2E 失败产物）已实现并核对；其余章节在对应任务落地前仍为**设计意图**
+> 状态：草稿（实施基线 v0.5；测试基础设施已按 TEX-12 落地，持久化 Integration 已按 TEX-18 落地，其余业务测试随对应任务回填）
+> 规划核对：2026-08-21（TEX-12 基线）；2026-08-23（TEX-18 持久化 Integration 落地）——其余章节在对应任务落地前仍为**设计意图**
 > 权威范围：本文是测试体系的唯一权威来源——测试分层与归属、确定性回归集、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级处理与发布门槛。范围之外的事实见对应文档：规则语义 [01](./01-engine-spec.md)、协议与错误码 [02](./02-protocol-spec.md)、持久化 [03](./03-data-model.md)、服务端运行时行为 [04](./04-game-server-architecture.md)、前端交互与验收界面 [05](./05-frontend-spec.md)。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§9/§10）；《德州扑克项目规划_区块6-10_v0.2.docx》§9/§10（仅在《总规划》未覆盖处补充）
 > 对应代码：`tests/`（support/meta/e2e/simulator，TEX-12 已落地）、根 `vitest.config.ts`（分层配置）、`tests/e2e/playwright.config.ts`（E2E）、各包内 `*.test.ts`
@@ -32,7 +32,7 @@ Unit Test → Poker Rule Test → Integration Test → Multiplayer/WebSocket Tes
 | --- | --- | --- | --- | --- |
 | Unit Test | 纯函数与独立模块（Hand Evaluator、金额计算、`TournamentConfig` 校验等） | 与源码同包的 `*.test.ts`，以及 `apps/*/tests/unit`、`tests/support`、`tests/meta` | Vitest；`pnpm test:unit`【工程基线，TEX-12 已落地】 | §3.1 |
 | Poker Rule Test | Engine 规则正确性（下注/Pot/淘汰/事件） | `packages/poker-engine/tests/**/*.test.ts` | Vitest + fast-check；`pnpm test:rules`【工程基线，TEX-12 已落地；引擎落地前受控跳过】 | §3.1/§4 |
-| Integration Test | Engine × 串行执行器 × Scheduler × 持久化 | `apps/game-server/tests/integration` | Vitest + 隔离测试库；`pnpm test:integration`【工程基线，TEX-12 已落地；用例落地前受控跳过】 | §3.2/§6 |
+| Integration Test | Engine × 串行执行器 × Scheduler × 持久化 | `apps/game-server/tests/integration` | Vitest + 隔离测试库；`pnpm test:integration`【工程基线，TEX-12 已落地；持久化用例（迁移/控制面/Commit Bundle/约束/最小权限）已按 TEX-18 落地，缺测试库配置时受控跳过】 | §3.2/§6 |
 | Multiplayer/WebSocket Test | 多客户端一致性、Snapshot/Event、重连 | `apps/game-server/tests/ws` + `tests/clients/` | Vitest + 可编程 WS 客户端；`pnpm test:ws`【工程基线，TEX-12 已落地；WS 实现落地前受控跳过】 | §6 |
 | E2E Test | 完整用户旅程（创建房间 → 完赛） | `tests/e2e/` | Playwright + axe-core；`pnpm test:e2e`【工程基线，TEX-12 已落地（含冒烟与失败产物）；业务旅程随前端任务回填】 | §9 |
 | Long-running Simulation | 随机长跑与不变量自动断言 | `tests/simulator/` | 独立 Node CLI；`pnpm test:sim -- --seed ...`【工程基线，TEX-12 已落地入口与 Seed 派生；长跑主循环由 TEX-16 实现】 | §5 |
@@ -317,6 +317,8 @@ CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工�
 ## 14. Known Limitations（当前覆盖空白）
 
 - 测试基础设施（TEX-12，2026-08-21）已落地：Vitest 分层入口、fast-check、Playwright + axe-core、Seed/Fake Clock/Fixture Builder/数据库隔离工具与 E2E 失败产物；业务测试（规则、联机、投影、性能）随对应任务回填。
+- 持久化 Integration（TEX-18，2026-08-23）已落地：`apps/game-server/tests/integration/` 覆盖迁移（空库一次成功/幂等）、控制面原子写入、手末 Commit Bundle（对齐/回滚/幂等/冲突）、约束（FK/CHECK/唯一）与最小权限（anon/authenticated 拒绝），运行于真实 PostgreSQL 隔离 schema；CI 未配置测试库时该层仍受控跳过。
+- §3.2 的"持久化 Writer 队列/watermark"与"崩溃恢复"测试项依赖运行时实现，属 TEX-20/TEX-22，未随 TEX-18 落地。
 - Artillery 与 Simulator 长跑主循环仍未安装/实现（`test:load` 未建、`test:sim` 当前受控跳过，TEX-16 接入）。
 - 覆盖率工具（`@vitest/coverage-v8`）尚未安装；§2.2 覆盖率门槛在首个业务包落地任务中启用并回填。
 - §2.2 覆盖率和 §10.1 性能数字是初始门槛；实现后仍需基于真实基准验证其可达性，调整必须留有评审记录且不得掩盖回归。

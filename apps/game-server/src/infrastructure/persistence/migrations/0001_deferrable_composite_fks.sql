@@ -1,0 +1,2 @@
+ALTER TABLE "rooms" ADD CONSTRAINT "rooms_host_player_fk" FOREIGN KEY ("id", "host_player_id") REFERENCES "room_players"("room_id", "id") ON DELETE restrict ON UPDATE no action DEFERRABLE INITIALLY DEFERRED;--> statement-breakpoint
+ALTER TABLE "tournaments" ADD CONSTRAINT "tournaments_champion_tournament_player_fk" FOREIGN KEY ("id", "champion_tournament_player_id") REFERENCES "tournament_players"("tournament_id", "id") ON DELETE restrict ON UPDATE no action DEFERRABLE INITIALLY DEFERRED;

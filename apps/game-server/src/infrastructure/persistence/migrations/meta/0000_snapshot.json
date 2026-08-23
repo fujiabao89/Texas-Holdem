@@ -1,0 +1,1600 @@
+{
+  "id": "71125531-cb78-44b3-a291-87e93c4b47dd",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.ai_requests": {
+      "name": "ai_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "ai_requests_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "tournament_id": {
+          "name": "tournament_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tournament_player_id": {
+          "name": "tournament_player_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hand_id": {
+          "name": "hand_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_tokens": {
+          "name": "output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latency_ms": {
+          "name": "latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "ai_request_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fallback_reason": {
+          "name": "fallback_reason",
+          "type": "ai_fallback_reason",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_status_code": {
+          "name": "provider_status_code",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost": {
+          "name": "cost",
+          "type": "numeric(18, 8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ai_requests_tournament_created_at_idx": {
+          "name": "ai_requests_tournament_created_at_idx",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ai_requests_tournament_id_tournaments_id_fk": {
+          "name": "ai_requests_tournament_id_tournaments_id_fk",
+          "tableFrom": "ai_requests",
+          "tableTo": "tournaments",
+          "columnsFrom": [
+            "tournament_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ai_requests_tournament_player_fk": {
+          "name": "ai_requests_tournament_player_fk",
+          "tableFrom": "ai_requests",
+          "tableTo": "tournament_players",
+          "columnsFrom": [
+            "tournament_id",
+            "tournament_player_id"
+          ],
+          "columnsTo": [
+            "tournament_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ai_requests_hand_fk": {
+          "name": "ai_requests_hand_fk",
+          "tableFrom": "ai_requests",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id",
+            "tournament_id"
+          ],
+          "columnsTo": [
+            "id",
+            "tournament_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ai_requests_fallback_reason_check": {
+          "name": "ai_requests_fallback_reason_check",
+          "value": "(\"status\" = 'FALLBACK') = (\"fallback_reason\" IS NOT NULL)"
+        },
+        "ai_requests_latency_ms_check": {
+          "name": "ai_requests_latency_ms_check",
+          "value": "\"latency_ms\" >= 0"
+        },
+        "ai_requests_input_tokens_check": {
+          "name": "ai_requests_input_tokens_check",
+          "value": "\"input_tokens\" IS NULL OR \"input_tokens\" >= 0"
+        },
+        "ai_requests_output_tokens_check": {
+          "name": "ai_requests_output_tokens_check",
+          "value": "\"output_tokens\" IS NULL OR \"output_tokens\" >= 0"
+        },
+        "ai_requests_cost_check": {
+          "name": "ai_requests_cost_check",
+          "value": "\"cost\" IS NULL OR \"cost\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.game_snapshots": {
+      "name": "game_snapshots",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tournament_id": {
+          "name": "tournament_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hand_id": {
+          "name": "hand_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "schema_version": {
+          "name": "schema_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "engine_version": {
+          "name": "engine_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state_checksum": {
+          "name": "state_checksum",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commit_checksum": {
+          "name": "commit_checksum",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "game_snapshots_tournament_hand_unique": {
+          "name": "game_snapshots_tournament_hand_unique",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "hand_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "game_snapshots_tournament_sequence_unique": {
+          "name": "game_snapshots_tournament_sequence_unique",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "game_snapshots_tournament_id_tournaments_id_fk": {
+          "name": "game_snapshots_tournament_id_tournaments_id_fk",
+          "tableFrom": "game_snapshots",
+          "tableTo": "tournaments",
+          "columnsFrom": [
+            "tournament_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "game_snapshots_hand_fk": {
+          "name": "game_snapshots_hand_fk",
+          "tableFrom": "game_snapshots",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id",
+            "tournament_id"
+          ],
+          "columnsTo": [
+            "id",
+            "tournament_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "game_snapshots_sequence_check": {
+          "name": "game_snapshots_sequence_check",
+          "value": "\"sequence\" > 0"
+        },
+        "game_snapshots_schema_version_check": {
+          "name": "game_snapshots_schema_version_check",
+          "value": "\"schema_version\" > 0"
+        },
+        "game_snapshots_state_checksum_check": {
+          "name": "game_snapshots_state_checksum_check",
+          "value": "octet_length(\"state_checksum\") = 32"
+        },
+        "game_snapshots_commit_checksum_check": {
+          "name": "game_snapshots_commit_checksum_check",
+          "value": "octet_length(\"commit_checksum\") = 32"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hand_events": {
+      "name": "hand_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "hand_events_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "tournament_id": {
+          "name": "tournament_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hand_id": {
+          "name": "hand_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hand_sequence": {
+          "name": "hand_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "schema_version": {
+          "name": "schema_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "hand_events_tournament_sequence_unique": {
+          "name": "hand_events_tournament_sequence_unique",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hand_events_hand_hand_sequence_unique": {
+          "name": "hand_events_hand_hand_sequence_unique",
+          "columns": [
+            {
+              "expression": "hand_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "hand_sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hand_events_tournament_id_tournaments_id_fk": {
+          "name": "hand_events_tournament_id_tournaments_id_fk",
+          "tableFrom": "hand_events",
+          "tableTo": "tournaments",
+          "columnsFrom": [
+            "tournament_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "hand_events_hand_fk": {
+          "name": "hand_events_hand_fk",
+          "tableFrom": "hand_events",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id",
+            "tournament_id"
+          ],
+          "columnsTo": [
+            "id",
+            "tournament_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hand_events_sequence_check": {
+          "name": "hand_events_sequence_check",
+          "value": "\"sequence\" > 0"
+        },
+        "hand_events_hand_sequence_check": {
+          "name": "hand_events_hand_sequence_check",
+          "value": "\"hand_sequence\" > 0"
+        },
+        "hand_events_schema_version_check": {
+          "name": "hand_events_schema_version_check",
+          "value": "\"schema_version\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hands": {
+      "name": "hands",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tournament_id": {
+          "name": "tournament_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hand_number": {
+          "name": "hand_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dealer_seat": {
+          "name": "dealer_seat",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sb_seat": {
+          "name": "sb_seat",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bb_seat": {
+          "name": "bb_seat",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blind_level_index": {
+          "name": "blind_level_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "small_blind": {
+          "name": "small_blind",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "big_blind": {
+          "name": "big_blind",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "community_cards": {
+          "name": "community_cards",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "summary": {
+          "name": "summary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "hand_end_reason",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "hands_tournament_hand_number_unique": {
+          "name": "hands_tournament_hand_number_unique",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "hand_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hands_id_tournament_id_unique": {
+          "name": "hands_id_tournament_id_unique",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hands_tournament_hand_number_desc_idx": {
+          "name": "hands_tournament_hand_number_desc_idx",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "hand_number",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hands_tournament_id_tournaments_id_fk": {
+          "name": "hands_tournament_id_tournaments_id_fk",
+          "tableFrom": "hands",
+          "tableTo": "tournaments",
+          "columnsFrom": [
+            "tournament_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hands_hand_number_check": {
+          "name": "hands_hand_number_check",
+          "value": "\"hand_number\" > 0"
+        },
+        "hands_dealer_seat_check": {
+          "name": "hands_dealer_seat_check",
+          "value": "\"dealer_seat\" BETWEEN 0 AND 9"
+        },
+        "hands_sb_seat_check": {
+          "name": "hands_sb_seat_check",
+          "value": "\"sb_seat\" BETWEEN 0 AND 9"
+        },
+        "hands_bb_seat_check": {
+          "name": "hands_bb_seat_check",
+          "value": "\"bb_seat\" BETWEEN 0 AND 9"
+        },
+        "hands_blind_level_index_check": {
+          "name": "hands_blind_level_index_check",
+          "value": "\"blind_level_index\" >= 0"
+        },
+        "hands_blinds_check": {
+          "name": "hands_blinds_check",
+          "value": "\"small_blind\" > 0 AND \"big_blind\" > \"small_blind\""
+        },
+        "hands_community_cards_check": {
+          "name": "hands_community_cards_check",
+          "value": "jsonb_typeof(\"community_cards\") = 'array' AND jsonb_array_length(\"community_cards\") BETWEEN 0 AND 5"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.rooms": {
+      "name": "rooms",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "room_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invite_code": {
+          "name": "invite_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "room_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "config_json": {
+          "name": "config_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "host_player_id": {
+          "name": "host_player_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_reason": {
+          "name": "closed_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retention_expires_at": {
+          "name": "retention_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "rooms_invite_code_active_unique": {
+          "name": "rooms_invite_code_active_unique",
+          "columns": [
+            {
+              "expression": "invite_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status <> 'CLOSED' AND mode = 'MULTIPLAYER'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "rooms_retention_expires_at_idx": {
+          "name": "rooms_retention_expires_at_idx",
+          "columns": [
+            {
+              "expression": "retention_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "retention_expires_at IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "rooms_invite_code_check": {
+          "name": "rooms_invite_code_check",
+          "value": "(\"mode\" = 'MULTIPLAYER' AND \"invite_code\" IS NOT NULL AND \"invite_code\" ~ '^[A-HJKMNPQRSTUVWXYZ2-9]{6}$') OR (\"mode\" = 'SINGLE_PLAYER' AND \"invite_code\" IS NULL)"
+        },
+        "rooms_closed_at_check": {
+          "name": "rooms_closed_at_check",
+          "value": "(\"status\" = 'CLOSED') = (\"closed_at\" IS NOT NULL)"
+        },
+        "rooms_closed_reason_check": {
+          "name": "rooms_closed_reason_check",
+          "value": "\"status\" <> 'CLOSED' OR \"closed_reason\" IS NOT NULL"
+        },
+        "rooms_retention_check": {
+          "name": "rooms_retention_check",
+          "value": "((\"status\" = 'CLOSED') = (\"retention_expires_at\" IS NOT NULL)) AND (\"retention_expires_at\" IS NULL OR \"closed_at\" IS NULL OR \"retention_expires_at\" >= \"closed_at\")"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.room_players": {
+      "name": "room_players",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "room_id": {
+          "name": "room_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name_key": {
+          "name": "display_name_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "player_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_digest": {
+          "name": "token_digest",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "token_key_id": {
+          "name": "token_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "room_player_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "left_reason": {
+          "name": "left_reason",
+          "type": "room_player_left_reason",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "left_at": {
+          "name": "left_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "room_players_room_id_id_unique": {
+          "name": "room_players_room_id_id_unique",
+          "columns": [
+            {
+              "expression": "room_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "room_players_display_name_key_unique": {
+          "name": "room_players_display_name_key_unique",
+          "columns": [
+            {
+              "expression": "room_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "display_name_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "room_players_room_status_joined_idx": {
+          "name": "room_players_room_status_joined_idx",
+          "columns": [
+            {
+              "expression": "room_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "joined_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "room_players_room_id_rooms_id_fk": {
+          "name": "room_players_room_id_rooms_id_fk",
+          "tableFrom": "room_players",
+          "tableTo": "rooms",
+          "columnsFrom": [
+            "room_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "room_players_token_check": {
+          "name": "room_players_token_check",
+          "value": "(\"kind\" = 'HUMAN' AND \"token_digest\" IS NOT NULL AND \"token_key_id\" IS NOT NULL) OR (\"kind\" = 'BOT' AND \"token_digest\" IS NULL AND \"token_key_id\" IS NULL)"
+        },
+        "room_players_token_digest_length_check": {
+          "name": "room_players_token_digest_length_check",
+          "value": "\"token_digest\" IS NULL OR octet_length(\"token_digest\") = 32"
+        },
+        "room_players_left_at_check": {
+          "name": "room_players_left_at_check",
+          "value": "(\"status\" = 'LEFT') = (\"left_at\" IS NOT NULL)"
+        },
+        "room_players_left_reason_check": {
+          "name": "room_players_left_reason_check",
+          "value": "(\"status\" = 'LEFT') = (\"left_reason\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.tournaments": {
+      "name": "tournaments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "room_id": {
+          "name": "room_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tournament_no": {
+          "name": "tournament_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "tournament_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "config_json": {
+          "name": "config_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "champion_tournament_player_id": {
+          "name": "champion_tournament_player_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retention_expires_at": {
+          "name": "retention_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_committed_sequence": {
+          "name": "last_committed_sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        }
+      },
+      "indexes": {
+        "tournaments_room_tournament_no_unique": {
+          "name": "tournaments_room_tournament_no_unique",
+          "columns": [
+            {
+              "expression": "room_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tournament_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tournaments_id_room_id_unique": {
+          "name": "tournaments_id_room_id_unique",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "room_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tournaments_retention_expires_at_idx": {
+          "name": "tournaments_retention_expires_at_idx",
+          "columns": [
+            {
+              "expression": "retention_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "retention_expires_at IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tournaments_room_id_rooms_id_fk": {
+          "name": "tournaments_room_id_rooms_id_fk",
+          "tableFrom": "tournaments",
+          "tableTo": "rooms",
+          "columnsFrom": [
+            "room_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tournaments_finished_at_check": {
+          "name": "tournaments_finished_at_check",
+          "value": "(\"status\" = 'IN_GAME') = (\"finished_at\" IS NULL)"
+        },
+        "tournaments_retention_check": {
+          "name": "tournaments_retention_check",
+          "value": "((\"status\" = 'IN_GAME') = (\"retention_expires_at\" IS NULL)) AND (\"retention_expires_at\" IS NULL OR \"finished_at\" IS NULL OR \"retention_expires_at\" >= \"finished_at\")"
+        },
+        "tournaments_last_committed_sequence_check": {
+          "name": "tournaments_last_committed_sequence_check",
+          "value": "\"last_committed_sequence\" >= 0"
+        },
+        "tournaments_champion_check": {
+          "name": "tournaments_champion_check",
+          "value": "\"champion_tournament_player_id\" IS NULL OR \"status\" = 'FINISHED'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.tournament_players": {
+      "name": "tournament_players",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tournament_id": {
+          "name": "tournament_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "room_id": {
+          "name": "room_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seat_index": {
+          "name": "seat_index",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "player_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starting_stack": {
+          "name": "starting_stack",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "final_stack": {
+          "name": "final_stack",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "forfeited_chips": {
+          "name": "forfeited_chips",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "poker_status": {
+          "name": "poker_status",
+          "type": "poker_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rank": {
+          "name": "rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "eliminated_hand_id": {
+          "name": "eliminated_hand_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tournament_players_tournament_player_unique": {
+          "name": "tournament_players_tournament_player_unique",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "player_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tournament_players_tournament_seat_unique": {
+          "name": "tournament_players_tournament_seat_unique",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seat_index",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tournament_players_tournament_rank_unique": {
+          "name": "tournament_players_tournament_rank_unique",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "rank",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "rank IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tournament_players_tournament_id_unique": {
+          "name": "tournament_players_tournament_id_unique",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tournament_players_tournament_idx": {
+          "name": "tournament_players_tournament_idx",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tournament_players_tournament_fk": {
+          "name": "tournament_players_tournament_fk",
+          "tableFrom": "tournament_players",
+          "tableTo": "tournaments",
+          "columnsFrom": [
+            "tournament_id",
+            "room_id"
+          ],
+          "columnsTo": [
+            "id",
+            "room_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tournament_players_player_fk": {
+          "name": "tournament_players_player_fk",
+          "tableFrom": "tournament_players",
+          "tableTo": "room_players",
+          "columnsFrom": [
+            "room_id",
+            "player_id"
+          ],
+          "columnsTo": [
+            "room_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tournament_players_eliminated_hand_fk": {
+          "name": "tournament_players_eliminated_hand_fk",
+          "tableFrom": "tournament_players",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "eliminated_hand_id",
+            "tournament_id"
+          ],
+          "columnsTo": [
+            "id",
+            "tournament_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tournament_players_seat_index_check": {
+          "name": "tournament_players_seat_index_check",
+          "value": "\"seat_index\" BETWEEN 0 AND 9"
+        },
+        "tournament_players_starting_stack_check": {
+          "name": "tournament_players_starting_stack_check",
+          "value": "\"starting_stack\" > 0"
+        },
+        "tournament_players_final_stack_check": {
+          "name": "tournament_players_final_stack_check",
+          "value": "\"final_stack\" IS NULL OR \"final_stack\" >= 0"
+        },
+        "tournament_players_forfeited_chips_check": {
+          "name": "tournament_players_forfeited_chips_check",
+          "value": "\"forfeited_chips\" >= 0"
+        },
+        "tournament_players_rank_check": {
+          "name": "tournament_players_rank_check",
+          "value": "\"rank\" IS NULL OR \"rank\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.ai_fallback_reason": {
+      "name": "ai_fallback_reason",
+      "schema": "public",
+      "values": [
+        "TIMEOUT",
+        "HTTP_ERROR",
+        "INVALID_JSON",
+        "ILLEGAL_ACTION",
+        "PROVIDER_ERROR"
+      ]
+    },
+    "public.ai_request_status": {
+      "name": "ai_request_status",
+      "schema": "public",
+      "values": [
+        "SUCCESS",
+        "FALLBACK"
+      ]
+    },
+    "public.hand_end_reason": {
+      "name": "hand_end_reason",
+      "schema": "public",
+      "values": [
+        "ALL_FOLDED",
+        "SHOWDOWN",
+        "ABANDONED"
+      ]
+    },
+    "public.room_player_left_reason": {
+      "name": "room_player_left_reason",
+      "schema": "public",
+      "values": [
+        "USER_LEFT",
+        "DISCONNECT_TIMEOUT",
+        "ROOM_CLOSED"
+      ]
+    },
+    "public.player_kind": {
+      "name": "player_kind",
+      "schema": "public",
+      "values": [
+        "HUMAN",
+        "BOT"
+      ]
+    },
+    "public.poker_status": {
+      "name": "poker_status",
+      "schema": "public",
+      "values": [
+        "ACTIVE",
+        "ELIMINATED",
+        "WITHDRAWN"
+      ]
+    },
+    "public.room_mode": {
+      "name": "room_mode",
+      "schema": "public",
+      "values": [
+        "MULTIPLAYER",
+        "SINGLE_PLAYER"
+      ]
+    },
+    "public.room_player_status": {
+      "name": "room_player_status",
+      "schema": "public",
+      "values": [
+        "ACTIVE",
+        "LEFT"
+      ]
+    },
+    "public.room_status": {
+      "name": "room_status",
+      "schema": "public",
+      "values": [
+        "CREATED",
+        "LOBBY",
+        "IN_GAME",
+        "FINISHED",
+        "CLOSED"
+      ]
+    },
+    "public.tournament_status": {
+      "name": "tournament_status",
+      "schema": "public",
+      "values": [
+        "IN_GAME",
+        "FINISHED",
+        "ABANDONED_NO_HUMAN"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
