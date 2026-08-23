@@ -195,6 +195,7 @@ export class TournamentEngine {
 
   /** 撤回参与者（Tournament 级指令，非下注 Action，不占 currentActor）。 */
   withdrawParticipant(seatIndex: number): void {
+    if (this.phase === "finished") throw new Error("withdrawParticipant: 锦标赛已结束");
     const p = this.participants.find((pp) => pp.seatIndex === seatIndex);
     if (!p) throw new Error(`withdrawParticipant: 无参赛者 ${seatIndex}`);
     if (p.status !== "ACTIVE") {
@@ -390,12 +391,25 @@ export class TournamentEngine {
   }
 
   private emit<T extends Omit<PokerEvent, "sequence">>(event: T): void {
-    this.events.push(Object.freeze({ ...event, sequence: this.nextSequence++ }) as unknown as PokerEvent);
+    this.events.push(deepFreeze({ ...event, sequence: this.nextSequence++ }) as unknown as PokerEvent);
   }
 
   private assertInvariants(): void {
     assertTournamentInvariants(this.getState());
   }
+}
+
+/** 递归冻结对象/数组，确保事件快照的嵌套字段（placementRange、finalStandings 等）同样不可变（§14）。 */
+function deepFreeze<T>(value: T, seen: WeakSet<object> = new WeakSet()): T {
+  if (value !== null && typeof value === "object") {
+    if (seen.has(value)) return value;
+    seen.add(value);
+    Object.freeze(value);
+    for (const key of Object.keys(value as object)) {
+      deepFreeze((value as Record<string, unknown>)[key], seen);
+    }
+  }
+  return value;
 }
 
 function snapshotParticipant(p: MutableParticipant): TournamentParticipantState {

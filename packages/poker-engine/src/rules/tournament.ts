@@ -36,7 +36,7 @@ export function validateTournamentConfig(input: TournamentConfigInput): Tourname
     smallBlind: input.smallBlind,
     bigBlind: input.bigBlind,
     blindMode: input.blindMode,
-    blindStructure: input.blindStructure,
+    blindStructure: Object.freeze(input.blindStructure.map((level) => Object.freeze({ ...level }))),
     actionTime,
     timeBank,
   };

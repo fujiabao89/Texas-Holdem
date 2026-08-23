@@ -280,6 +280,16 @@ describe("TournamentEngine 退出/撤回与筹码守恒", () => {
     expect(t.getState().phase).toBe("finished"); // seat1 冠军，0/2 淘汰
     expect(() => t.startNextHand()).toThrow();
   });
+
+  it("完结后撤回被拒：冠军宣布后 withdrawParticipant 抛错且状态不变", () => {
+    const t = makeTourney(fixedCfg(), [0, 1]);
+    t.withdrawParticipant(0); // 手间撤回 → p0 WITHDRAWN → p1 冠军 → finished
+    const state = t.getState();
+    expect(state.phase).toBe("finished");
+    expect(state.champion).toBe(1);
+    expect(() => t.withdrawParticipant(1)).toThrow();
+    expect(t.getState()).toEqual(state); // 原子性：非法撤回不改变状态
+  });
 });
 
 describe("TournamentEngine 事件序列与非法指令原子性", () => {
