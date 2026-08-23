@@ -7,7 +7,7 @@
 > 对应代码：`packages/poker-engine/src/`。TEX-13 已实现 `cards/`（Card、标准 52 张 Deck、随机源、七选五 Hand Evaluator）；其余子域（下注、Pot、状态机、Tournament、Game Events、Timer）随 TEX-14 / TEX-15 落地。目录实际布局与现状见 §3。
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【设计意图 · 部分实现】** 本文主要来自已确认规划文档；规划未覆盖但实现必需的工程裁决记录在 §20/§21。`cards/` 子域（§7 牌堆、§10 Hand Evaluator、§15 RNG、§17 相关不变量）已由 TEX-13 落地并与实现核对；其余章节（下注、Pot、状态机、Tournament、Game Events、Timer）仍为设计意图，待 TEX-14/15 实现后逐条回填。当前无开放 TBD。
+> **【实现状态】** 本文主要来自已确认规划文档；规划未覆盖但实现必需的工程裁决记录在 §20/§21。`cards/` 子域（§7 牌堆、§10 Hand Evaluator、§15 RNG、§17 相关不变量）已由 TEX-13 落地；下注/Pot/手状态机（§5–§9、§11、§16、§17）已由 TEX-14 落地；`Tournament`（§12、§13）、`Game Events` 锦标赛级（§14 的 PLAYER_ELIMINATED / PLAYER_WITHDRAWN / TOURNAMENT_FINISHED）与 `timer/`（§12、§13）已由 TEX-15 落地并与实现核对。当前无开放 TBD。
 
 ## 1. Purpose
 
@@ -67,8 +67,8 @@
 | `engine/` | 牌局状态、回合推进、状态转换和规则协调 | TEX-14 已落地 |
 | `rules/` | 盲注、合法动作、下注、全下和摊牌等可单独验证的规则 | TEX-14 已落地 |
 | `pots/` | 主池、边池、分池和结算分配规则 | TEX-14 已落地 |
-| `events/` | 不可变的扑克领域事件（手级：HAND_STARTED … POT_AWARDED） | TEX-14 已落地（手级）；`PLAYER_ELIMINATED` / `TOURNAMENT_FINISHED` 留 TEX-15 |
-| `timer/` | 行动时限与时间银行的领域模型 | 占位 · TEX-15（实际调度在 game-server） |
+| `events/` | 不可变的扑克领域事件（手级：HAND_STARTED … POT_AWARDED；锦标赛级：PLAYER_ELIMINATED / PLAYER_WITHDRAWN / TOURNAMENT_FINISHED） | TEX-14 手级 + TEX-15 锦标赛级已落地 |
+| `timer/` | 行动时限与时间银行的领域模型 | TEX-15 已落地（领域模型；实际调度在 game-server） |
 
 > **工程裁决（TEX-13，2026-08-22）**：Card、标准 52 张 Deck、随机源与 Hand Evaluator 统一落在 `cards/`，**暂不拆分**规划中的 `deck/`、`evaluator/`、`rng/` 三个子目录；后续任务若需拆分，以本文更新为准。《区块6-10 v0.2》§10.6 的 `deck/ hand/ betting/ pot/ evaluator/ tournament/ state/ actions/ rng/` 为规划目录，不再代表仓库实际结构。
 
@@ -285,7 +285,9 @@ HAND_START → POST_BLINDS → DEAL_HOLE_CARDS → PREFLOP
 | `PLAYER_CHECKED` / `PLAYER_CALLED` / `PLAYER_BET` / `PLAYER_RAISED` / `PLAYER_FOLDED` / `PLAYER_ALL_IN` | 行动记录；携带 actor、ActionSource、投入额及动作后的目标总投入 |
 | `SHOWDOWN_STARTED` / `PLAYER_REVEALED` | 比牌 |
 | `UNCALLED_BET_RETURNED` / `POT_AWARDED` | 未跟注筹码返还与逐 Pot 奖池分配动画 |
-| `PLAYER_ELIMINATED` / `TOURNAMENT_FINISHED` | 锦标赛结果 |
+| `PLAYER_ELIMINATED` | 淘汰结果：`handNumber`、`seatIndex`、`placementRange`、`displayOrder`（同手淘汰共享范围，展示序号非实际先后） |
+| `PLAYER_WITHDRAWN` | 撤回：`seatIndex`、`forfeitedChips`（未投入剩余筹码被没收，不赠与他人） |
+| `TOURNAMENT_FINISHED` | 锦标赛结束：`championSeat`、`finalStandings`（含各名次 `placementRange`/`displayOrder`） |
 
 - 事件同时服务：动画、Hand History、AI 历史、调试、断线恢复与未来 Replay（§6.12）。
 - 事件由状态转移产生，顺序与状态转移一致；`sequence` 分配与 `Snapshot + Event Stream` 同步的信封与传输语义见 [02-protocol-spec.md](./02-protocol-spec.md) §6/§7（《总规划》§5.2）。

@@ -1,16 +1,16 @@
 /**
- * 领域事件（TEX-14 手级）。
+ * 领域事件（TEX-14 手级 + TEX-15 锦标赛级）。
  *
  * Engine 事件流为服务器**内部权威流**（可含底牌仅供 server 诊断与投影）；面向用户/客户的 `BURN_CARD`
  * 事件**绝不携带牌面**（任务硬性要求）。每个事件带自增 `sequence`，供「非法 Action 后 sequence 不变」断言。
  * 事件序列与状态转移严格一致（§14 / §16）。
  *
- * `PLAYER_ELIMINATED` / `TOURNAMENT_FINISHED` 与 `timer/` 属 TEX-15，不在本模块。
+ * TEX-15 新增 `PLAYER_ELIMINATED` / `TOURNAMENT_FINISHED`（§14）。`timer/` 领域模型即可用类型见 src/timer。
  *
- * 权威规格：docs/01-engine-spec.md §14、§16。
+ * 权威规格：docs/01-engine-spec.md §12、§13、§14、§16、§17。
  */
 import type { Card } from "../cards";
-import type { ActionSource, ParticipantKind, Street } from "../model";
+import type { ActionSource, ParticipantKind, Street, FinalStanding, PlacementRange } from "../model";
 
 /** 公共事件基座：每个事件都有自增 `sequence`。 */
 interface EventBase {
@@ -95,4 +95,24 @@ export type PokerEvent =
       readonly winners: readonly number[];
       readonly prizeBySeat: Readonly<Record<number, number>>;
       readonly eligiblePlayers: readonly number[];
+    })
+  | (EventBase & {
+      readonly type: "PLAYER_ELIMINATED";
+      /** 发生淘汰的手号。 */
+      readonly handNumber: number;
+      readonly seatIndex: number;
+      readonly placementRange: PlacementRange;
+      /** 同手淘汰组内的稳定展示序号（1-based；非实际淘汰先后）。 */
+      readonly displayOrder: number;
+    })
+  | (EventBase & {
+      readonly type: "PLAYER_WITHDRAWN";
+      readonly seatIndex: number;
+      /** 被没收的剩余筹码（计入 forfeitedChips，不赠与其他玩家）。 */
+      readonly forfeitedChips: number;
+    })
+  | (EventBase & {
+      readonly type: "TOURNAMENT_FINISHED";
+      readonly championSeat: number | null;
+      readonly finalStandings: readonly FinalStanding[];
     });

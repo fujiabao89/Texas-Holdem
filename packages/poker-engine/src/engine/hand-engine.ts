@@ -10,7 +10,7 @@ import type { GameState, HandConfig, HandOutcome } from "../model/hand";
 import type { PlayerAction } from "../model/action";
 import type { LegalActions } from "../model/legal";
 import type { PokerEvent } from "../events/events";
-import { createInitialState, legalForSeat, reduceHand } from "./state-machine";
+import { createInitialState, foldSeatForWithdraw, legalForSeat, reduceHand } from "./state-machine";
 import { assertInvariants } from "./invariants";
 
 export class PokerHandEngine {
@@ -41,6 +41,22 @@ export class PokerHandEngine {
     this.state = result.state;
     this.events.push(...result.events);
     assertInvariants(this.state); // 每次合法动作后自动断言（§17）
+    if (this.state.phase === "hand_end" || this.state.currentActor === null) {
+      return null;
+    }
+    return legalForSeat(this.state, this.state.currentActor);
+  }
+
+  /**
+   * 撤回折叠（TEX-15）：锦标赛 WithdrawParticipant 使用的非志愿弃权折叠。
+   * 折叠指定座位并推进；非法（非下注阶段/已全下/已弃牌）抛错且状态/事件/sequence 不变。
+   * 返回下一行动者的 LegalActions；一手结束返回 null。
+   */
+  foldForWithdraw(seatIndex: number): LegalActions | null {
+    const result = foldSeatForWithdraw(this.state, seatIndex);
+    this.state = result.state;
+    this.events.push(...result.events);
+    assertInvariants(this.state);
     if (this.state.phase === "hand_end" || this.state.currentActor === null) {
       return null;
     }

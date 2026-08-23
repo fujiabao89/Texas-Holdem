@@ -362,6 +362,44 @@ export function reduceHand(state: GameState, action: PlayerAction): HandResult {
   return { state: Object.freeze({ ...result, nextSequence: seq.value }), events: Object.freeze(events) };
 }
 
+/**
+ * 撤回折叠（TEX-15）：锦标赛 WithdrawParticipant 在 Hand 进行中用于「未 All-in 且仍可行动」玩家。
+ * 折叠该座位并以 SYSTEM_TIMER 源记录 PLAYER_FOLDED，随后推进状态机。复用 advanceAfterAction，
+ * 不复制下注/推进/结算逻辑。非法（非下注阶段/非本手/已弃牌/已全下）抛错且不改动原 state。
+ *
+ * 权威规格：docs/01-engine-spec.md §13（EXIT_PENDING 未 All-in 且仍可行动者按弃权折叠处理）。
+ */
+export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandResult {
+  if (state.phase !== state.street || state.currentActor === null) {
+    throw new Error("foldSeatForWithdraw: 当前不在下注阶段");
+  }
+  const seat = state.seats.find((s) => s.seatIndex === seatIndex);
+  if (!seat) throw new Error(`foldSeatForWithdraw: 座位 ${seatIndex} 不在本手`);
+  if (seat.isAllIn || seat.folded) {
+    throw new Error(`foldSeatForWithdraw: 座位 ${seatIndex} 已全下或已弃牌，不可撤回折叠`);
+  }
+
+  const seq = { value: state.nextSequence };
+  const events: PokerEvent[] = [];
+  const emit = <T extends Omit<PokerEvent, "sequence">>(e: T) => {
+    events.push(Object.freeze({ ...e, sequence: seq.value++ }) as unknown as PokerEvent);
+  };
+
+  const seats = toMutableSeats(state.seats);
+  const actor = seats.find((s) => s.seatIndex === seatIndex)!;
+  actor.folded = true;
+  actor.hasActedThisStreet = true;
+  emit({ type: "PLAYER_FOLDED", seatIndex, source: "system_timer", amount: 0, toAmount: actor.streetBet });
+
+  const next: GameState = Object.freeze({
+    ...state,
+    seats: freezeSeats(seats),
+    nextSequence: seq.value,
+  });
+  const result = advanceAfterAction(next, emit);
+  return { state: Object.freeze({ ...result, nextSequence: seq.value }), events: Object.freeze(events) };
+}
+
 /** 动作后推进：提前结算 / Runout / 同街下一行动者 / 下一街或比牌。 */
 function advanceAfterAction(
   state: GameState,
