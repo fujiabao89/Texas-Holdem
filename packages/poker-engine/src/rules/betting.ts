@@ -16,6 +16,7 @@ export interface BettingContext {
   readonly hasFullBetOrRaise: boolean;
   readonly bigBlind: number;
 }
+
 /** 计算合法动作所需的玩家视图（streetBet / chips / 权重开记录）。 */
 export interface PlayerBetView {
   readonly streetBet: number;
