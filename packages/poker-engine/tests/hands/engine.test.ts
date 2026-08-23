@@ -52,7 +52,7 @@ describe("PokerHandEngine 单局行为", () => {
     expect(seats.find((s) => s.seatIndex === 1)!.chips).toBe(90); // SB = 10
     expect(seats.find((s) => s.seatIndex === 2)!.chips).toBe(110); // 主池 + 退回未跟注
     assertInvariants(eng.getState());
-    for (const e of eng.getEvents()) if (e.type === "BURN_CARD") expect((e as Record<string, unknown>).card).toBeUndefined();
+    expect(eng.getEvents().some((e) => e.type === "BURN_CARD")).toBe(false); // preflop 即结算，无烧牌
   });
 
   it("Heads-Up 走到比牌，公共牌按序补给，A 对获胜；BURN 无面且不变量成立", () => {
@@ -162,5 +162,37 @@ describe("PokerHandEngine 单局行为", () => {
     const outcome = eng.getOutcome()!;
     expect(outcome.pots.length).toBeGreaterThanOrEqual(1);
     assertInvariants(eng.getState());
+  });
+
+  it("排除零筹码座位：0 筹码座位不参与本手，且不可被指定为 Dealer", () => {
+    const eng = new PokerHandEngine(cfg([seat(0, 0), seat(1, 100), seat(2, 100)], { dealerSeat: 1 }));
+    const inHandSeats = eng.getState().seats.map((s) => s.seatIndex);
+    expect(inHandSeats).toEqual([1, 2]); // 0 筹码座位被排除
+    expect(inHandSeats).not.toContain(0);
+    assertInvariants(eng.getState());
+    // 指定 0 筹码座位为 Dealer → 非法配置，抛错。
+    expect(() => new PokerHandEngine(cfg([seat(0, 0), seat(1, 100), seat(2, 100)], { dealerSeat: 0 }))).toThrow();
+  });
+
+  it("E2E：A 加注后遇 Short All-in，A 不重开（只能 Call 差额）", () => {
+    const eng = new PokerHandEngine(cfg([seat(0, 2000), seat(1, 350), seat(2, 500)], { dealerSeat: 0, smallBlind: 50, bigBlind: 100 }));
+    eng.applyAction(act(0, "raise", 300)); // A(UTG) 加注到 300（完整，±200）
+    eng.applyAction(act(1, "all-in"));     // B(SB) 短全下到 350（+50 < 200 → Short All-in）
+    eng.applyAction(act(2, "call"));       // C(BB) 跟注到 350
+    const la = eng.getLegalActions();
+    expect(eng.getState().currentActor).toBe(0);
+    expect(la.canRaise).toBe(false); // 增量 350-300=50 < A 的完整加注 200 → 不重开
+    expect(la.canCall).toBe(true);
+    expect(la.callAmount).toBe(50);
+  });
+
+  it("事件 sequence 唯一且单调（覆盖自动 BURN/deal/showdown/award 事件后的游标回写）", () => {
+    const deck = controlledDeck(["As", "Ks", "Ah", "Kh", "Td", "2c", "3d", "4s", "Jd", "7h", "Qd", "9c"]);
+    const eng = new PokerHandEngine(cfg([seat(0), seat(1)], { dealerSeat: 0, deck }));
+    eng.applyAction(act(0, "all-in"));
+    eng.applyAction(act(1, "call"));
+    expect(eng.isComplete()).toBe(true);
+    const seqs = eng.getEvents().map((e) => e.sequence);
+    expect(seqs).toEqual(seqs.map((_, i) => i)); // 0,1,2,… 无重复、无缺号
   });
 });

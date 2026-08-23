@@ -9,4 +9,4 @@
 - `pot.ts` —— `Pot` / `PotAward`（contributors 与 eligiblePlayers 分离）。
 - `hand.ts` —— `SeatConfig` / `HandConfig` / `GameState` / `HandOutcome`。
 
-权威规则见 [docs/01-engine-spec.md](../../../docs/01-engine-spec.md) §4/§5/§6/§9/§17。
+权威规则见 [docs/01-engine-spec.md](../../../../docs/01-engine-spec.md) §4/§5/§6/§9/§17。

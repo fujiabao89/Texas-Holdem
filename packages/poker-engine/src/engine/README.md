@@ -6,4 +6,4 @@
 - `hand-engine.ts` —— `PokerHandEngine` 薄门面：持权威状态与事件日志，`getLegalActions`/`applyAction`/`getState`/`getEvents`/`isComplete`/`getOutcome`。
 - `invariants.ts` —— `assertInvariants`（§17 全部不变量）。
 
-权威规则见 [docs/01-engine-spec.md](../../../docs/01-engine-spec.md) §5–§11、§14、§16、§17。
+权威规则见 [docs/01-engine-spec.md](../../../../docs/01-engine-spec.md) §5–§11、§14、§16、§17。

@@ -9,8 +9,8 @@
  * 权威规格：docs/01-engine-spec.md §5–§11、§14、§16、§17。
  */
 import type { Card } from "../cards";
-import { Deck as StandardDeck } from "../cards";
-import type { GameState, HandConfig, HandOutcome } from "../model/hand";
+import { Deck as StandardDeck, cardKey } from "../cards";
+import type { GameState, HandConfig, HandOutcome, SeatConfig } from "../model/hand";
 import type { PlayerState } from "../model/player";
 import type { ParticipantKind } from "../model/type";
 import type { Pot, PotAward } from "../model/pot";
@@ -68,6 +68,34 @@ export interface HandResult {
   readonly events: readonly PokerEvent[];
 }
 
+/** 校验开局配置边界（§16 确定性 / §12 约束）：≥2 名持筹码玩家、座位号唯一、dealer 在参与集合、注入牌堆足够且唯一、SB < BB。 */
+function validateHandConfig(config: HandConfig, inHand: readonly SeatConfig[]): void {
+  if (inHand.length < 2) {
+    throw new Error(`createInitialState: 本手至少需要 2 名持筹码玩家，实际 ${inHand.length}`);
+  }
+  const seen = new Set<number>();
+  for (const s of config.seats) {
+    if (seen.has(s.seatIndex)) throw new Error(`createInitialState: 座位号 ${s.seatIndex} 重复`);
+    seen.add(s.seatIndex);
+  }
+  if (config.dealerSeat !== undefined && !inHand.some((s) => s.seatIndex === config.dealerSeat)) {
+    throw new Error(`createInitialState: dealerSeat ${config.dealerSeat} 不在参与座位中`);
+  }
+  if (config.smallBlind >= config.bigBlind) {
+    throw new Error(`createInitialState: 小盲 ${config.smallBlind} 必须小于大盲 ${config.bigBlind}`);
+  }
+  if (config.deck) {
+    const cards = config.deck.toArray();
+    const needed = 2 * inHand.length + 1 + 5; // 底牌 ×2 + 一张 Burn + 5 张公共牌（上限）
+    if (cards.length < needed) {
+      throw new Error(`createInitialState: 注入牌堆仅 ${cards.length} 张，至少需要 ${needed} 张`);
+    }
+    if (new Set(cards.map(cardKey)).size !== cards.length) {
+      throw new Error("createInitialState: 注入牌堆含重复牌");
+    }
+  }
+}
+
 /** 构造开局状态并产出开局事件。 */
 export function createInitialState(config: HandConfig): HandResult {
   const seq = { value: 0 };
@@ -76,7 +104,11 @@ export function createInitialState(config: HandConfig): HandResult {
     events.push(Object.freeze({ ...e, sequence: seq.value++ }) as unknown as PokerEvent);
   };
 
-  const seats: MutableSeat[] = config.seats.map((s) => ({
+  // 排除零筹码座位（本手参与集合，见 §4.3；不清除牌局中途全下者），并校验开局边界（§12 / §16）。
+  const inHand = config.seats.filter((s) => s.chips > 0);
+  validateHandConfig(config, inHand);
+
+  const seats: MutableSeat[] = inHand.map((s) => ({
     seatIndex: s.seatIndex,
     name: s.name,
     kind: s.kind,
@@ -91,9 +123,9 @@ export function createInitialState(config: HandConfig): HandResult {
     lastDecisionRaiseSize: config.bigBlind,
   }));
 
-  const dealerSeat = selectDealer(config.seats, config.rng, config.dealerSeat);
-  const { sbSeat, bbSeat } = computeBlinds(config.seats, dealerSeat);
-  const initialTotalChips = config.seats.reduce((sum, s) => sum + s.chips, 0);
+  const dealerSeat = selectDealer(inHand, config.rng, config.dealerSeat);
+  const { sbSeat, bbSeat } = computeBlinds(inHand, dealerSeat);
+  const initialTotalChips = inHand.reduce((sum, s) => sum + s.chips, 0);
 
   // 牌堆：注入 deck 用之（不洗）；否则标准 52 张按 rng 洗牌（洗牌顺序写入 state）。
   let remainingDeck: Card[];
@@ -113,7 +145,7 @@ export function createInitialState(config: HandConfig): HandResult {
     bbSeat,
     smallBlind: config.smallBlind,
     bigBlind: config.bigBlind,
-    seats: config.seats.map((s) => ({ seatIndex: s.seatIndex, name: s.name, kind: s.kind, chips: s.chips })),
+    seats: Object.freeze(inHand.map((s) => Object.freeze({ seatIndex: s.seatIndex, name: s.name, kind: s.kind, chips: s.chips }))),
   });
 
   // 缴盲：SB / BB（不足则全下；当前跟注额 = 实际 BB 投入，决定 hasFullBetOrRaise）。
@@ -133,7 +165,10 @@ export function createInitialState(config: HandConfig): HandResult {
       toAmount: player.streetBet,
     });
   });
+  const sbActual = seats.find((s) => s.seatIndex === sbSeat)!.streetBet;
   const bbActual = seats.find((s) => s.seatIndex === bbSeat)!.streetBet;
+  // preflop currentBet 取盲注实际投入较大者：短盲（低于 BB）时绝不能低于已缴的 SB（§8.2）。
+  const preflopCurrentBet = Math.max(sbActual, bbActual);
 
   // 发底牌：两轮，每轮从 Dealer 左侧起顺时针（HU 时 Button/SB 先得第一张）。
   const indices = seats.map((s) => s.seatIndex);
@@ -156,7 +191,7 @@ export function createInitialState(config: HandConfig): HandResult {
   }
 
   // 首行动者可能因短盲全下（chips==0）而不可行动：跳至下一可行动座位；全部不可行动（全员全下）则置 null。
-  const firstActorSeat = firstActor(config.seats, dealerSeat, "preflop");
+  const firstActorSeat = firstActor(inHand, dealerSeat, "preflop");
   const isActionable = (seatIndex: number): boolean => {
     const p = seats.find((s) => s.seatIndex === seatIndex)!;
     return !p.isAllIn && !p.folded;
@@ -179,9 +214,9 @@ export function createInitialState(config: HandConfig): HandResult {
     smallBlind: config.smallBlind,
     bigBlind: config.bigBlind,
     currentActor,
-    currentBet: bbActual,
+    currentBet: preflopCurrentBet,
     lastFullRaiseSize: config.bigBlind,
-    hasFullBetOrRaise: bbActual >= config.bigBlind,
+    hasFullBetOrRaise: preflopCurrentBet >= config.bigBlind,
     pots: Object.freeze([]),
     nextSequence: seq.value,
     initialTotalChips,
@@ -209,8 +244,6 @@ export function reduceHand(state: GameState, action: PlayerAction): HandResult {
 
   const seats = toMutableSeats(state.seats);
   const actor = seats.find((s) => s.seatIndex === action.seatIndex)!;
-  const facedBet = state.currentBet;
-  const facedRaiseSize = state.lastFullRaiseSize;
 
   let currentBet = state.currentBet;
   let lastFullRaiseSize = state.lastFullRaiseSize;
@@ -227,8 +260,6 @@ export function reduceHand(state: GameState, action: PlayerAction): HandResult {
     actor.handContribution += amount;
     actor.isAllIn = isAllIn;
     actor.hasActedThisStreet = true;
-    actor.lastDecisionBet = facedBet;
-    actor.lastDecisionRaiseSize = facedRaiseSize;
   };
 
   switch (action.type) {
@@ -297,6 +328,10 @@ export function reduceHand(state: GameState, action: PlayerAction): HandResult {
     }
   }
 
+  // 记录本次动作后的下注权重开基线（§8.3）：以动作后的 currentBet / lastFullRaiseSize 为准。
+  actor.lastDecisionBet = currentBet;
+  actor.lastDecisionRaiseSize = lastFullRaiseSize;
+
   const next: GameState = Object.freeze({
     ...state,
     seats: freezeSeats(seats),
@@ -307,7 +342,8 @@ export function reduceHand(state: GameState, action: PlayerAction): HandResult {
   });
 
   const result = advanceAfterAction(next, emit);
-  return { state: result, events: Object.freeze(events) };
+  // 回写自动推进（BURN/deal/showdown/award 等）产生的最终 sequence 游标，保证事件序号唯一且单调（§14/§16）。
+  return { state: Object.freeze({ ...result, nextSequence: seq.value }), events: Object.freeze(events) };
 }
 
 /** 动作后推进：提前结算 / Runout / 同街下一行动者 / 下一街或比牌。 */
@@ -529,8 +565,10 @@ function validateAction(state: GameState, action: PlayerAction): void {
       if (!legal.canAllIn) throw new Error("validateAction: 不能全下");
       break;
     default: {
+      // 保留编译期穷尽校验；运行时未知 type 必须拒绝（不可据以推进状态机）。
       const _exhaustive: never = action.type;
-      return _exhaustive;
+      void _exhaustive;
+      throw new Error(`validateAction: 未知动作类型 ${String(action.type)}`);
     }
   }
 }

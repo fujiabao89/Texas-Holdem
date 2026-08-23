@@ -70,18 +70,11 @@ export function buildPots(players: readonly PotContributor[]): BuildPotsResult {
   }
 
   // 防御性兜底：无合格竞夺者的层并入主池（死钱归主池赢家），保证每池至少一名 eligible（§17）。
+  // 若任何层都无 eligible（全部贡献者弃牌，极端不可达），则不创建非法池，交由引擎提前结算（无赢家）处理。
   const finalPots: Pot[] = [];
   for (const pot of pots) {
     if (pot.eligiblePlayers.length === 0) {
-      if (finalPots.length === 0) {
-        // 主池也无合格者（极端）：并入新建主池，交给唯一幸存者。正常流程不会出现。
-        finalPots.push({
-          index: 0,
-          amount: pot.amount,
-          contributors: pot.contributors,
-          eligiblePlayers: [],
-        });
-      } else {
+      if (finalPots.length > 0) {
         const main = finalPots[0]!;
         finalPots[0] = { ...main, amount: main.amount + pot.amount };
       }

@@ -7,4 +7,4 @@
 - `legal-actions.ts` —— `computeLegalActionsForSeat`（Engine 唯一合法动作来源）。
 - `street.ts` —— 街推进（`nextStreet`）与发公共牌（`burnAndDeal`，Burn 不携带牌面）。
 
-权威规则见 [docs/01-engine-spec.md](../../../docs/01-engine-spec.md) §5–§8、§11。
+权威规则见 [docs/01-engine-spec.md](../../../../docs/01-engine-spec.md) §5–§8、§11。

@@ -7,4 +7,4 @@
 - `BURN_CARD` **绝不携带牌面**；`DEAL_HOLE_CARD`/`PLAYER_REVEALED` 携带牌面属服务端内部权威流，客户端/AI 经 game-server 投影过滤。
 - `PLAYER_ELIMINATED` / `TOURNAMENT_FINISHED` 与 `timer/` 属 TEX-15。
 
-权威规则见 [docs/01-engine-spec.md](../../../docs/01-engine-spec.md) §14、§16。
+权威规则见 [docs/01-engine-spec.md](../../../../docs/01-engine-spec.md) §14、§16。

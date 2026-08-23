@@ -34,14 +34,14 @@ describe("settlePots 每池独立比牌 + Odd Chip", () => {
     expect(awards[0]!.winners).toEqual([0]);
   });
 
-  it("Ace 高牌 vs 对子：对子胜出", () => {
+  it("高牌 vs 对子：对子胜出", () => {
     const board = [c("2c"), c("3d"), c("4s"), c("7h"), c("9c")];
     const players = [
-      { seatIndex: 0, holeCards: hole("As", "Ah"), folded: false }, // 对 A
-      { seatIndex: 1, holeCards: hole("Ks", "Kd"), folded: false }, // 对 K
+      { seatIndex: 0, holeCards: hole("As", "Qh"), folded: false }, // A 高牌
+      { seatIndex: 1, holeCards: hole("9s", "5d"), folded: false }, // 对 9（配公共牌 9c）
     ];
     const pots = [{ index: 0, amount: 40, contributors: [0, 1], eligiblePlayers: [0, 1] }];
     const awards = settlePots(pots, players, board, 0);
-    expect(awards[0]!.winners).toEqual([0]);
+    expect(awards[0]!.winners).toEqual([1]); // 对 9 > A 高牌
   });
 });
