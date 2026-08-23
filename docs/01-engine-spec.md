@@ -64,11 +64,11 @@
 | 目录 | 内容 | 状态 |
 | --- | --- | --- |
 | `cards/` | 牌与牌面表示、牌堆与洗牌、随机源接口、牌型评估 | TEX-13 已落地（统一落于此，暂未拆分） |
-| `engine/` | 牌局状态、回合推进、状态转换和规则协调 | 占位 · TEX-14 |
-| `rules/` | 盲注、合法动作、下注、全下和摊牌等可单独验证的规则 | 占位 · TEX-14 |
-| `pots/` | 主池、边池、分池和结算分配规则 | 占位 · TEX-14 |
-| `events/` | 不可变的扑克领域事件 | 占位 · TEX-15 |
-| `timer/` | 行动时限与时间银行的领域模型 | 占位 · TEX-14/15 |
+| `engine/` | 牌局状态、回合推进、状态转换和规则协调 | TEX-14 已落地 |
+| `rules/` | 盲注、合法动作、下注、全下和摊牌等可单独验证的规则 | TEX-14 已落地 |
+| `pots/` | 主池、边池、分池和结算分配规则 | TEX-14 已落地 |
+| `events/` | 不可变的扑克领域事件（手级：HAND_STARTED … POT_AWARDED） | TEX-14 已落地（手级）；`PLAYER_ELIMINATED` / `TOURNAMENT_FINISHED` 留 TEX-15 |
+| `timer/` | 行动时限与时间银行的领域模型 | 占位 · TEX-15（实际调度在 game-server） |
 
 > **工程裁决（TEX-13，2026-08-22）**：Card、标准 52 张 Deck、随机源与 Hand Evaluator 统一落在 `cards/`，**暂不拆分**规划中的 `deck/`、`evaluator/`、`rng/` 三个子目录；后续任务若需拆分，以本文更新为准。《区块6-10 v0.2》§10.6 的 `deck/ hand/ betting/ pot/ evaluator/ tournament/ state/ actions/ rng/` 为规划目录，不再代表仓库实际结构。
 
@@ -172,6 +172,7 @@ HAND_START → POST_BLINDS → DEAL_HOLE_CARDS → PREFLOP
 - **提前结算 2**：所有剩余玩家均已 All-in → Engine 立即完成剩余公共牌与结果计算，**不等待**客户端；前端仍按动画队列逐步展示（《区块6-10 v0.2》§6.5）。
 - 盲注变更只在当前 Hand 完整结束后生效，绝不在一手牌中途改变下注下限或盲注（《总规划》§2.3）。
 - 淘汰判定在 `HAND_END` 的筹码结算之后进行（《总规划》§2.2）。
+- **实现说明（TEX-14）**：`SHOWDOWN → POT_SETTLEMENT` 在引擎中为 `settle()` 内的**原子**转移——一次状态转移内完成揭示与分池结算并落到 `hand_end`，不暴露独立的可观测 `showdown` 相态；因此 `GameState.phase` 只取街名或 `hand_end`（见 §4）。
 
 非法迁移（例如跳过 Burn 阶段直接 `PREFLOP → RIVER`、或从 `SHOWDOWN` 回退）必须拒绝，并视为 Critical Engine Error 处理（见 §16）。
 
