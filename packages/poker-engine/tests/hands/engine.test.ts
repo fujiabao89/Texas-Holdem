@@ -221,6 +221,12 @@ describe("PokerHandEngine 单局行为", () => {
     expect(() => new PokerHandEngine(cfg([seat(0, -10), seat(1, 100)], { dealerSeat: 0, smallBlind: 10, bigBlind: 20 }))).toThrow();
   });
 
+  it("非法座位号（非整数/负数）在构造时抛错", () => {
+    const bad = (i: number): SeatConfig => ({ seatIndex: i, name: "x", kind: "human", chips: 100 });
+    expect(() => new PokerHandEngine(cfg([bad(1.5), seat(1)], { dealerSeat: 1 }))).toThrow();
+    expect(() => new PokerHandEngine(cfg([bad(-1), seat(1)], { dealerSeat: 1 }))).toThrow();
+  });
+
   it("注入非全量牌堆（2 名玩家仅 12 张）必须抛错（契约要求恰好 52 张）", () => {
     const codes12 = ["As", "Ks", "Ah", "Kh", "2c", "3d", "4s", "5h", "6d", "7c", "8s", "9d"];
     const cards = codes12.map((code) => parseCard(code));

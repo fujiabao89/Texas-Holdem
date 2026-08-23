@@ -87,6 +87,9 @@ function validateHandConfig(config: HandConfig, inHand: readonly SeatConfig[]): 
   }
   const seen = new Set<number>();
   for (const s of config.seats) {
+    if (!Number.isInteger(s.seatIndex) || s.seatIndex < 0) {
+      throw new Error(`createInitialState: 座位号必须为非负整数，收到 ${s.seatIndex}`);
+    }
     if (seen.has(s.seatIndex)) throw new Error(`createInitialState: 座位号 ${s.seatIndex} 重复`);
     seen.add(s.seatIndex);
   }
