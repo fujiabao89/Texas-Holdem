@@ -6,6 +6,8 @@ import { createHash } from "node:crypto";
  * - `stableStringify`：canonical JSON 序列化——对象键按字典序递归排序、
  *   无多余空白，使同一逻辑内容恒产生同一字节序列（checksum 输入可重现）。
  * - BigInt 序列化为十进制数字（sequence/筹码在 Node 侧是 bigint，§5.9 数值边界）。
+ * - Date 序列化为 ISO-8601 UTC 字符串：Date 无可枚举自有属性，落入通用
+ *   对象分支会得到 `{}`，使仅时间戳不同的 Bundle 产生相同 commit_checksum。
  * - `sha256`：32 字节摘要，用于 `game_snapshots.state_checksum`（对 state 的
  *   canonical JSON）与 `commit_checksum`（对整个提交单元的 canonical JSON，
  *   由调用方组装：Hand 元数据、按序 Events、Snapshot 状态及相关结果变更；
@@ -29,6 +31,10 @@ function serialize(value: unknown): string {
   }
   if (typeof value === "bigint") {
     return value.toString();
+  }
+  if (value instanceof Date) {
+    // Invalid Date 的 toISOString 抛 RangeError——显式失败优于静默序列化为 {}。
+    return JSON.stringify(value.toISOString());
   }
   if (typeof value === "boolean" || typeof value === "undefined") {
     return String(value);

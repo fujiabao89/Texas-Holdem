@@ -97,7 +97,7 @@ CREATE TABLE "rooms" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"closed_at" timestamp with time zone,
 	"retention_expires_at" timestamp with time zone,
-	CONSTRAINT "rooms_invite_code_check" CHECK (("mode" = 'MULTIPLAYER' AND "invite_code" ~ '^[A-HJKMNPQRSTUVWXYZ2-9]{6}$') OR ("mode" = 'SINGLE_PLAYER' AND "invite_code" IS NULL)),
+	CONSTRAINT "rooms_invite_code_check" CHECK (("mode" = 'MULTIPLAYER' AND "invite_code" IS NOT NULL AND "invite_code" ~ '^[A-HJKMNPQRSTUVWXYZ2-9]{6}$') OR ("mode" = 'SINGLE_PLAYER' AND "invite_code" IS NULL)),
 	CONSTRAINT "rooms_closed_at_check" CHECK (("status" = 'CLOSED') = ("closed_at" IS NOT NULL)),
 	CONSTRAINT "rooms_closed_reason_check" CHECK ("status" <> 'CLOSED' OR "closed_reason" IS NOT NULL),
 	CONSTRAINT "rooms_retention_check" CHECK ((("status" = 'CLOSED') = ("retention_expires_at" IS NOT NULL)) AND ("retention_expires_at" IS NULL OR "closed_at" IS NULL OR "retention_expires_at" >= "closed_at"))

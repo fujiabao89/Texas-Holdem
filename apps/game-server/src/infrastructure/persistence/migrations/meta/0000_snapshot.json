@@ -1,5 +1,5 @@
 {
-  "id": "22f02952-e339-43c1-9c4c-a50aed1fa1f1",
+  "id": "71125531-cb78-44b3-a291-87e93c4b47dd",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -845,7 +845,7 @@
       "checkConstraints": {
         "rooms_invite_code_check": {
           "name": "rooms_invite_code_check",
-          "value": "(\"mode\" = 'MULTIPLAYER' AND \"invite_code\" ~ '^[A-HJKMNPQRSTUVWXYZ2-9]{6}$') OR (\"mode\" = 'SINGLE_PLAYER' AND \"invite_code\" IS NULL)"
+          "value": "(\"mode\" = 'MULTIPLAYER' AND \"invite_code\" IS NOT NULL AND \"invite_code\" ~ '^[A-HJKMNPQRSTUVWXYZ2-9]{6}$') OR (\"mode\" = 'SINGLE_PLAYER' AND \"invite_code\" IS NULL)"
         },
         "rooms_closed_at_check": {
           "name": "rooms_closed_at_check",

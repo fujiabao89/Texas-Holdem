@@ -10,7 +10,8 @@ import { defineConfig } from "drizzle-kit";
  */
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/infrastructure/persistence/schema",
+  // 仅匹配 *.ts：schema/ 目录还包含 README.md，目录模式会把它当模块加载。
+  schema: "./src/infrastructure/persistence/schema/*.ts",
   out: "./src/infrastructure/persistence/migrations",
   dbCredentials: {
     url: process.env.DATABASE_URL ?? "",

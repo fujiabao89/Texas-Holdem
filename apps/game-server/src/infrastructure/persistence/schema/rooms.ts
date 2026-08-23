@@ -38,9 +38,12 @@ export const rooms = pgTable(
   (t) => [
     // 邀请码：当前有效 MULTIPLAYER 房间内唯一（CLOSED 后失效可复用）；
     // 字符集排除 0/O/1/I/L 等易混淆字符，长度恰为 6（§5.1）。
+    // MULTIPLAYER 分支必须显式拒绝 NULL：`NULL ~ 正则` 结果为 NULL，
+    // PostgreSQL 对 CHECK 的 NULL 视为通过（三值逻辑），不写 IS NOT NULL
+    // 会放行无邀请码的 MULTIPLAYER 房间。
     check(
       "rooms_invite_code_check",
-      sql`("mode" = 'MULTIPLAYER' AND "invite_code" ~ '^[A-HJKMNPQRSTUVWXYZ2-9]{6}$') OR ("mode" = 'SINGLE_PLAYER' AND "invite_code" IS NULL)`,
+      sql`("mode" = 'MULTIPLAYER' AND "invite_code" IS NOT NULL AND "invite_code" ~ '^[A-HJKMNPQRSTUVWXYZ2-9]{6}$') OR ("mode" = 'SINGLE_PLAYER' AND "invite_code" IS NULL)`,
     ),
     // CLOSED 状态与终止时间/原因码/保留期必须一致出现（§5.1/§5.9）。
     check(

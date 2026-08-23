@@ -16,6 +16,23 @@ describe("stableStringify", () => {
     expect(stableStringify({ sequence: 9007199254740993n })).toBe('{"sequence":9007199254740993}');
   });
 
+  it("serializes Date as ISO-8601 UTC string, not {}", () => {
+    // Date 无可枚举自有属性：不特判会落入对象分支输出 `{}`，
+    // 使仅时间戳不同的 Bundle 得到相同 commit_checksum。
+    expect(stableStringify(new Date(0))).toBe('"1970-01-01T00:00:00.000Z"');
+    expect(stableStringify({ startedAt: new Date(86400000) })).toBe(
+      '{"startedAt":"1970-01-02T00:00:00.000Z"}',
+    );
+    // 嵌套数组中的 Date 同样生效。
+    expect(stableStringify([new Date(0), new Date(1)])).toBe(
+      '["1970-01-01T00:00:00.000Z","1970-01-01T00:00:00.001Z"]',
+    );
+  });
+
+  it("rejects invalid dates instead of serializing them as {}", () => {
+    expect(() => stableStringify({ at: new Date(Number.NaN) })).toThrow();
+  });
+
   it("keeps array order significant", () => {
     expect(stableStringify([2, 1])).not.toBe(stableStringify([1, 2]));
   });
@@ -44,5 +61,15 @@ describe("sha256Checksum", () => {
 
   it("differs when content differs", () => {
     expect(sha256Checksum({ a: 1 }).equals(sha256Checksum({ a: 2 }))).toBe(false);
+  });
+
+  it("distinguishes bundles differing only in Date fields", () => {
+    expect(sha256Checksum({ at: new Date(0) }).equals(sha256Checksum({ at: new Date(1) }))).toBe(
+      false,
+    );
+    // 同一时刻的 Date 产生相同摘要（canonical 形式可重现）。
+    expect(sha256Checksum({ at: new Date(0) }).equals(sha256Checksum({ at: new Date(0) }))).toBe(
+      true,
+    );
   });
 });

@@ -113,7 +113,7 @@ P0 的持久化策略是"**内存运行 + 关键状态持久化**"（《区块6-
 
 Room 与首个 Host 的建立必须放在同一事务中：先插入 `rooms(host_player_id = NULL)`，再插入 `room_players`，最后回填 Host；复合外键设为 `DEFERRABLE INITIALLY DEFERRED`。
 
-> **实现注记（TEX-18）**：已实现——`RoomRepository.createRoomWithHost` 按上述三步单事务写入；DEFERRABLE 复合外键 `rooms_host_player_fk` 由手写迁移 `0001` 追加（Drizzle 无法表达循环依赖外键，故 Drizzle schema 中不声明）。邀请码字符集以 CHECK 正则 `^[A-HJKMNPQRSTUVWXYZ2-9]{6}$` 强制；`CLOSED` 与 `closed_reason`/`closed_at`/`retention_expires_at` 的一致性由跨字段 CHECK 强制（`retention_expires_at >= closed_at` 弱校验，精确 180 天策略由应用层保证）。
+> **实现注记（TEX-18）**：已实现——`RoomRepository.createRoomWithHost` 按上述三步单事务写入；DEFERRABLE 复合外键 `rooms_host_player_fk` 由手写迁移 `0001` 追加（Drizzle 无法表达循环依赖外键，故 Drizzle schema 中不声明）。邀请码以 CHECK 强制：MULTIPLAYER 必填且匹配 `^[A-HJKMNPQRSTUVWXYZ2-9]{6}$`（对 NULL 显式拒绝——`NULL ~ 正则` 为 NULL、CHECK 三值逻辑会放行）、SINGLE_PLAYER 必须 NULL。`CLOSED` 与 `closed_reason`/`closed_at`/`retention_expires_at` 的一致性由跨字段 CHECK 强制（`retention_expires_at >= closed_at` 弱校验，精确 180 天策略由应用层保证）；无真人关房经 Commit Bundle 的 `tournamentFinish.roomClosure` 在同一事务写齐关房元数据，缺失或错配在写入前被拒绝（§7.3）。
 
 P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand 记录：`rooms.id` 同时就是单人恢复契约中的 `gameId`，唯一 HUMAN 是 Host，BOT 使用同 Room 下的 `room_players(kind=BOT)` 和 `tournament_players`。不新建一套 `single_player_games` 表，不绕过本文的 Commit Bundle、Snapshot、AI 用量与保留策略。
 

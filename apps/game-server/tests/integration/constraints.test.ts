@@ -259,6 +259,17 @@ describeTestDatabase("constraints: 合法行成功、越界行失败", (context)
         configJson: {},
       }),
     ).rejects.toMatchObject({ cause: { code: CHECK_VIOLATION } });
+    // MULTIPLAYER 邀请码缺失（§5.1 必填）：NULL ~ 正则为 NULL，CHECK 的三值
+    // 逻辑会放行，必须由 IS NOT NULL 显式拒绝。
+    await expect(
+      testDb!.database.db.insert(rooms).values({
+        id: randomUUID(),
+        mode: "MULTIPLAYER",
+        inviteCode: null,
+        status: "CREATED",
+        configJson: {},
+      }),
+    ).rejects.toMatchObject({ cause: { code: CHECK_VIOLATION } });
     // MULTIPLAYER 邀请码字符集非法（含 0/O/1/I/L、长度不对或小写）。
     for (const badCode of ["ABC230", "ABCO34", "ABCI34", "ABCL34", "ABC1", "ABCD345", "abcd34"]) {
       await expect(

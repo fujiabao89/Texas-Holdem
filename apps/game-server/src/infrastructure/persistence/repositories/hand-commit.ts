@@ -57,6 +57,18 @@ export interface TournamentPlayerResultUpdate {
   readonly eliminatedHandId: string | null;
 }
 
+/**
+ * 关房元数据（docs/03-data-model.md §5.1）：`roomStatus = "CLOSED"` 时必填，
+ * 与关房状态在同一事务内原子写入；缺失会被 DB CHECK（`rooms_closed_at_check`
+ * 等）拒绝并回滚整个 Bundle。
+ */
+export interface RoomClosureMetadata {
+  readonly closedAt: Date;
+  /** 服务端原因码（P0 至少 `ABANDONED_NO_HUMAN`，§5.1）。 */
+  readonly closedReason: string;
+  readonly retentionExpiresAt: Date;
+}
+
 /** 该手终结比赛时的终局更新（§7.3）；非终局手不传。 */
 export interface TournamentFinishUpdate {
   readonly status: "FINISHED" | "ABANDONED_NO_HUMAN";
@@ -65,6 +77,8 @@ export interface TournamentFinishUpdate {
   readonly retentionExpiresAt: Date;
   /** 比赛结束后 Room 的状态（如 IN_GAME → FINISHED）。不传则不改 Room。 */
   readonly roomStatus?: "LOBBY" | "FINISHED" | "CLOSED";
+  /** 仅 `roomStatus = "CLOSED"` 时允许且必填（§5.1）。 */
+  readonly roomClosure?: RoomClosureMetadata;
 }
 
 export interface HandCommitBundle {
@@ -145,6 +159,7 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
       }
 
       validateBundleIntegrity(bundle, tournament.lastCommittedSequence);
+      validateTournamentFinish(bundle.tournamentFinish);
 
       // §7.3：验证该手全部事件与库内水位线咬合（首序列 = 水位线 + 1）。
       await tx.insert(hands).values({
@@ -217,11 +232,6 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
 
       if (bundle.tournamentFinish !== undefined) {
         const finish = bundle.tournamentFinish;
-        if (finish.status !== "FINISHED" && finish.championTournamentPlayerId !== null) {
-          throw new PersistenceError(
-            "champion cannot be set for an abandoned tournament (ABANDONED_NO_HUMAN)",
-          );
-        }
         await tx
           .update(tournaments)
           .set({
@@ -231,7 +241,20 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
             retentionExpiresAt: finish.retentionExpiresAt,
           })
           .where(eq(tournaments.id, bundle.tournamentId));
-        if (finish.roomStatus !== undefined) {
+        if (finish.roomStatus === "CLOSED" && finish.roomClosure !== undefined) {
+          // §5.1：CLOSED 必须同事务写齐 closed_at/closed_reason/retention_expires_at，
+          // 只写 status 会违反 rooms_closed_* CHECK 并回滚整个 Bundle。
+          const closure = finish.roomClosure;
+          await tx
+            .update(rooms)
+            .set({
+              status: "CLOSED",
+              closedAt: closure.closedAt,
+              closedReason: closure.closedReason,
+              retentionExpiresAt: closure.retentionExpiresAt,
+            })
+            .where(eq(rooms.id, tournament.roomId));
+        } else if (finish.roomStatus !== undefined) {
           await tx
             .update(rooms)
             .set({ status: finish.roomStatus })
@@ -244,6 +267,32 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
   }
 
   return { commitHandBundle };
+}
+
+/**
+ * 终局更新前置验证（写入前失败，不依赖回滚）：
+ * - ABANDONED_NO_HUMAN 不得宣告冠军（§5.3）；
+ * - roomStatus=CLOSED 必须携带 roomClosure（closed_at/closed_reason/
+ *   retention_expires_at，§5.1），否则 DB CHECK 会拒绝并回滚整个 Bundle；
+ * - roomClosure 只在 CLOSED 时允许——其他状态写入关房字段同样违反 CHECK。
+ */
+function validateTournamentFinish(finish: TournamentFinishUpdate | undefined): void {
+  if (finish === undefined) {
+    return;
+  }
+  if (finish.status !== "FINISHED" && finish.championTournamentPlayerId !== null) {
+    throw new PersistenceError(
+      "champion cannot be set for an abandoned tournament (ABANDONED_NO_HUMAN)",
+    );
+  }
+  if (finish.roomStatus === "CLOSED" && finish.roomClosure === undefined) {
+    throw new PersistenceError(
+      "roomStatus CLOSED requires roomClosure (closed_at/closed_reason/retention_expires_at, docs/03 §5.1)",
+    );
+  }
+  if (finish.roomStatus !== "CLOSED" && finish.roomClosure !== undefined) {
+    throw new PersistenceError("roomClosure is only allowed when roomStatus is CLOSED");
+  }
 }
 
 /**

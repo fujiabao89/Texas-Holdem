@@ -10,6 +10,7 @@ import {
   createTournamentRepository,
   HandSequenceIntegrityError,
   PartialCommitConflictError,
+  PersistenceError,
   SequenceIntegrityError,
   TournamentNotFoundError,
   TournamentPlayerUpdateTargetError,
@@ -586,6 +587,130 @@ describeTestDatabase("hand commit bundle: 原子性与幂等", (context) => {
       },
     };
     await expect(repo.commitHandBundle(bundle)).rejects.toThrow(/champion/i);
+    expect(
+      await testDb!.database.db.select().from(hands).where(eq(hands.id, bundle.hand.id)),
+    ).toHaveLength(0);
+  });
+
+  it("无真人关房：roomStatus=CLOSED 同事务写齐 closed_at/closed_reason/retention（§5.1）", async () => {
+    const fixture = await createTournamentFixture("Mu");
+    const repo = createHandCommitRepository(testDb!.database);
+    const finishedAt = new Date("2026-01-01T02:00:00Z");
+    const closedAt = new Date("2026-01-01T02:00:01Z");
+    const bundle: HandCommitBundle = {
+      ...buildBundle({
+        tournamentId: fixture.tournamentId,
+        handId: randomUUID(),
+        handNumber: 1,
+        firstSequence: 1n,
+        eventCount: 2,
+        participantId: fixture.participantId,
+      }),
+      tournamentFinish: {
+        status: "ABANDONED_NO_HUMAN",
+        championTournamentPlayerId: null,
+        finishedAt,
+        retentionExpiresAt: new Date(finishedAt.getTime() + 180 * 24 * 3600 * 1000),
+        roomStatus: "CLOSED",
+        roomClosure: {
+          closedAt,
+          closedReason: "ABANDONED_NO_HUMAN",
+          retentionExpiresAt: new Date(closedAt.getTime() + 180 * 24 * 3600 * 1000),
+        },
+      },
+    };
+    await expect(repo.commitHandBundle(bundle)).resolves.toBe("committed");
+
+    // 终局三件套整体可见：Room CLOSED + 元数据、Tournament 终态、Hand/Snapshot。
+    const [room] = await testDb!.database.db.select().from(rooms).where(eq(rooms.id, fixture.roomId));
+    expect(room.status).toBe("CLOSED");
+    expect(room.closedAt?.toISOString()).toBe(closedAt.toISOString());
+    expect(room.closedReason).toBe("ABANDONED_NO_HUMAN");
+    expect(room.retentionExpiresAt?.toISOString()).toBe(
+      new Date(closedAt.getTime() + 180 * 24 * 3600 * 1000).toISOString(),
+    );
+    const [tournament] = await testDb!.database.db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, fixture.tournamentId));
+    expect(tournament.status).toBe("ABANDONED_NO_HUMAN");
+    expect(tournament.championTournamentPlayerId).toBeNull();
+    expect(
+      await testDb!.database.db.select().from(hands).where(eq(hands.id, bundle.hand.id)),
+    ).toHaveLength(1);
+    expect(
+      await testDb!.database.db
+        .select()
+        .from(gameSnapshots)
+        .where(eq(gameSnapshots.id, bundle.snapshot.id)),
+    ).toHaveLength(1);
+  });
+
+  it("roomStatus=CLOSED 缺 roomClosure 被拒绝（否则 DB CHECK 23514 回滚整个 Bundle）", async () => {
+    const fixture = await createTournamentFixture("Nu");
+    const repo = createHandCommitRepository(testDb!.database);
+    const finishedAt = new Date();
+    const bundle: HandCommitBundle = {
+      ...buildBundle({
+        tournamentId: fixture.tournamentId,
+        handId: randomUUID(),
+        handNumber: 1,
+        firstSequence: 1n,
+        eventCount: 2,
+        participantId: fixture.participantId,
+      }),
+      tournamentFinish: {
+        status: "ABANDONED_NO_HUMAN",
+        championTournamentPlayerId: null,
+        finishedAt,
+        retentionExpiresAt: new Date(finishedAt.getTime() + 180 * 24 * 3600 * 1000),
+        roomStatus: "CLOSED",
+        // roomClosure 缺失：只写 status 会违反 rooms_closed_* CHECK。
+      },
+    };
+    await expect(repo.commitHandBundle(bundle)).rejects.toThrow(/roomClosure/i);
+    // 前置校验失败：无任何写入遗留。
+    expect(
+      await testDb!.database.db.select().from(hands).where(eq(hands.id, bundle.hand.id)),
+    ).toHaveLength(0);
+    const [room] = await testDb!.database.db.select().from(rooms).where(eq(rooms.id, fixture.roomId));
+    expect(room.status).toBe("CREATED");
+    const [tournament] = await testDb!.database.db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, fixture.tournamentId));
+    expect(tournament.status).toBe("IN_GAME");
+    expect(tournament.lastCommittedSequence).toBe(0n);
+  });
+
+  it("roomClosure 搭配非 CLOSED roomStatus 被拒绝（关房字段只属于 CLOSED）", async () => {
+    const fixture = await createTournamentFixture("Xi");
+    const repo = createHandCommitRepository(testDb!.database);
+    const finishedAt = new Date();
+    const bundle: HandCommitBundle = {
+      ...buildBundle({
+        tournamentId: fixture.tournamentId,
+        handId: randomUUID(),
+        handNumber: 1,
+        firstSequence: 1n,
+        eventCount: 2,
+        participantId: fixture.participantId,
+      }),
+      tournamentFinish: {
+        status: "FINISHED",
+        championTournamentPlayerId: fixture.participantId,
+        finishedAt,
+        retentionExpiresAt: new Date(finishedAt.getTime() + 180 * 24 * 3600 * 1000),
+        roomStatus: "FINISHED",
+        roomClosure: {
+          // 非 CLOSED 状态写关房字段同样违反 rooms_closed_* CHECK。
+          closedAt: finishedAt,
+          closedReason: "ABANDONED_NO_HUMAN",
+          retentionExpiresAt: new Date(finishedAt.getTime() + 180 * 24 * 3600 * 1000),
+        },
+      },
+    };
+    await expect(repo.commitHandBundle(bundle)).rejects.toBeInstanceOf(PersistenceError);
     expect(
       await testDb!.database.db.select().from(hands).where(eq(hands.id, bundle.hand.id)),
     ).toHaveLength(0);
