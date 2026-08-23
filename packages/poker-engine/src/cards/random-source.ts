@@ -33,8 +33,9 @@ export class SeededRandomSource implements RandomSource {
   private state: number;
 
   constructor(seed: number) {
-    if (!Number.isSafeInteger(seed) || seed < 0) {
-      throw new Error(`SeededRandomSource: seed 必须是非负安全整数，收到 ${seed}`);
+    // 非负且 < 2^32：seed 会被 `>>> 0` 截断为 32 位，若接受更大值会与较小值别名到同一序列。
+    if (!Number.isSafeInteger(seed) || seed < 0 || seed >= UINT32_MAX) {
+      throw new Error(`SeededRandomSource: seed 必须为 [0, ${UINT32_MAX}) 内整数，收到 ${seed}`);
     }
     this.seed = seed;
     this.state = seed >>> 0;

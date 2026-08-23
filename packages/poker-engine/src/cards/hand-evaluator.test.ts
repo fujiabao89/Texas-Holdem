@@ -221,6 +221,38 @@ describe("输入 6 张", () => {
   });
 });
 
+describe("返回值为运行时不可变（防止调用方污染 comparison）", () => {
+  it("Object.freeze 后 comparisonKey 与 bestFiveCards 不可扩展或改写", () => {
+    const evaluation = evaluateHand(cards(["7c", "7d", "7h", "Kd", "Kc"]));
+    expect(Object.isFrozen(evaluation.comparisonKey)).toBe(true);
+    expect(Object.isFrozen(evaluation.bestFiveCards)).toBe(true);
+  });
+
+  it("改写暴露的 comparisonKey 不会改变后续胜负判定（防反转）", () => {
+    const strong = ev("8c", "8d", "8h", "8s", "Ah"); // Four of a Kind, kicker A
+    const weak = ev("5c", "5d", "Ah", "Kh", "Qh"); // One Pair
+
+    expect(compareEvaluations(strong, weak)).toBe(1);
+    expect(decideOutcome(strong, weak)).toBe("win");
+
+    // 外部尝试以 mutation 反转结果：冻结数组在严格模式（vitest 默认）下抛 TypeError，
+    // 且无论成功与否，后续胜负判定都不受影响。
+    const key = strong.comparisonKey as unknown as number[];
+    expect(() => {
+      key[0] = 0;
+    }).toThrow(TypeError);
+    expect(compareEvaluations(strong, weak)).toBe(1);
+    expect(decideOutcome(strong, weak)).toBe("win");
+
+    // bestFiveCards 同样受保护，不能被清空。
+    const five = strong.bestFiveCards as unknown as { length: number }[];
+    expect(() => {
+      five.length = 0;
+    }).toThrow(TypeError);
+    expect(five.length).toBe(5);
+  });
+});
+
 describe("完全平局", () => {
   it("两张手牌 best five 相同则为平局", () => {
     const a = ev("5c", "6d", "7h", "8s", "9h", "2c", "2d");

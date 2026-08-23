@@ -212,8 +212,8 @@ function evaluateFive(cards: readonly Card[]): HandEvaluation {
 
   return {
     rank,
-    bestFiveCards: [...cards],
-    comparisonKey: [rank, ...tiebreakers],
+    bestFiveCards: Object.freeze([...cards]) as readonly Card[],
+    comparisonKey: Object.freeze([rank, ...tiebreakers]) as readonly number[],
   };
 }
 

@@ -37,6 +37,14 @@ describe("SeededRandomSource", () => {
     expect(() => new SeededRandomSource(1.5)).toThrow();
   });
 
+  it("拒绝会与较小 seed 别名到同一序列的值（>= 2^32）", () => {
+    expect(() => new SeededRandomSource(0x1_0000_0000)).toThrow(); // 2^32
+    expect(() => new SeededRandomSource(Number.MAX_SAFE_INTEGER)).toThrow();
+    // 边界：[0, 2^32) 内可接受。
+    expect(() => new SeededRandomSource(0)).not.toThrow();
+    expect(() => new SeededRandomSource(0x1_0000_0000 - 1)).not.toThrow();
+  });
+
   it("拒绝超过 2^32 的区间（防止死循环）", () => {
     const rng = new SeededRandomSource(1);
     expect(() => rng.nextInt(0x1_0000_0001)).toThrow();
