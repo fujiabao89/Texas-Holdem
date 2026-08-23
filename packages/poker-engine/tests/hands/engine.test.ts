@@ -162,6 +162,10 @@ describe("PokerHandEngine 单局行为", () => {
     const outcome = eng.getOutcome()!;
     expect(outcome.pots.length).toBeGreaterThanOrEqual(1);
     assertInvariants(eng.getState());
+    // 构造内 runout 自动事件后，sequence 仍连续且 nextSequence 回写为事件总数（§14/§16）。
+    const seqs = eng.getEvents().map((e) => e.sequence);
+    expect(seqs).toEqual(seqs.map((_, i) => i));
+    expect(eng.getState().nextSequence).toBe(seqs.length);
   });
 
   it("排除零筹码座位：0 筹码座位不参与本手，且不可被指定为 Dealer", () => {

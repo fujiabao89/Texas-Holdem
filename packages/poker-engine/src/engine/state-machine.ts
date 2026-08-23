@@ -237,6 +237,8 @@ export function createInitialState(config: HandConfig): HandResult {
   // 全员全下（含 HU 短盲）：无可行动者 → 立即 Runout + 比牌结算（§6 提前结算 2）。
   if (currentActor === null) {
     state = runToSettlement(state, emit);
+    // 回写自动推进（BURN/deal/showdown/award 等）产生的最终 sequence 游标，避免事件序号复用（§14/§16）。
+    state = Object.freeze({ ...state, nextSequence: seq.value });
   }
 
   return { state, events: Object.freeze(events) };
