@@ -70,6 +70,18 @@ export interface HandResult {
 
 /** 校验开局配置边界（§16 确定性 / §12 约束）：≥2 名持筹码玩家、座位号唯一、dealer 在参与集合、注入牌堆足够且唯一、SB < BB。 */
 function validateHandConfig(config: HandConfig, inHand: readonly SeatConfig[]): void {
+  // 金额校验：盲注为正整数、参与筹码为非负整数（拒绝负数/小数/非有限值，§4.3/§8.6）。
+  if (!Number.isInteger(config.smallBlind) || config.smallBlind <= 0) {
+    throw new Error(`createInitialState: 小盲必须为正整数，收到 ${config.smallBlind}`);
+  }
+  if (!Number.isInteger(config.bigBlind) || config.bigBlind <= 0) {
+    throw new Error(`createInitialState: 大盲必须为正整数，收到 ${config.bigBlind}`);
+  }
+  for (const s of config.seats) {
+    if (!Number.isInteger(s.chips) || s.chips < 0) {
+      throw new Error(`createInitialState: 座位 ${s.seatIndex} 筹码必须为非负整数，收到 ${s.chips}`);
+    }
+  }
   if (inHand.length < 2 || inHand.length > 10) {
     throw new Error(`createInitialState: 本手需 2–10 名持筹码玩家，实际 ${inHand.length}`);
   }

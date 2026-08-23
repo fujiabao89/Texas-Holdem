@@ -210,6 +210,13 @@ describe("PokerHandEngine 单局行为", () => {
     expect(eng.getLegalActions().callAmount).toBe(10); // SB 须补足到 20
   });
 
+  it("非法金额配置：负数/非整数盲注或筹码在构造时抛错", () => {
+    expect(() => new PokerHandEngine(cfg([seat(0, 100), seat(1, 100)], { dealerSeat: 0, smallBlind: -5, bigBlind: 20 }))).toThrow();
+    expect(() => new PokerHandEngine(cfg([seat(0, 100), seat(1, 100)], { dealerSeat: 0, smallBlind: 1.5, bigBlind: 20 }))).toThrow();
+    expect(() => new PokerHandEngine(cfg([seat(0, 100.5), seat(1, 100)], { dealerSeat: 0, smallBlind: 10, bigBlind: 20 }))).toThrow();
+    expect(() => new PokerHandEngine(cfg([seat(0, -10), seat(1, 100)], { dealerSeat: 0, smallBlind: 10, bigBlind: 20 }))).toThrow();
+  });
+
   it("注入非全量牌堆（2 名玩家仅 12 张）必须抛错（契约要求恰好 52 张）", () => {
     const codes12 = ["As", "Ks", "Ah", "Kh", "2c", "3d", "4s", "5h", "6d", "7c", "8s", "9d"];
     const cards = codes12.map((code) => parseCard(code));
