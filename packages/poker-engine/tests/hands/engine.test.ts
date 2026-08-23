@@ -210,10 +210,11 @@ describe("PokerHandEngine 单局行为", () => {
     expect(eng.getLegalActions().callAmount).toBe(10); // SB 须补足到 20
   });
 
-  it("注入牌堆不足（2×参与人数+6 张）时构造必须抛错（缺少 River 烧牌）", () => {
-    const cards = ["As", "Ks", "Ah", "Kh", "2c", "3d", "4s", "5h", "6d", "7c"].map((code) => parseCard(code));
+  it("注入非全量牌堆（2 名玩家仅 12 张）必须抛错（契约要求恰好 52 张）", () => {
+    const codes12 = ["As", "Ks", "Ah", "Kh", "2c", "3d", "4s", "5h", "6d", "7c", "8s", "9d"];
+    const cards = codes12.map((code) => parseCard(code));
     const shortDeck = { toArray: () => [...cards], draw: () => cards.shift()!, shuffle: () => {}, size: cards.length } as unknown as Deck;
-    // 2 人完整手牌需 2×2 + 3 + 5 = 12 张；10 张不足 → 抛错。
+    // 12 张满足「够发一手」的最小长度，但违反「恰好 52 张」契约 → 构造须抛错（而非依赖构造后 assertInvariants）。
     expect(() => new PokerHandEngine(cfg([seat(0), seat(1)], { dealerSeat: 0, deck: shortDeck }))).toThrow();
   });
 });

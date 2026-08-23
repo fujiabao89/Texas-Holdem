@@ -24,6 +24,7 @@ export interface SeatConfig {
  * 单局配置。
  * - `dealerSeat` 缺省时由 `rng` 从 `chips>0` 的座位中选（结果写入 state，§16）。
  * - `deck` 缺省 = 标准 52 张 + `shuffle(rng)`（洗牌顺序写入 state）；测试可注入预排 `Deck` 精确控牌。
+ *   注入契约：必须为**恰好 52 张唯一牌**（与 §17 牌堆守恒不变量一致），拒绝部分前缀。
  */
 export interface HandConfig {
   readonly handNumber: number;

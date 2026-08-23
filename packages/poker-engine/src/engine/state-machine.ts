@@ -70,8 +70,8 @@ export interface HandResult {
 
 /** 校验开局配置边界（§16 确定性 / §12 约束）：≥2 名持筹码玩家、座位号唯一、dealer 在参与集合、注入牌堆足够且唯一、SB < BB。 */
 function validateHandConfig(config: HandConfig, inHand: readonly SeatConfig[]): void {
-  if (inHand.length < 2) {
-    throw new Error(`createInitialState: 本手至少需要 2 名持筹码玩家，实际 ${inHand.length}`);
+  if (inHand.length < 2 || inHand.length > 10) {
+    throw new Error(`createInitialState: 本手需 2–10 名持筹码玩家，实际 ${inHand.length}`);
   }
   const seen = new Set<number>();
   for (const s of config.seats) {
@@ -84,11 +84,11 @@ function validateHandConfig(config: HandConfig, inHand: readonly SeatConfig[]): 
   if (config.smallBlind >= config.bigBlind) {
     throw new Error(`createInitialState: 小盲 ${config.smallBlind} 必须小于大盲 ${config.bigBlind}`);
   }
+  // 注入牌堆契约：恰好 52 张唯一牌（与 §17 牌堆守恒不变量一致）；拒绝部分前缀，避免构造后 assertInvariants 再报错。
   if (config.deck) {
     const cards = config.deck.toArray();
-    const needed = 2 * inHand.length + 3 + 5; // 底牌 ×2 + Flop/Turn/River 各 Burn 1 张（共 3）+ 5 张公共牌（上限）
-    if (cards.length < needed) {
-      throw new Error(`createInitialState: 注入牌堆仅 ${cards.length} 张，至少需要 ${needed} 张`);
+    if (cards.length !== 52) {
+      throw new Error(`createInitialState: 注入牌堆须为恰好 52 张（收到 ${cards.length} 张）`);
     }
     if (new Set(cards.map(cardKey)).size !== cards.length) {
       throw new Error("createInitialState: 注入牌堆含重复牌");
