@@ -196,14 +196,24 @@ describe("PokerHandEngine 单局行为", () => {
     expect(seqs).toEqual(seqs.map((_, i) => i)); // 0,1,2,… 无重复、无缺号
   });
 
-  it("短 BB：preflop currentBet 取名义 BB，SB 须补足到 BB（§8.2）", () => {
+  it("短 BB：preflop 为完整默认 BB 态（currentBet=名义 BB、minRaiseTo=40、SB 补足到 BB）", () => {
     const eng = new PokerHandEngine(cfg([seat(0, 500), seat(1, 200), seat(2, 5)], { dealerSeat: 0, smallBlind: 10, bigBlind: 20 }));
     const state = eng.getState();
     expect(state.currentBet).toBe(20); // 名义 BB，而非短 BB 实际投入或 SB 额
-    expect(state.hasFullBetOrRaise).toBe(false); // BB 短于 BB → 无完整开注（minRaiseTo 回落 BB）
-    expect(eng.getLegalActions().callAmount).toBe(20); // UTG(seat0) 须跟到 20
+    expect(state.hasFullBetOrRaise).toBe(true); // BB 视为完整开注（完整默认 BB 态）
+    const la = eng.getLegalActions(); // UTG(seat0)
+    expect(la.canCall).toBe(true);
+    expect(la.callAmount).toBe(20); // 须跟到 20
+    expect(la.minRaiseTo).toBe(40); // 完整加注基线 = currentBet(20) + lastFullRaiseSize(20)
     eng.applyAction(act(0, "call"));
     expect(eng.getState().currentActor).toBe(1); // 轮到 SB(seat1)
     expect(eng.getLegalActions().callAmount).toBe(10); // SB 须补足到 20
+  });
+
+  it("注入牌堆不足（2×参与人数+6 张）时构造必须抛错（缺少 River 烧牌）", () => {
+    const cards = ["As", "Ks", "Ah", "Kh", "2c", "3d", "4s", "5h", "6d", "7c"].map((code) => parseCard(code));
+    const shortDeck = { toArray: () => [...cards], draw: () => cards.shift()!, shuffle: () => {}, size: cards.length } as unknown as Deck;
+    // 2 人完整手牌需 2×2 + 3 + 5 = 12 张；10 张不足 → 抛错。
+    expect(() => new PokerHandEngine(cfg([seat(0), seat(1)], { dealerSeat: 0, deck: shortDeck }))).toThrow();
   });
 });

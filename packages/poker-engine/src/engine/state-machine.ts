@@ -86,7 +86,7 @@ function validateHandConfig(config: HandConfig, inHand: readonly SeatConfig[]): 
   }
   if (config.deck) {
     const cards = config.deck.toArray();
-    const needed = 2 * inHand.length + 1 + 5; // 底牌 ×2 + 一张 Burn + 5 张公共牌（上限）
+    const needed = 2 * inHand.length + 3 + 5; // 底牌 ×2 + Flop/Turn/River 各 Burn 1 张（共 3）+ 5 张公共牌（上限）
     if (cards.length < needed) {
       throw new Error(`createInitialState: 注入牌堆仅 ${cards.length} 张，至少需要 ${needed} 张`);
     }
@@ -165,9 +165,9 @@ export function createInitialState(config: HandConfig): HandResult {
       toAmount: player.streetBet,
     });
   });
-  const bbActual = seats.find((s) => s.seatIndex === bbSeat)!.streetBet;
-  // §8.2：Pre-Flop 初始 currentBet = 名义 BB（即使 BB 玩家短盲/低于 BB，也不降低到已缴 SB 或短盲额；
-  // 短盲部分在结算时作为未跟注返还，见 §9）。blind 事件仍记录实际投入额（§14）。
+  // §8.2：Pre-Flop 初始下注上下文为**完整默认 BB 态**——currentBet / lastFullRaiseSize = 名义 BB，
+  // hasFullBetOrRaise = true（即使 BB 玩家短盲/低于 BB，也不降低 minRaiseTo；短盲部分在结算时作为未跟注返还，§9）。
+  // blind 事件仍记录实际投入额（§14）。
 
   // 发底牌：两轮，每轮从 Dealer 左侧起顺时针（HU 时 Button/SB 先得第一张）。
   const indices = seats.map((s) => s.seatIndex);
@@ -215,7 +215,7 @@ export function createInitialState(config: HandConfig): HandResult {
     currentActor,
     currentBet: config.bigBlind,
     lastFullRaiseSize: config.bigBlind,
-    hasFullBetOrRaise: bbActual >= config.bigBlind,
+    hasFullBetOrRaise: true,
     pots: Object.freeze([]),
     nextSequence: seq.value,
     initialTotalChips,
