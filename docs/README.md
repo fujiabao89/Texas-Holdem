@@ -5,13 +5,13 @@
 
 本目录是工程文档的唯一入口。规范：**一个事实只有一个权威来源**，其他文档链接引用而不是重写；产品层文档（规划书）留在仓库根目录，在本索引链接并标注"产品意图，非实现事实"。
 
-> 项目现状（2026-08-22 核对）：TEX-11 已建立 pnpm monorepo 工程地基——`apps/web` 与 `apps/game-server` 可安装、可 lint / typecheck / build / test（见 [docs/03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md)）；扑克规则、协议、服务端与前端业务逻辑仍未实现。本文档体系内的工程规格（01–06）仍为**设计意图 · 未实现**。
+> 项目现状（2026-08-22 核对）：TEX-11 已建立 pnpm monorepo 工程地基——`apps/web` 与 `apps/game-server` 可安装、可 lint / typecheck / build / test（见 [docs/03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md)）；TEX-13 已实现扑克规则中的 `cards/` 子域（标准 52 张牌堆、随机源、七选五 Hand Evaluator，见 [01-engine-spec.md](./01-engine-spec.md) §7/§10/§15/§17）。扑克规则的下注 / Pot / 状态机 / Tournament、协议、服务端与前端业务逻辑仍未实现。本文档体系内的工程规格（01–06）中，01 的 `cards/` 部分已实现、其余章节及 02–06 仍为**设计意图**。
 
 ## 文档地图
 
 | 编号 | 路径 | 一句话目的 | 权威范围 | 状态 |
 | --- | --- | --- | --- | --- |
-| 01 | [01-engine-spec.md](./01-engine-spec.md) | Poker Engine 纯规则规格 | 牌堆与发牌、下注与最小加注、Pot/Side Pot/Split、Hand 状态机、Hand Evaluator、Tournament 淘汰与排名、Game Events、RNG 与 Engine Invariants | 草稿（设计意图 · 未实现） |
+| 01 | [01-engine-spec.md](./01-engine-spec.md) | Poker Engine 纯规则规格 | 牌堆与发牌、下注与最小加注、Pot/Side Pot/Split、Hand 状态机、Hand Evaluator、Tournament 淘汰与排名、Game Events、RNG 与 Engine Invariants | 草稿（cards/ 已实现 · TEX-13；其余设计意图） |
 | 02 | [02-protocol-spec.md](./02-protocol-spec.md) | 联机协议规格（`packages/protocol`） | HTTP/WS 通道分工、身份与凭证、消息信封与 Snapshot + Event Stream、sequence 与幂等（actionId/expectedSequence/receivedAt）、超时竞争裁决、消息目录、PlayerView/BotView 投影契约、ErrorCode 码表 | P0 可实施基线（设计意图 · 未实现） |
 | 03 | [03-data-model.md](./03-data-model.md) | 数据模型与持久化规格（`apps/game-server` / Supabase Postgres） | 内存 vs 持久化边界、核心表（rooms/tournaments/tournament_players/hands/hand_events/game_snapshots/ai_requests）字段与约束、写入节奏与失败语义、敏感数据存放与暴露规则 | 草稿（设计意图 · 未实现） |
 | 04 | [04-game-server-architecture.md](./04-game-server-architecture.md) | Game Server 运行时工程设计（`apps/game-server`） | Room/Tournament 运行时、单桌串行执行器与超时裁决、Scheduler/Timer、连接管理与接管、投影执行、持久化编排、崩溃恢复、无真人关房、P1 AI 接入点 | 草稿（设计意图 · 未实现） |
