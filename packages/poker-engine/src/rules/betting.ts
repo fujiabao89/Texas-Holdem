@@ -16,7 +16,6 @@ export interface BettingContext {
   readonly hasFullBetOrRaise: boolean;
   readonly bigBlind: number;
 }
-
 /** 计算合法动作所需的玩家视图（streetBet / chips / 权重开记录）。 */
 export interface PlayerBetView {
   readonly streetBet: number;
@@ -147,4 +146,3 @@ export function resolveAllIn(
   const amount = player.chips;
   return { amount, newStreetBet: player.streetBet + amount, newChips: 0, isAllIn: true };
 }
-
