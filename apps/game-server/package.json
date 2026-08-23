@@ -8,13 +8,19 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/infrastructure/persistence/migrations/migrate.ts"
   },
   "dependencies": {
     "@fastify/websocket": "^11.3.0",
-    "fastify": "^5.12.0"
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.0",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.0"
   }
 }

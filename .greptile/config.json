@@ -1,8 +1,9 @@
 {
   "strictness": 2,
   "commentTypes": ["logic", "syntax"],
-  "triggerOnUpdates": true,
+  "triggerOnUpdates": false,
   "triggerOnDrafts": false,
+  "skipReview": "AUTOMATIC",
   "ignorePatterns": ".mcp.json\n.env\n.env.*\nnode_modules/**\ndist/**\nbuild/**\ncoverage/**\n**/*.generated.*\n**/*.lock",
   "summarySection": {
     "included": true,
