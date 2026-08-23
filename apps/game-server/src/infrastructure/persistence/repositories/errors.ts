@@ -53,3 +53,16 @@ export class PartialCommitConflictError extends PersistenceError {
     this.name = "PartialCommitConflictError";
   }
 }
+
+/**
+ * playerUpdates 目标行不存在或不属于本 Tournament：
+ * 防止跨赛修改赛果或静默 0 行更新（§7.4 不得静默；复合键保证属于本 Tournament，§5.9）。
+ */
+export class TournamentPlayerUpdateTargetError extends PersistenceError {
+  constructor(tournamentPlayerId: string) {
+    super(
+      `player update target missing or not in this tournament: ${tournamentPlayerId}`,
+    );
+    this.name = "TournamentPlayerUpdateTargetError";
+  }
+}

@@ -12,6 +12,7 @@ import {
   PartialCommitConflictError,
   SequenceIntegrityError,
   TournamentNotFoundError,
+  TournamentPlayerUpdateTargetError,
   type HandCommitBundle,
 } from "../../src/infrastructure/persistence/repositories";
 import {
@@ -321,6 +322,106 @@ describeTestDatabase("hand commit bundle: 原子性与幂等", (context) => {
       endReason: "ABANDONED",
     });
     await expect(repo.commitHandBundle(bundle)).rejects.toBeInstanceOf(PartialCommitConflictError);
+  });
+
+  it("playerUpdates 指向其他 Tournament 的参赛者被拒绝且不污染对方赛果（§7.4 跨赛防护）", async () => {
+    const fixtureA = await createTournamentFixture("Iota");
+    const fixtureB = await createTournamentFixture("Kappa");
+    const repo = createHandCommitRepository(testDb!.database);
+    // B 先正常提交一手，使其参赛者成为"有结果可篡改"的目标。
+    await repo.commitHandBundle(
+      buildBundle({
+        tournamentId: fixtureB.tournamentId,
+        handId: randomUUID(),
+        handNumber: 1,
+        firstSequence: 1n,
+        eventCount: 2,
+        participantId: fixtureB.participantId,
+      }),
+    );
+
+    const [bBefore] = await testDb!.database.db
+      .select()
+      .from(tournamentPlayers)
+      .where(eq(tournamentPlayers.id, fixtureB.participantId));
+
+    // 向 A 提交 bundle，但 playerUpdates 指向 B 的参赛者（脏 id/恢复重试场景）。
+    const malicious: HandCommitBundle = {
+      ...buildBundle({
+        tournamentId: fixtureA.tournamentId,
+        handId: randomUUID(),
+        handNumber: 1,
+        firstSequence: 1n,
+        eventCount: 2,
+        participantId: fixtureA.participantId,
+      }),
+      playerUpdates: [
+        {
+          tournamentPlayerId: fixtureB.participantId,
+          pokerStatus: "ELIMINATED",
+          finalStack: 0n,
+          forfeitedChips: 0n,
+          rank: 1,
+          eliminatedHandId: null,
+        },
+      ],
+    };
+    await expect(repo.commitHandBundle(malicious)).rejects.toBeInstanceOf(
+      TournamentPlayerUpdateTargetError,
+    );
+
+    // B 的参赛者未被改动；A 未遗留半手、水位线未推进。
+    const [bAfter] = await testDb!.database.db
+      .select()
+      .from(tournamentPlayers)
+      .where(eq(tournamentPlayers.id, fixtureB.participantId));
+    expect(bAfter.pokerStatus).toBe(bBefore.pokerStatus);
+    expect(bAfter.rank).toBe(bBefore.rank);
+    expect(bAfter.finalStack).toBe(bBefore.finalStack);
+    expect(
+      await testDb!.database.db.select().from(hands).where(eq(hands.id, malicious.hand.id)),
+    ).toHaveLength(0);
+    const [aTournament] = await testDb!.database.db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, fixtureA.tournamentId));
+    expect(aTournament.lastCommittedSequence).toBe(0n);
+  });
+
+  it("playerUpdates 指向不存在的参赛者被拒绝（拒绝静默 0 行更新）", async () => {
+    const fixture = await createTournamentFixture("Lambda");
+    const repo = createHandCommitRepository(testDb!.database);
+    const bundle: HandCommitBundle = {
+      ...buildBundle({
+        tournamentId: fixture.tournamentId,
+        handId: randomUUID(),
+        handNumber: 1,
+        firstSequence: 1n,
+        eventCount: 2,
+        participantId: fixture.participantId,
+      }),
+      playerUpdates: [
+        {
+          tournamentPlayerId: randomUUID(), // 不存在
+          pokerStatus: "ELIMINATED",
+          finalStack: 0n,
+          forfeitedChips: 0n,
+          rank: 2,
+          eliminatedHandId: null,
+        },
+      ],
+    };
+    await expect(repo.commitHandBundle(bundle)).rejects.toBeInstanceOf(
+      TournamentPlayerUpdateTargetError,
+    );
+    expect(
+      await testDb!.database.db.select().from(hands).where(eq(hands.id, bundle.hand.id)),
+    ).toHaveLength(0);
+    const [tournament] = await testDb!.database.db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, fixture.tournamentId));
+    expect(tournament.lastCommittedSequence).toBe(0n);
   });
 
   it("序列缺口/末位不对齐/空事件/hand_sequence 缺口全部被拒", async () => {

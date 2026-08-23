@@ -8,6 +8,7 @@ import {
   PersistenceError,
   SequenceIntegrityError,
   TournamentNotFoundError,
+  TournamentPlayerUpdateTargetError,
 } from "./errors";
 
 /**
@@ -185,7 +186,10 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
         commitChecksum: bundle.snapshot.commitChecksum,
       });
       for (const update of bundle.playerUpdates) {
-        await tx
+        // §7.4 不得静默：目标行必须存在且属于本 Tournament。
+        // WHERE 同时按 id + tournament_id 匹配并断言恰好命中 1 行——
+        // 防止跨赛修改赛果（脏 id 指向其他 Tournament）或静默 0 行更新。
+        const updatedRows = await tx
           .update(tournamentPlayers)
           .set({
             pokerStatus: update.pokerStatus,
@@ -195,7 +199,16 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
             eliminatedHandId: update.eliminatedHandId,
             updatedAt: new Date(),
           })
-          .where(eq(tournamentPlayers.id, update.tournamentPlayerId));
+          .where(
+            and(
+              eq(tournamentPlayers.id, update.tournamentPlayerId),
+              eq(tournamentPlayers.tournamentId, bundle.tournamentId),
+            ),
+          )
+          .returning({ id: tournamentPlayers.id });
+        if (updatedRows.length !== 1) {
+          throw new TournamentPlayerUpdateTargetError(update.tournamentPlayerId);
+        }
       }
       await tx
         .update(tournaments)

@@ -1,5 +1,6 @@
 import type { Database } from "../database";
 import { tournaments, tournamentPlayers } from "../schema";
+import { validateDisplayName } from "../display-name";
 
 /**
  * Tournament 控制面仓储（docs/03-data-model.md §5.3/§5.4/§7.2）。
@@ -39,6 +40,11 @@ export function createTournamentRepository(database: Database): TournamentReposi
   async function createTournamentWithPlayers(
     input: CreateTournamentWithPlayersInput,
   ): Promise<void> {
+    // 昵称快照与 Room 成员走同一校验（§5.2）：来自运行时的输入不因非客户端
+    // 直传而豁免；tournament_players.display_name 无 DB CHECK 兜底。
+    for (const player of input.players) {
+      validateDisplayName(player.displayName);
+    }
     await database.withTransaction(async (tx) => {
       await tx.insert(tournaments).values({
         id: input.tournamentId,

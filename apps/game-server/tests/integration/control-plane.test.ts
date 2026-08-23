@@ -196,4 +196,42 @@ describeTestDatabase("control plane: 原子写入", (context) => {
       .where(eq(tournaments.id, tournamentId));
     expect(rows).toHaveLength(0);
   });
+
+  it("Tournament 参赛者昵称快照同样过校验（非法昵称整体回滚，无 DB CHECK 兜底）", async () => {
+    const roomRepo = createRoomRepository(testDb!.database);
+    const tournamentRepo = createTournamentRepository(testDb!.database);
+    const { input } = makeRoomFixture("Eve");
+    await roomRepo.createRoomWithHost(input);
+
+    const tournamentId = randomUUID();
+    await expect(
+      tournamentRepo.createTournamentWithPlayers({
+        tournamentId,
+        roomId: input.roomId,
+        tournamentNo: 1,
+        configJson: {},
+        players: [
+          {
+            id: randomUUID(),
+            playerId: input.host.playerId,
+            displayName: "Bad\tName", // 控制字符：入库前校验拒绝
+            seatIndex: 0,
+            kind: "HUMAN",
+            startingStack: 500n,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/display name/);
+
+    const rows = await testDb!.database.db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+    expect(rows).toHaveLength(0);
+    const participants = await testDb!.database.db
+      .select()
+      .from(tournamentPlayers)
+      .where(eq(tournamentPlayers.tournamentId, tournamentId));
+    expect(participants).toHaveLength(0);
+  });
 });

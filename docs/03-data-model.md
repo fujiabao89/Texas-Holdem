@@ -7,7 +7,7 @@
 > 对应代码：`apps/game-server/src/infrastructure/persistence/`（Drizzle schema、迁移、连接/事务、仓储；见该目录 README）
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【实现现状 · TEX-18，2026-08-23】** §5 全部 8 张表、枚举、复合外键（含两个 DEFERRABLE 循环外键）、CHECK、部分唯一索引与最小权限已由版本化迁移落地并经真实 PostgreSQL 集成测试核对（§15 项 1/2/3/7 达成）；控制面原子写入与手末 Commit Bundle 仓储已实现。**仍为设计意图**：§4.2/§7.1–7.2 的运行时写入编排（异步 Writer/队列/watermark）、§4.3/§7.5 的恢复流程、§5.10 清理任务、§7.6–7.7 失败降级（属 TEX-19～TEX-22）。各表字段表与规格一致，实现补充以"实现注记"标出。
+> **【实现现状 · TEX-18，2026-08-23】** §5 全部 8 张表、枚举、复合外键（含两个 DEFERRABLE 循环外键）、CHECK、部分唯一索引与最小权限已由版本化迁移落地并经真实 PostgreSQL 集成测试核对（§15 项 1/2/3/7 达成）；控制面原子写入与手末 Commit Bundle 仓储已实现（Bundle 内参赛者结果更新按 `id + tournament_id` 匹配并断言受影响行数，拒绝跨赛修改与静默无效更新，§7.4）。**仍为设计意图**：§4.2/§7.1–7.2 的运行时写入编排（异步 Writer/队列/watermark）、§4.3/§7.5 的恢复流程、§5.10 清理任务、§7.6–7.7 失败降级（属 TEX-19～TEX-22）。各表字段表与规格一致，实现补充以"实现注记"标出。
 
 ## 1. Purpose
 
@@ -178,7 +178,7 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 - 连接状态（`ConnectionStatus`）**不落库**：连接是运行时概念，与 `PokerStatus` 解耦（[01](./01-engine-spec.md) §4.3；[02](./02-protocol-spec.md) §10）。
 - `playerToken` 与昵称永不进入日志（[02](./02-protocol-spec.md) §13）；凭证摘要仅位于 `room_players`，不复制到每场参赛记录。
 
-> **实现注记（TEX-18）**：已实现。`rank` 唯一性由部分唯一索引 `UNIQUE(tournament_id, rank) WHERE rank IS NOT NULL` 保证；`eliminated_hand_id` 的复合外键 `(eliminated_hand_id, tournament_id) → hands(id, tournament_id)` 已落地。`updated_at` 由仓储在更新时显式写入（无触发器）。
+> **实现注记（TEX-18）**：已实现。`rank` 唯一性由部分唯一索引 `UNIQUE(tournament_id, rank) WHERE rank IS NOT NULL` 保证；`eliminated_hand_id` 的复合外键 `(eliminated_hand_id, tournament_id) → hands(id, tournament_id)` 已落地。`updated_at` 由仓储在更新时显式写入（无触发器）。昵称快照入库前经与 `room_players` 相同的 `validateDisplayName` 校验（本表无 DB CHECK 兜底，运行时输入不豁免）；手末 Commit Bundle 的结果更新按 `id + tournament_id` 匹配并断言恰好一行，跨赛 id 或未知 id 整体回滚（§7.4）。
 
 ### 5.5 `hands`
 
