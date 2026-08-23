@@ -222,10 +222,16 @@ describe("输入 6 张", () => {
 });
 
 describe("返回值为运行时不可变（防止调用方污染 comparison）", () => {
-  it("Object.freeze 后 comparisonKey 与 bestFiveCards 不可扩展或改写", () => {
+  it("Object.freeze 后整个结果对象及其数组均不可扩展或改写", () => {
     const evaluation = evaluateHand(cards(["7c", "7d", "7h", "Kd", "Kc"]));
+    expect(Object.isFrozen(evaluation)).toBe(true);
     expect(Object.isFrozen(evaluation.comparisonKey)).toBe(true);
     expect(Object.isFrozen(evaluation.bestFiveCards)).toBe(true);
+    // 外部改写 rank 应抛 TypeError（严格模式），且不影响读取。
+    expect(() => {
+      (evaluation as { rank: number }).rank = HandRank.HighCard;
+    }).toThrow(TypeError);
+    expect(evaluation.rank).toBe(HandRank.FullHouse);
   });
 
   it("改写暴露的 comparisonKey 不会改变后续胜负判定（防反转）", () => {

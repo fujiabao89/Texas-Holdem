@@ -210,11 +210,11 @@ function evaluateFive(cards: readonly Card[]): HandEvaluation {
     tiebreakers = descendingRanks(ranks);
   }
 
-  return {
+  return Object.freeze({
     rank,
     bestFiveCards: Object.freeze([...cards]) as readonly Card[],
     comparisonKey: Object.freeze([rank, ...tiebreakers]) as readonly number[],
-  };
+  });
 }
 
 /** 返回按牌值降序排列的新数组。 */
