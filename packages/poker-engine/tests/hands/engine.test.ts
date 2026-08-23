@@ -195,4 +195,15 @@ describe("PokerHandEngine 单局行为", () => {
     const seqs = eng.getEvents().map((e) => e.sequence);
     expect(seqs).toEqual(seqs.map((_, i) => i)); // 0,1,2,… 无重复、无缺号
   });
+
+  it("短 BB：preflop currentBet 取名义 BB，SB 须补足到 BB（§8.2）", () => {
+    const eng = new PokerHandEngine(cfg([seat(0, 500), seat(1, 200), seat(2, 5)], { dealerSeat: 0, smallBlind: 10, bigBlind: 20 }));
+    const state = eng.getState();
+    expect(state.currentBet).toBe(20); // 名义 BB，而非短 BB 实际投入或 SB 额
+    expect(state.hasFullBetOrRaise).toBe(false); // BB 短于 BB → 无完整开注（minRaiseTo 回落 BB）
+    expect(eng.getLegalActions().callAmount).toBe(20); // UTG(seat0) 须跟到 20
+    eng.applyAction(act(0, "call"));
+    expect(eng.getState().currentActor).toBe(1); // 轮到 SB(seat1)
+    expect(eng.getLegalActions().callAmount).toBe(10); // SB 须补足到 20
+  });
 });

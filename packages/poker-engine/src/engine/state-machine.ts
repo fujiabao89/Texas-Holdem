@@ -165,10 +165,9 @@ export function createInitialState(config: HandConfig): HandResult {
       toAmount: player.streetBet,
     });
   });
-  const sbActual = seats.find((s) => s.seatIndex === sbSeat)!.streetBet;
   const bbActual = seats.find((s) => s.seatIndex === bbSeat)!.streetBet;
-  // preflop currentBet 取盲注实际投入较大者：短盲（低于 BB）时绝不能低于已缴的 SB（§8.2）。
-  const preflopCurrentBet = Math.max(sbActual, bbActual);
+  // §8.2：Pre-Flop 初始 currentBet = 名义 BB（即使 BB 玩家短盲/低于 BB，也不降低到已缴 SB 或短盲额；
+  // 短盲部分在结算时作为未跟注返还，见 §9）。blind 事件仍记录实际投入额（§14）。
 
   // 发底牌：两轮，每轮从 Dealer 左侧起顺时针（HU 时 Button/SB 先得第一张）。
   const indices = seats.map((s) => s.seatIndex);
@@ -214,9 +213,9 @@ export function createInitialState(config: HandConfig): HandResult {
     smallBlind: config.smallBlind,
     bigBlind: config.bigBlind,
     currentActor,
-    currentBet: preflopCurrentBet,
+    currentBet: config.bigBlind,
     lastFullRaiseSize: config.bigBlind,
-    hasFullBetOrRaise: preflopCurrentBet >= config.bigBlind,
+    hasFullBetOrRaise: bbActual >= config.bigBlind,
     pots: Object.freeze([]),
     nextSequence: seq.value,
     initialTotalChips,
