@@ -272,9 +272,13 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
 /**
  * 终局更新前置验证（写入前失败，不依赖回滚）：
  * - ABANDONED_NO_HUMAN 不得宣告冠军（§5.3）；
+ * - 终态时间有效且保留期不早于终止时间（与 `tournaments_retention_check` 一致，
+ *   §5.3）——否则整包写入后才被 DB CHECK（23514）回滚；
  * - roomStatus=CLOSED 必须携带 roomClosure（closed_at/closed_reason/
  *   retention_expires_at，§5.1），否则 DB CHECK 会拒绝并回滚整个 Bundle；
- * - roomClosure 只在 CLOSED 时允许——其他状态写入关房字段同样违反 CHECK。
+ * - roomClosure 只在 CLOSED 时允许——其他状态写入关房字段同样违反 CHECK；
+ * - roomClosure 内容校验（时间有效/顺序、原因码非空且无控制字符），
+ *   与 `rooms_retention_check`/`rooms_closed_reason_check` 对齐，但前置拒绝。
  */
 function validateTournamentFinish(finish: TournamentFinishUpdate | undefined): void {
   if (finish === undefined) {
@@ -285,6 +289,13 @@ function validateTournamentFinish(finish: TournamentFinishUpdate | undefined): v
       "champion cannot be set for an abandoned tournament (ABANDONED_NO_HUMAN)",
     );
   }
+  assertValidTimestamp(finish.finishedAt, "tournamentFinish.finishedAt");
+  assertValidTimestamp(finish.retentionExpiresAt, "tournamentFinish.retentionExpiresAt");
+  if (finish.retentionExpiresAt.getTime() < finish.finishedAt.getTime()) {
+    throw new PersistenceError(
+      "tournamentFinish.retentionExpiresAt must be >= finishedAt (docs/03 §5.3)",
+    );
+  }
   if (finish.roomStatus === "CLOSED" && finish.roomClosure === undefined) {
     throw new PersistenceError(
       "roomStatus CLOSED requires roomClosure (closed_at/closed_reason/retention_expires_at, docs/03 §5.1)",
@@ -293,7 +304,40 @@ function validateTournamentFinish(finish: TournamentFinishUpdate | undefined): v
   if (finish.roomStatus !== "CLOSED" && finish.roomClosure !== undefined) {
     throw new PersistenceError("roomClosure is only allowed when roomStatus is CLOSED");
   }
+  if (finish.roomClosure !== undefined) {
+    validateRoomClosure(finish.roomClosure);
+  }
 }
+
+/**
+ * 关房元数据内容校验（§5.1）：
+ * - closed_at/retention_expires_at 必须是有效时间，且保留期不早于关房时间
+ *   （与 `rooms_retention_check` 一致；空原因码能绕过 NOT NULL、
+ *   控制字符是堆栈/自由文本痕迹，均在入库前拒绝）。
+ */
+function validateRoomClosure(closure: RoomClosureMetadata): void {
+  assertValidTimestamp(closure.closedAt, "roomClosure.closedAt");
+  assertValidTimestamp(closure.retentionExpiresAt, "roomClosure.retentionExpiresAt");
+  if (closure.retentionExpiresAt.getTime() < closure.closedAt.getTime()) {
+    throw new PersistenceError(
+      "roomClosure.retentionExpiresAt must be >= closedAt (docs/03 §5.1)",
+    );
+  }
+  if (closure.closedReason.trim() === "" || CONTROL_CHARACTER_PATTERN.test(closure.closedReason)) {
+    throw new PersistenceError(
+      "roomClosure.closedReason must be a non-empty reason code without control characters (docs/03 §5.1)",
+    );
+  }
+}
+
+function assertValidTimestamp(value: Date, field: string): void {
+  if (Number.isNaN(value.getTime())) {
+    throw new PersistenceError(`${field} must be a valid Date`);
+  }
+}
+
+/** 控制字符（\p{Cc}，如换行/制表）——原因码不含它们；堆栈痕迹由此拒绝（§5.1）。 */
+const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u;
 
 /**
  * 提交前完整性与对齐验证（§7.3）：
