@@ -109,6 +109,8 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 ### 3.3 前端（权威：[05](./05-frontend-spec.md) §16）
 
+> TEX-23 已补充前端基础 Unit 测试：HTTP 成功/错误 Schema 解析、Token 的 sessionStorage 生命周期、WS 认证/幂等/版本及未知字段拒绝、Snapshot 覆盖、连续 Patch、乱序重同步、uint64 序列与投影私密字段拒绝。业务页面 E2E 仍按 TEX-24+ 落地。
+
 | 必测项 | 层次 | 规格来源 |
 | --- | --- | --- |
 | UI E2E：创建房间、邀请码加入、Ready、完成一手牌、完整 Tournament；下注无键盘（1/3 Pot、1/2 Pot、2/3 Pot、Pot、All-in、Slider、±）；普通 Raise Slider 范围为 `[minRaiseTo,maxRaiseTo]`，到达 `allInTo` 转独立 All-in 两步并提交 `ALL_IN`，Short All-in 不伪装成 Raise | E2E | 05 §8/§16 |
@@ -153,6 +155,8 @@ Fixture 必须通过公开的 Engine/协议入口执行，不得直接篡改被�
 - 非法/恶意输入不由 LegalActions Fuzzer 覆盖：另设 Protocol/Action Fuzzer 生成缺字段、未知字段、越界金额、非法枚举、超大 Payload、重复/乱序信封，断言安全拒绝、无状态变化且错误响应不泄密。
 
 ## 6. 联机与重连测试
+
+TEX-23 在 `apps/web/src/{protocol,state}/**/*.test.ts` 使用可注入 Fake WebSocket、UUID 与 Fake Clock 先验证客户端消费边界；它们属于 Unit 层，不替代服务端 `tests/clients/` 多客户端联机测试。
 
 - 多客户端测试：同一 Tournament 的多个测试客户端必须收到一致的公开状态；每个 sequence 应满足 `apply(previousView, patch) == serverProject(state, viewer)`，私有信息按 PlayerView 隔离（§7）；覆盖 Event 丢失、重复、乱序、未知字段、断连中积压、过期 Action、`actionId` 重复，并断言客户端**重新同步而非继续错误应用**（《区块6-10 v0.2》§9.11）。
 - 故障注入【工程基线】：测试代理可确定性地 drop/duplicate/delay/reorder/close WS 帧；每个用例记录故障脚本和 Seed。协议级测试不用真实移动网络，真实设备 Release 验收再覆盖 Wi-Fi/蜂窝切换。
