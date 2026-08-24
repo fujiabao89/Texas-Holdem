@@ -226,6 +226,12 @@ export function kickPlayer(state: RoomState, actorPlayerId: string, targetPlayer
 /** 离开：移除成员；Host 主动离开立即把 Host 转给最早加入且在线的真人；末位真人离开则关闭房间。 */
 export function leaveRoom(state: RoomState, playerId: string, _input: LeaveInput): RoomState {
   requireMember(state, playerId);
+  // IN_GAME 离开必须走 Tournament 撤回/弃赛流程（§6.6 EXIT_PENDING → WITHDRAWN，
+  // §6.5 无真人弃赛，TEX-20）。TEX-19 未实现该流程：拒绝而非按普通离开持久化，
+  // 避免房间/比赛留在"无真人但 IN_GAME、邀请码仍有效"的半态。
+  if (state.status === "IN_GAME") {
+    throw new RoomDomainError("ROOM_LOCKED");
+  }
   const members = new Map(state.members);
   members.delete(playerId);
   let hostPlayerId = state.hostPlayerId;
@@ -233,9 +239,8 @@ export function leaveRoom(state: RoomState, playerId: string, _input: LeaveInput
     hostPlayerId = pickNextHost({ ...state, members });
   }
   const humansRemaining = [...members.values()].some((member) => member.kind === "HUMAN");
-  // 仅 LOBBY 的末位真人离开才关闭房间（§6.5）；IN_GAME 的无真人处置走
-  // Tournament 撤回/弃赛流程（§6.6，TEX-20），本分支不得把进行中比赛留在半态。
-  if (!humansRemaining && state.status === "LOBBY") {
+  if (!humansRemaining) {
+    // 无真人 → CLOSED、邀请码立即失效（§6.5）。
     return advance(state, {
       members,
       hostPlayerId: null,

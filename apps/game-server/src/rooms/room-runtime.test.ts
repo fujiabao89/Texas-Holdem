@@ -280,18 +280,20 @@ describe("leaveRoom / transferHost", () => {
     expect(after.closedReason).toBe("ABANDONED_NO_HUMAN");
   });
 
-  it("IN_GAME 末位真人离开不关闭房间：保留 activeTournamentId 与邀请码，交 TEX-20 撤回/弃赛流程", () => {
+  it("IN_GAME 期间主动离开被拒（交 TEX-20 撤回/弃赛流程，不按普通离开持久化）", () => {
     const { state: s } = readyRoom();
     const started = startTournament(s, {
       actorPlayerId: "host-1",
       expectedRevision: s.roomRevision,
       tournamentId: "t-1",
     });
-    const afterHost = leaveRoom(started, "host-1", { reason: "USER_LEFT", leftAt: 9000 });
-    const afterAlice = leaveRoom(afterHost, "alice", { reason: "USER_LEFT", leftAt: 10000 });
-    expect(afterAlice.status).toBe("IN_GAME");
-    expect(afterAlice.activeTournamentId).toBe("t-1");
-    expect(afterAlice.inviteCode).not.toBeNull();
+    expect(() => leaveRoom(started, "host-1", { reason: "USER_LEFT", leftAt: 9000 })).toThrowError(
+      new RoomDomainError("ROOM_LOCKED"),
+    );
+    // 拒绝后房间与比赛状态不变（成员仍在、IN_GAME 与 activeTournamentId 保留）
+    expect(started.status).toBe("IN_GAME");
+    expect(started.members.has("host-1")).toBe(true);
+    expect(started.activeTournamentId).toBe("t-1");
   });
 
   it("transferHost 是显式可注入入口：把 Host 转给最早加入且在线的真人；无在线真人时保持 null", () => {
