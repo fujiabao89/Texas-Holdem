@@ -29,7 +29,7 @@ pnpm --filter @texas-holdem/game-server db:migrate   # 对 DATABASE_SCHEMA 执�
 
 - 受保护接口使用 `Authorization: Bearer <playerToken>`；服务端由 token HMAC 摘要反查 `playerId`，不信任请求携带的身份。`playerToken` 至少 256-bit 熵，仅在创建/加入响应返回；持久化只存摘要。
 - 所有状态变更 `POST/PATCH` 强制 `Idempotency-Key`（UUID v4）；作用域 = 身份/源 IP + endpoint + key。同 Payload 重试返回原结果，同 Key 不同 Payload 返回 `IDEMPOTENCY_KEY_REUSE`。
-- 限流使用进程内 Token Bucket（创建 5/min 且 30/hour、Join 20/min、按 inviteCode 10/min、受保护变更 60/min）；HTTP Body 上限 64KiB；CORS 使用显式 Allowlist（见 `.env.example`）。
+- 限流：`@fastify/rate-limit` 全局 per-IP（受保护变更 60/min，CodeQL 识别为路由级限流）；自定义 TokenBucket 保留规格额度（创建 5/min 且 30/hour、Join 20/min、按 inviteCode 10/min）；429 保持 ErrorEnvelope。HTTP Body 上限 64KiB；CORS 使用显式 Allowlist（见 `.env.example`）。
 - `SET_READY` 属 WebSocket 命令（TEX-21）；本任务在 Room 串行执行器层实现 Ready 语义并提供可注入入口，HTTP 不暴露。
 
 ## 结构
