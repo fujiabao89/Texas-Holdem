@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { gameSnapshot } from "../testing-fixtures";
+import { gameSnapshot, roomSnapshot } from "../testing-fixtures";
 import { ProjectionStore } from "./projection-store";
 
 function event(sequence: string, tournamentId = "tournament-1") {
@@ -19,6 +19,20 @@ function event(sequence: string, tournamentId = "tournament-1") {
 }
 
 describe("ProjectionStore", () => {
+  it("accepts a new room even when its independent revision is lower", () => {
+    const store = new ProjectionStore();
+    store.acceptRoomSnapshot(roomSnapshot({ roomId: "room-a", roomRevision: "9007199254740992" }));
+    store.acceptRoomSnapshot(roomSnapshot({ roomId: "room-b", roomRevision: "1" }));
+    expect(store.getSnapshot().room).toMatchObject({ roomId: "room-b", roomRevision: "1" });
+  });
+
+  it("atomically replaces both projections at the reconnect barrier, including a null game", () => {
+    const store = new ProjectionStore();
+    store.acceptReconnectResult(roomSnapshot({ roomId: "room-a" }), gameSnapshot());
+    store.acceptReconnectResult(roomSnapshot({ roomId: "room-b", roomRevision: "1", activeTournamentId: null }), null);
+    expect(store.getSnapshot()).toMatchObject({ room: { roomId: "room-b" }, game: null, lastSequence: null, actionsDisabled: false });
+  });
+
   it("atomically replaces snapshots and applies the next event across Number.MAX_SAFE_INTEGER", () => {
     const store = new ProjectionStore();
     store.acceptGameSnapshot(gameSnapshot());

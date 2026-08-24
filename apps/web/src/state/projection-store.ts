@@ -44,8 +44,20 @@ export class ProjectionStore {
 
   acceptRoomSnapshot(snapshot: RoomSnapshot): void {
     const current = this.state.room;
-    if (current !== null && compareUint64(snapshot.roomRevision, current.roomRevision) <= 0) return;
+    if (current !== null && current.roomId === snapshot.roomId && compareUint64(snapshot.roomRevision, current.roomRevision) <= 0) return;
     this.replace({ ...this.state, room: snapshot });
+  }
+
+  /** A reconnect result is a fresh server-authoritative barrier for both projections. */
+  acceptReconnectResult(room: RoomSnapshot, game: GameSnapshot | null): void {
+    if (game !== null) GameSnapshotSchema.parse(game);
+    this.replace({
+      room,
+      game,
+      lastSequence: game?.sequence ?? null,
+      actionsDisabled: false,
+      resyncReason: null,
+    });
   }
 
   acceptGameSnapshot(snapshot: GameSnapshot): void {

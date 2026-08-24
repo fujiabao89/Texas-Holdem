@@ -74,6 +74,7 @@ describe("WebSocketTransport", () => {
       second.socket.open();
       second.socket.receive({ type: "GAME_SNAPSHOT", protocolVersion: 1, serverTime: 1, payload: { ...gameSnapshot(), ...privateField } });
       expect(second.store.getSnapshot()).toMatchObject({ game: null, actionsDisabled: true, resyncReason: "INVALID_EVENT" });
+      expect(second.states).toContain("CLOSED");
     }
   });
 
@@ -112,5 +113,21 @@ describe("WebSocketTransport", () => {
     transport.connect("room-2", "b".repeat(43));
     socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "APPLIED", duplicate: false, appliedSequence: "9007199254740992" } });
     expect(commandResults).toEqual([]);
+  });
+
+  it("retains an unresolved command for an exact retry after reconnecting to the same room", () => {
+    const { socket, transport } = setup();
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    transport.send(pending);
+
+    expect(socket.sent.slice(-1)).toEqual([pending.serialized]);
   });
 });

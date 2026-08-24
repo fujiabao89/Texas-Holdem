@@ -57,7 +57,7 @@ export class WebSocketTransport {
   constructor(private readonly options: WebSocketTransportOptions) {}
 
   connect(roomId: string, playerToken: string): void {
-    this.disconnect();
+    this.disconnect(this.roomId !== roomId);
     this.roomId = roomId;
     this.transition("CONNECTING");
     const socket = this.options.socketFactory(this.options.wsUrl);
@@ -77,10 +77,10 @@ export class WebSocketTransport {
     socket.onerror = () => this.transition("CLOSED");
   }
 
-  disconnect(): void {
+  disconnect(clearPending = true): void {
     const socket = this.socket;
     this.socket = null;
-    this.pending.clear();
+    if (clearPending) this.pending.clear();
     if (socket !== null) {
       socket.onopen = null;
       socket.onmessage = null;
@@ -175,8 +175,7 @@ export class WebSocketTransport {
   }
 
   private acceptReconnect(result: ReconnectResult): void {
-    this.options.projectionStore.acceptRoomSnapshot(result.roomSnapshot);
-    if (result.gameSnapshot !== null) this.options.projectionStore.acceptGameSnapshot(result.gameSnapshot);
+    this.options.projectionStore.acceptReconnectResult(result.roomSnapshot, result.gameSnapshot);
   }
 
   private acceptRoom(snapshot: RoomSnapshot): void {
@@ -187,7 +186,7 @@ export class WebSocketTransport {
   private handleInvalidMessage(): void {
     this.options.onProtocolError?.("INVALID_MESSAGE");
     this.options.projectionStore.requestResync("INVALID_EVENT");
-    this.requestSnapshot("INVALID_EVENT");
+    if (!this.requestSnapshot("INVALID_EVENT")) this.closeForProtocolError();
   }
 
   private handleError(code: ErrorCode): void {
@@ -204,12 +203,26 @@ export class WebSocketTransport {
     }
   }
 
-  private requestSnapshot(reason: ResyncReason): void {
+  private requestSnapshot(reason: ResyncReason): boolean {
     const game = this.options.projectionStore.getSnapshot().game;
     const lastSequence = this.options.projectionStore.getSnapshot().lastSequence;
-    if (game === null || lastSequence === null || this.socket === null || this.state === "STOPPED") return;
+    if (game === null || lastSequence === null || this.socket === null || this.state === "STOPPED") return false;
     const command = this.prepareCommand({ type: "REQUEST_SNAPSHOT", payload: { tournamentId: game.tournamentId, lastSequence, reason } });
     this.socket.send(command.serialized);
+    return true;
+  }
+
+  private closeForProtocolError(): void {
+    const socket = this.socket;
+    this.socket = null;
+    if (socket !== null) {
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.onerror = null;
+      socket.close(CLOSE_CODES.PROTOCOL_ERROR);
+    }
+    this.transition("CLOSED");
   }
 
   private handleClose(code: number): void {
