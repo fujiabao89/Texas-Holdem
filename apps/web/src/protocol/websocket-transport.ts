@@ -80,6 +80,7 @@ export class WebSocketTransport {
   disconnect(): void {
     const socket = this.socket;
     this.socket = null;
+    this.pending.clear();
     if (socket !== null) {
       socket.onopen = null;
       socket.onmessage = null;

@@ -30,6 +30,7 @@ function setup() {
   const socket = new FakeWebSocket();
   const store = new ProjectionStore();
   const states: string[] = [];
+  const commandResults: string[] = [];
   const transport = new WebSocketTransport({
     wsUrl: "wss://example.test/api/v1/ws",
     socketFactory: () => socket,
@@ -37,8 +38,9 @@ function setup() {
     projectionStore: store,
     tokenStore: new PlayerTokenStore(),
     onConnectionState: (state) => states.push(state),
+    onCommandResult: (pending) => commandResults.push(pending.requestId),
   });
-  return { socket, store, states, transport };
+  return { socket, store, states, commandResults, transport };
 }
 
 describe("WebSocketTransport", () => {
@@ -88,8 +90,7 @@ describe("WebSocketTransport", () => {
   });
 
   it("keeps COMMAND_RESULT out of canonical game state", () => {
-    const results: string[] = [];
-    const { socket, store, transport } = setup();
+    const { socket, store, commandResults, transport } = setup();
     transport.connect("room-1", "a".repeat(43));
     socket.open();
     socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
@@ -98,6 +99,18 @@ describe("WebSocketTransport", () => {
     const before = store.getSnapshot().game;
     socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "APPLIED", duplicate: false, appliedSequence: "9007199254740992" } });
     expect(store.getSnapshot().game).toBe(before);
-    expect(results).toEqual([]);
+    expect(commandResults).toEqual([pending.requestId]);
+  });
+
+  it("drops pending commands when switching connections so stale results cannot notify a new room", () => {
+    const { socket, commandResults, transport } = setup();
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+    transport.connect("room-2", "b".repeat(43));
+    socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "APPLIED", duplicate: false, appliedSequence: "9007199254740992" } });
+    expect(commandResults).toEqual([]);
   });
 });

@@ -92,7 +92,8 @@
 ```text
 apps/web/
 ├─ app/                         # Next.js App Router；目录与 §4.2 URL 一一对应
-│  ├─ (public)/                 # Home / Create / Join / Settings
+│  ├─ page.tsx                  # Home
+│  ├─ create/ · join/ · settings/ # P0 公共路由（扁平目录，不使用路由组）
 │  └─ room/[roomId]/            # Lobby / Table / Result 页面壳与 Error Boundary
 ├─ features/
 │  ├─ room/                     # 创建、加入、Lobby 与配置
@@ -104,7 +105,7 @@ apps/web/
 ├─ state/                       # 规范态、计时态、Jotai UI atoms 与 selectors
 ├─ animation/                   # AnimationQueue、presentation model、事件动画目录
 ├─ sound/                       # Sound registry、AudioContext 与已授权素材
-├─ messages/zh-CN.json          # P0 中文文案；所有用户可见字符串走 key
+├─ messages/zh-CN.ts            # P0 中文文案；所有用户可见字符串走 key
 ├─ public/audio/                # 本地托管的处理后音频，不运行时热链第三方
 └─ tests/                       # 组件/前端集成测试；跨应用 E2E 位于仓库 tests/e2e/
 ```
@@ -207,9 +208,9 @@ apps/web/
 ### 6.9 界面语言与 i18n【已裁决】
 
 - P0 唯一界面语言为简体中文，locale 固定 `zh-CN`；URL 不增加语言前缀，也不显示语言切换器。英文作为后续阶段加入，不阻塞 P0。
-- 从第一天使用稳定文案 key：用户可见文本集中在 `messages/zh-CN.json`，组件、ErrorCode 映射、Toast、无障碍名称和音效字幕不得硬编码中文。TypeScript 从主语言资源推导 key 联合类型，缺 key 在构建期失败。
+- 从第一天使用稳定文案 key：用户可见文本集中在 `messages/zh-CN.ts`，组件、ErrorCode 映射、Toast、无障碍名称和音效字幕不得硬编码中文。TypeScript 从主语言资源推导 key 联合类型，缺 key 在构建期失败。
 - P0 不引入重量级运行时翻译服务；提供 `t(key, values)`、复数/变量插值和 `Intl.NumberFormat('zh-CN')` / `Intl.DateTimeFormat('zh-CN')` 封装。筹码完整值使用千分位，移动端空间不足时才用 `万` 缩写并在可访问名称/详情中保留完整值。
-- 后续英文使用 `messages/en-US.json`，与 `zh-CN` key 完全集合相等后再开放语言设置；扑克动作、牌型、花色、错误码和动态变量必须通过词条/格式化函数组合，禁止依赖中文语序拼接句子。
+- 后续英文使用 `messages/en-US.ts`，与 `zh-CN` key 完全集合相等后再开放语言设置；扑克动作、牌型、花色、错误码和动态变量必须通过词条/格式化函数组合，禁止依赖中文语序拼接句子。
 
 ## 7. 牌桌布局与响应式
 
