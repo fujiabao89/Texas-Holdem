@@ -24,7 +24,7 @@
 | `pnpm test` | Vitest 分层总入口（unit + rules + integration + ws，根 `vitest.config.ts`，各层可独立调用） |
 | `pnpm test:unit` / `test:rules` / `test:integration` / `test:ws` | 分层独立入口（TEX-12）；空层以 `passWithNoTests` 受控跳过 |
 | `pnpm test:e2e` | Playwright E2E（自动启动 `apps/web` dev server；仅失败保留 trace/截图/视频/诊断摘要） |
-| `pnpm test:sim -- --seed <n>` | Headless Simulator 独立 CLI（引擎落地前受控跳过，不伪造结果） |
+| `pnpm test:sim -- --seed <n>` / `--tier smoke\|nightly\|rc` | Headless Simulator 独立 CLI（TEX-16 起真实运行 TournamentEngine：单 seed 批次 / Smoke / Nightly / RC 三档，见 [tests/simulator/README.md](../../tests/simulator/README.md)） |
 
 测试分层、归属与工具（Seed、Fake Clock、Fixture、数据库隔离）的权威说明见 [docs/06-testing-strategy.md](../06-testing-strategy.md) §2 与 [tests/README.md](../../tests/README.md)；测试入口自 TEX-12 起统一由根目录管理，包内不再维护独立测试脚本。
 

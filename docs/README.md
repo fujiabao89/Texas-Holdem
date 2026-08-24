@@ -1,11 +1,11 @@
 # 工程文档总索引
 
 > 状态：草稿
-> 更新：2026-08-23
+> 更新：2026-08-24
 
 本目录是工程文档的唯一入口。规范：**一个事实只有一个权威来源**，其他文档链接引用而不是重写；产品层文档（规划书）留在仓库根目录，在本索引链接并标注"产品意图，非实现事实"。
 
-> 项目现状（2026-08-23 核对）：TEX-11 已建立 pnpm monorepo 工程地基——`apps/web` 与 `apps/game-server` 可安装、可 lint / typecheck / build / test（见 [docs/03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md)）；TEX-13 已实现扑克规则中的 `cards/` 子域（标准 52 张牌堆、随机源、七选五 Hand Evaluator，见 [01-engine-spec.md](./01-engine-spec.md) §7/§10/§15/§17）；TEX-14 已实现下注 / Pot / 手状态机；TEX-15 已实现 Tournament（淘汰 / 排名 / 冠军 / 撤回）、锦标赛级 Game Events 与 timer/；TEX-18 已实现持久化层（Drizzle Schema、版本化迁移、最小权限与控制面/手末 Commit Bundle 仓储，含真实 PostgreSQL 集成测试，见 [03-data-model.md](./03-data-model.md) §5/§15 与 `apps/game-server/src/infrastructure/persistence/`）。协议、服务端运行时与前端业务逻辑仍未实现。本文档体系内的工程规格（01–06）中，01 的 `cards/`、下注 / Pot / 状态机、Tournament、Game Events 与 timer，以及 03 的表结构与仓储部分已实现；其余章节及 02/04/05/06 仍为**设计意图**。
+> 项目现状（2026-08-24 核对）：TEX-11 已建立 pnpm monorepo 工程地基——`apps/web` 与 `apps/game-server` 可安装、可 lint / typecheck / build / test（见 [docs/03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md)）；TEX-13 已实现扑克规则中的 `cards/` 子域（标准 52 张牌堆、随机源、七选五 Hand Evaluator，见 [01-engine-spec.md](./01-engine-spec.md) §7/§10/§15/§17）；TEX-14 已实现下注 / Pot / 手状态机；TEX-15 已实现 Tournament（淘汰 / 排名 / 冠军 / 撤回）、锦标赛级 Game Events 与 timer/；TEX-18 已实现持久化层（Drizzle Schema、版本化迁移、最小权限与控制面/手末 Commit Bundle 仓储，含真实 PostgreSQL 集成测试，见 [03-data-model.md](./03-data-model.md) §5/§15 与 `apps/game-server/src/infrastructure/persistence/`）；TEX-16 已落地 Headless Simulator 长跑（加权场景、不变量断言、Watchdog、Smoke/Nightly/RC 三档与失败产物，见 [06-testing-strategy.md](./06-testing-strategy.md) §5 与 `tests/simulator/`）。协议、服务端运行时与前端业务逻辑仍未实现。本文档体系内的工程规格（01–06）中，01 的 `cards/`、下注 / Pot / 状态机、Tournament、Game Events 与 timer，03 的表结构与仓储部分，以及 06 的 Simulator（§5 与 §11 Simulator CI）已实现；其余章节及 02/04/05 仍为**设计意图**。
 
 ## 文档地图
 
@@ -16,7 +16,7 @@
 | 03 | [03-data-model.md](./03-data-model.md) | 数据模型与持久化规格（`apps/game-server` / Supabase Postgres） | 内存 vs 持久化边界、核心表（rooms/tournaments/tournament_players/hands/hand_events/game_snapshots/ai_requests）字段与约束、写入节奏与失败语义、敏感数据存放与暴露规则 | 草稿（表结构/迁移/仓储已实现 · TEX-18；运行时写入编排与恢复仍为设计意图） |
 | 04 | [04-game-server-architecture.md](./04-game-server-architecture.md) | Game Server 运行时工程设计（`apps/game-server`） | Room/Tournament 运行时、单桌串行执行器与超时裁决、Scheduler/Timer、连接管理与接管、投影执行、持久化编排、崩溃恢复、无真人关房、P1 AI 接入点 | 草稿（设计意图 · 未实现） |
 | 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | 草稿（设计意图 · 未实现） |
-| 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 草稿（设计意图 · 未实现） |
+| 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 草稿（Simulator 长跑 · TEX-16 已实现；其余设计意图） |
 | 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 提交前本地审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略、输出契约与提交/推送门禁 | 治理基线 |
 | 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
 | 工程 | [03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md) | pnpm monorepo、Turbo、质量命令、共享配置与环境变量 | TEX-11 工程地基 | 已实现 |

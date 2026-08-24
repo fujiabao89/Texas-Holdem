@@ -1,17 +1,18 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * Root Vitest project configuration (TEX-12).
+ * Root Vitest project configuration (TEX-12; simulator tests added by TEX-16).
  *
  * Layers follow docs/06-testing-strategy.md section 2:
  * - unit        pure-function tests co-located with sources
- *              (apps sources, apps tests/unit dirs, packages sources, tests/support, tests/meta)
+ *              (apps sources, apps tests/unit dirs, packages sources,
+ *               tests/support, tests/meta, tests/simulator unit tests)
  * - rules       poker rule and property tests (packages/poker-engine/tests)
  * - integration server integration tests (apps/game-server/tests/integration)
  * - ws          multiplayer and WebSocket tests (apps/game-server/tests/ws, tests/clients)
  *
  * Include patterns are mutually exclusive so no test file runs in two layers.
- * E2E (tests/e2e, Playwright) and Simulator (tests/simulator, standalone CLI)
+ * E2E (tests/e2e, Playwright) and Simulator long-running loop (tests/simulator/run.ts)
  * are invoked via `pnpm test:e2e` and `pnpm test:sim` instead of this config.
  *
  * rules, integration and ws may pass with no test files (passWithNoTests) until
@@ -33,6 +34,7 @@ export default defineConfig({
             "packages/*/src/**/*.test.ts",
             "tests/support/**/*.test.ts",
             "tests/meta/**/*.test.ts",
+            "tests/simulator/**/*.test.ts",
           ],
           exclude: ["**/node_modules/**"],
           environment: "node",

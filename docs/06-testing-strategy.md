@@ -1,7 +1,7 @@
 # 06 · 测试方案与发布门槛（`tests/`）
 
-> 状态：草稿（实施基线 v0.5；测试基础设施已按 TEX-12 落地，持久化 Integration 已按 TEX-18 落地，其余业务测试随对应任务回填）
-> 规划核对：2026-08-21（TEX-12 基线）；2026-08-23（TEX-18 持久化 Integration 落地）——其余章节在对应任务落地前仍为**设计意图**
+> 状态：草稿（实施基线 v0.5；测试基础设施已按 TEX-12 落地，持久化 Integration 已按 TEX-18 落地，Headless Simulator 长跑已按 TEX-16 落地，其余业务测试随对应任务回填）
+> 规划核对：2026-08-21（TEX-12 基线）；2026-08-23（TEX-18 持久化 Integration 落地）；2026-08-24（TEX-16 Headless Simulator 落地）——其余章节在对应任务落地前仍为**设计意图**
 > 权威范围：本文是测试体系的唯一权威来源——测试分层与归属、确定性回归集、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级处理与发布门槛。范围之外的事实见对应文档：规则语义 [01](./01-engine-spec.md)、协议与错误码 [02](./02-protocol-spec.md)、持久化 [03](./03-data-model.md)、服务端运行时行为 [04](./04-game-server-architecture.md)、前端交互与验收界面 [05](./05-frontend-spec.md)。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§9/§10）；《德州扑克项目规划_区块6-10_v0.2.docx》§9/§10（仅在《总规划》未覆盖处补充）
 > 对应代码：`tests/`（support/meta/e2e/simulator，TEX-12 已落地）、根 `vitest.config.ts`（分层配置）、`tests/e2e/playwright.config.ts`（E2E）、各包内 `*.test.ts`
@@ -35,7 +35,7 @@ Unit Test → Poker Rule Test → Integration Test → Multiplayer/WebSocket Tes
 | Integration Test | Engine × 串行执行器 × Scheduler × 持久化 | `apps/game-server/tests/integration` | Vitest + 隔离测试库；`pnpm test:integration`【工程基线，TEX-12 已落地；持久化用例（迁移/控制面/Commit Bundle/约束/最小权限）已按 TEX-18 落地，缺测试库配置时受控跳过】 | §3.2/§6 |
 | Multiplayer/WebSocket Test | 多客户端一致性、Snapshot/Event、重连 | `apps/game-server/tests/ws` + `tests/clients/` | Vitest + 可编程 WS 客户端；`pnpm test:ws`【工程基线，TEX-12 已落地；WS 实现落地前受控跳过】 | §6 |
 | E2E Test | 完整用户旅程（创建房间 → 完赛） | `tests/e2e/` | Playwright + axe-core；`pnpm test:e2e`【工程基线，TEX-12 已落地（含冒烟与失败产物）；业务旅程随前端任务回填】 | §9 |
-| Long-running Simulation | 随机长跑与不变量自动断言 | `tests/simulator/` | 独立 Node CLI；`pnpm test:sim -- --seed ...`【工程基线，TEX-12 已落地入口与 Seed 派生；长跑主循环由 TEX-16 实现】 | §5 |
+| Long-running Simulation | 随机长跑与不变量自动断言 | `tests/simulator/`（模块自测归 unit 层） | 独立 Node CLI；`pnpm test:sim -- --seed ...` / `--tier smoke\|nightly\|rc`【已落地 · TEX-16：长跑主循环、每转移不变量断言、Watchdog、Smoke/Nightly/RC 三档与失败产物】 | §5 |
 | Load / Soak Test | 多 Room/WS、突发命令、重连风暴与稳定性 | `tests/load/` | Artillery；`pnpm test:load`【工程基线，未实现】 | §10 |
 | Manual UI/Animation/UX Review | 真实设备人工验收 | 人工 | 不适用 | §9 |
 
@@ -142,6 +142,8 @@ Fixture 必须通过公开的 Engine/协议入口执行，不得直接篡改被�
 - 除 Engine Invariants 外，Integration 同步断言 [04](./04-game-server-architecture.md) §16 的串行唯一、幂等、序列单调、单活跃连接、手末提交完整等服务端不变量。
 
 ## 5. Headless Simulator / 随机长跑（Poker Fuzzer）
+
+> 实施状态（2026-08-24，TEX-16）：本节已实现于 `tests/simulator/`——加权场景生成（2/3/10 人、深浅筹码、三种 Blind Mode、盲注升降、多人 All-in/Fold 到底/Heads-Up）、只从 Engine `LegalActions` 选动作的代理、每次状态转移与每手结束后的不变量断言（复用引擎 `assertInvariants`/`assertTournamentInvariants`）、事件序列完整性、Watchdog（50,000 action / 30s / 1,000 转移）、Smoke/Nightly/RC 三档种子规划、失败产物（seed 重放命令 + 场景 fixture + 完整轨迹 + 统计摘要）与覆盖统计零检测。运行方式见 [tests/simulator/README.md](../tests/simulator/README.md)。失败 seed 的**自动缩减**尚未实现：当前由人工确认后加入 `tests/simulator/known-seeds.ts` 回归集（现为空集）。
 
 - 实现 Headless Simulation Runner（《区块6-10 v0.2》§9.9）：创建 2–10 人 Tournament，每次从 Engine `LegalActions` 中选择动作，持续到唯一 Champion。生成器须对 2/3/10 人、深浅筹码、Short All-in、多人 All-in、Fold 到底、Heads-Up、升/降盲边界做加权覆盖，不能只做均匀随机。
 - 分层规模【工程基线】：PR Smoke 运行已知失败 Seed 回归集，并从提交 SHA 确定性派生 ≥200 个新 Seed；Nightly 每个受支持 Blind 模式合计 ≥10,000 场；Release Candidate 自候选提交起累计 ≥50,000 场且至少包含 10,000 个此前未运行的 Seed。计数仅包含走到唯一 Champion 且所有断言通过的完整 Tournament，Seed 范围必须写入报告。
@@ -268,7 +270,9 @@ P0 容量目标固定为单实例 **100 Room / 1,000 WS**；首轮基准不以�
 
 CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工程基线】；Nightly/Release 的大规模任务可调用独立 Runner，但结果必须回传为同一提交的 Check。依赖缓存只加速安装，不缓存测试成功结论。
 
-已落地事实（2026-08-21，TEX-12）：`.github/workflows/ci.yml` 的 `quality` job 在 lint/typecheck/build 后按层独立调用 `pnpm test:unit`、`test:rules`、`test:integration`、`test:ws` 与 `pnpm test:sim -- --seed <固定值>`（Simulator Smoke；引擎落地前为受控跳过）；独立 `e2e` job 安装 Chromium 后运行 `pnpm test:e2e`（当前为基础设施冒烟与 §9 门禁自测），失败时经 `actions/upload-artifact` 上传失败产物；E2E 禁用重试（§2.1），未处理 console error / pageerror / 5xx 由 observability fixture 强制失败（白名单除外）。完整 Integration、Multiplayer/WS、全量 E2E 与 Nightly/RC 阶段按上表随对应业务任务启用。
+已落地事实（2026-08-21，TEX-12）：`.github/workflows/ci.yml` 的 `quality` job 在 lint/typecheck/build 后按层独立调用 `pnpm test:unit`、`test:rules`、`test:integration`、`test:ws` 与 Simulator Smoke；独立 `e2e` job 安装 Chromium 后运行 `pnpm test:e2e`（当前为基础设施冒烟与 §9 门禁自测），失败时经 `actions/upload-artifact` 上传失败产物；E2E 禁用重试（§2.1），未处理 console error / pageerror / 5xx 由 observability fixture 强制失败（白名单除外）。完整 Integration、Multiplayer/WS、全量 E2E 与 Nightly/RC 阶段按上表随对应业务任务启用。
+
+Simulator CI 落地事实（2026-08-24，TEX-16）：PR Smoke 由 `ci.yml` 以 `pnpm test:sim -- --tier smoke --sha "$GITHUB_SHA"` 真实运行（已知失败 seed 回归集 + 提交 SHA 派生 ≥200 场，约 20s）；Nightly 经 `.github/workflows/simulator.yml` 的 `schedule`（每日 02:00 北京时间）或 `workflow_dispatch` 运行 ≥10,000 场；RC 需 seed 台账（`--ledger`），在本地/受控环境手动执行，不进入普通 PR CI。
 
 ## 12. 缺陷分级与发布门槛
 
@@ -319,7 +323,8 @@ CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工�
 - 测试基础设施（TEX-12，2026-08-21）已落地：Vitest 分层入口、fast-check、Playwright + axe-core、Seed/Fake Clock/Fixture Builder/数据库隔离工具与 E2E 失败产物；业务测试（规则、联机、投影、性能）随对应任务回填。
 - 持久化 Integration（TEX-18，2026-08-23）已落地：`apps/game-server/tests/integration/` 覆盖迁移（空库一次成功/幂等）、控制面原子写入、手末 Commit Bundle（对齐/回滚/幂等/冲突）、约束（FK/CHECK/唯一）与最小权限（anon/authenticated 拒绝），运行于真实 PostgreSQL 隔离 schema；CI 未配置测试库时该层仍受控跳过。
 - §3.2 的"持久化 Writer 队列/watermark"与"崩溃恢复"测试项依赖运行时实现，属 TEX-20/TEX-22，未随 TEX-18 落地。
-- Artillery 与 Simulator 长跑主循环仍未安装/实现（`test:load` 未建、`test:sim` 当前受控跳过，TEX-16 接入）。
+- Artillery Load/Soak（`test:load`）仍未实现；Headless Simulator 长跑已按 TEX-16 落地（`tests/simulator/`，§5），大规模 Nightly/RC 运行记录随发布流程回填。
+- Simulator 失败 seed 的自动缩减未实现（§5 实施状态说明）：当前失败 seed 由人工确认后加入 `tests/simulator/known-seeds.ts`；首次大规模运行尚未执行，回归集为空。
 - 覆盖率工具（`@vitest/coverage-v8`）尚未安装；§2.2 覆盖率门槛在首个业务包落地任务中启用并回填。
 - §2.2 覆盖率和 §10.1 性能数字是初始门槛；实现后仍需基于真实基准验证其可达性，调整必须留有评审记录且不得掩盖回归。
 - 动画/音效/下注手感依赖真实设备人工验收，无法全自动（《区块6-10 v0.2》§9.1）。
