@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   CardSchema,
   DecimalSequenceSchema,
+  DisplayNameSchema,
   EpochMillisecondsSchema,
   HandPhaseSchema,
   InviteCodeSchema,
@@ -17,7 +18,7 @@ import {
 
 const RoomPlayerSchema = z.strictObject({
   playerId: OpaqueIdSchema,
-  displayName: z.string().min(2).max(64),
+  displayName: DisplayNameSchema,
   seat: SeatSchema.nullable(),
   ready: z.boolean(),
   connectionStatus: z.enum(["CONNECTED", "DISCONNECTED"]),
@@ -39,7 +40,7 @@ export const RoomSnapshotSchema = z.strictObject({
 
 const PlayerPublicViewSchema = z.strictObject({
   playerId: OpaqueIdSchema,
-  displayName: z.string().min(2).max(64),
+  displayName: DisplayNameSchema,
   seat: SeatSchema,
   stack: SafeIntegerSchema,
   streetBet: SafeIntegerSchema,
@@ -63,7 +64,7 @@ const PlayerViewerSchema = z.strictObject({
 });
 const BotViewerSchema = PlayerViewerSchema.extend({ role: z.literal("BOT") });
 
-export const PlayerViewSchema = z.strictObject({
+const PlayerViewShape = {
   handId: OpaqueIdSchema.nullable(),
   tournamentStatus: TournamentStatusSchema,
   handPhase: HandPhaseSchema.nullable(),
@@ -76,20 +77,30 @@ export const PlayerViewSchema = z.strictObject({
   players: z.array(PlayerPublicViewSchema).max(10),
   viewer: PlayerViewerSchema,
   rankings: z.array(RankingViewSchema).max(10),
-}).superRefine((value, context) => {
+};
+
+function validateViewerAuthorization(
+  value: { readonly currentActorPlayerId: string | null; readonly viewer: { readonly playerId: string; readonly role: string; readonly holeCards: readonly unknown[]; readonly legalActions: unknown } },
+  context: z.RefinementCtx,
+): void {
   if (value.viewer.role === "ELIMINATED_SPECTATOR" && (value.viewer.holeCards.length !== 0 || value.viewer.legalActions !== null)) {
     context.addIssue({ code: "custom", message: "spectators cannot receive hole cards or legal actions" });
   }
-});
+  if (value.viewer.legalActions !== null && value.viewer.playerId !== value.currentActorPlayerId) {
+    context.addIssue({ code: "custom", message: "only the current actor can receive legal actions" });
+  }
+}
 
-export const BotViewSchema = z.strictObject({ ...PlayerViewSchema.shape, viewer: BotViewerSchema });
+export const PlayerViewSchema = z.strictObject(PlayerViewShape).superRefine(validateViewerAuthorization);
+
+export const BotViewSchema = z.strictObject({ ...PlayerViewShape, viewer: BotViewerSchema }).superRefine(validateViewerAuthorization);
 export const GameSnapshotSchema = z.strictObject({
   snapshotVersion: z.literal(1),
   reason: z.enum(["INITIAL", "RECONNECT", "RESYNC", "FAST_FORWARD", "STALE_ACTION"]),
   tournamentId: OpaqueIdSchema,
   sequence: DecimalSequenceSchema,
-  ...PlayerViewSchema.shape,
-});
+  ...PlayerViewShape,
+}).superRefine(validateViewerAuthorization);
 
 const PlayerPublicViewPatchSchema = PlayerPublicViewSchema.partial().extend({ playerId: OpaqueIdSchema });
 export const PlayerViewPatchSchema = z.strictObject({

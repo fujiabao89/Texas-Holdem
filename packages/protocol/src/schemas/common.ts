@@ -13,9 +13,12 @@ export const RequestIdSchema = z.string().regex(UUID_V4);
 export const ActionIdSchema = RequestIdSchema;
 export const PlayerTokenSchema = z.string().min(43).max(1024);
 export const InviteCodeSchema = z.string().length(6).regex(/^[A-HJ-KM-NP-Z2-9]+$/);
-export const DisplayNameSchema = z.string().min(2).max(64).refine((value) => value === value.normalize("NFC").trim(), {
+export const DisplayNameSchema = z.string().refine((value) => value === value.normalize("NFC").trim(), {
   message: "displayName must be trimmed NFC text",
-});
+}).refine((value) => {
+  const codePointLength = Array.from(value).length;
+  return codePointLength >= 2 && codePointLength <= 16;
+}, { message: "displayName must contain 2 to 16 Unicode code points" });
 export const SafeIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).finite();
 export const PositiveSafeIntegerSchema = SafeIntegerSchema.min(1);
 export const SeatSchema = z.number().int().min(0).max(9);
@@ -79,6 +82,17 @@ export const TournamentConfigSchema = z.strictObject({
   }
   if (value.actionTime === "UNLIMITED" && value.timeBank !== 0) {
     context.addIssue({ code: "custom", message: "UNLIMITED actionTime requires zero timeBank" });
+  }
+  if (value.blindMode === "fixed" && value.blindStructure.length !== 1) {
+    context.addIssue({ code: "custom", message: "fixed blindMode requires exactly one blind level" });
+  }
+  for (const level of value.blindStructure) {
+    if (value.blindMode === "hands" && level.hands === undefined) {
+      context.addIssue({ code: "custom", message: "hands blindMode requires hands for every level" });
+    }
+    if (value.blindMode === "time" && level.durationSeconds === undefined) {
+      context.addIssue({ code: "custom", message: "time blindMode requires durationSeconds for every level" });
+    }
   }
 });
 

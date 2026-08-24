@@ -5,6 +5,7 @@ import {
   createProtocolError,
   CreateRoomResponseSchema,
   CommandResultPayloadSchema,
+  DisplayNameSchema,
   GameEventSchema,
   GameEventMessageSchema,
   GameSnapshotSchema,
@@ -13,6 +14,7 @@ import {
   projectGameEventForViewer,
   projectPlayerView,
   ProtocolErrorSchema,
+  PlayerViewSchema,
   RoomSnapshotSchema,
   ServerMessageSchema,
   TournamentConfigSchema,
@@ -91,6 +93,17 @@ describe("protocol wire contracts", () => {
     expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, smallBlind: 10, bigBlind: 10, blindStructure: [{ smallBlind: 10, bigBlind: 10 }] }).success).toBe(false);
     expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, blindStructure: [{ smallBlind: 10, bigBlind: 20 }] }).success).toBe(false);
     expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, actionTime: "UNLIMITED", timeBank: 60 }).success).toBe(false);
+    expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, blindStructure: [{ smallBlind: 5, bigBlind: 10 }, { smallBlind: 10, bigBlind: 20 }] }).success).toBe(false);
+    expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, blindMode: "hands", blindStructure: [{ smallBlind: 5, bigBlind: 10 }] }).success).toBe(false);
+    expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, blindMode: "time", blindStructure: [{ smallBlind: 5, bigBlind: 10 }] }).success).toBe(false);
+  });
+
+  it("enforces the display-name Unicode code-point boundary everywhere", () => {
+    expect(DisplayNameSchema.safeParse("a".repeat(16)).success).toBe(true);
+    expect(DisplayNameSchema.safeParse("a".repeat(17)).success).toBe(false);
+    expect(DisplayNameSchema.safeParse("😀".repeat(16)).success).toBe(true);
+    expect(DisplayNameSchema.safeParse("😀".repeat(17)).success).toBe(false);
+    expect(DisplayNameSchema.safeParse("😀").success).toBe(false);
   });
 
   it("enforces invitation format, token entropy, and CLOSED room invitation removal", () => {
@@ -136,23 +149,33 @@ describe("protocol wire contracts", () => {
     expect(payload).not.toContain("remainingDeck");
     expect(payload).not.toContain("burnCards");
     expect(() => projectPlayerView({ ...source, playerToken: "token-sentinel", remainingDeck: [bobCard], burnCards: [aliceCard] } as never)).toThrow();
+    expect(projectPlayerView({ ...source, viewer: { ...source.viewer, playerId: "bob" } }).viewer.legalActions).toBeNull();
+  });
+
+  it("rejects legal actions for a non-actor and private spectator snapshots", () => {
+    const validSnapshot = GameSnapshotSchema.parse({ snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "1", ...projectPlayerView(source) });
+    expect(PlayerViewSchema.safeParse({ ...projectPlayerView(source), viewer: { ...projectPlayerView(source).viewer, playerId: "bob" } }).success).toBe(false);
+    const privateSpectator = { ...validSnapshot, viewer: { ...validSnapshot.viewer, role: "ELIMINATED_SPECTATOR", holeCards: [aliceCard], legalActions: validSnapshot.viewer.legalActions } };
+    expect(GameSnapshotSchema.safeParse(privateSpectator).success).toBe(false);
+    expect(ServerMessageSchema.safeParse({ type: "GAME_SNAPSHOT", protocolVersion: 1, serverTime: 1, payload: privateSpectator }).success).toBe(false);
   });
 
   it("removes private deal card event payloads without changing event identity", () => {
     const event = GameEventMessageSchema.parse({
       type: "GAME_EVENT", protocolVersion: 1, serverTime: 1,
-      payload: { tournamentId: "tournament_1", sequence: "9", handId: "hand_1", event: { type: "DEAL_HOLE_CARD", payload: { playerId: "alice", seat: 0, cardIndex: 0, card: aliceCard } }, patch: {} },
+      payload: { tournamentId: "tournament_1", sequence: "9", handId: "hand_1", event: { type: "DEAL_HOLE_CARD", payload: { playerId: "alice", seat: 0, cardIndex: 0, card: aliceCard } }, patch: { viewer: { holeCards: [aliceCard] } } },
     });
     const bobEvent = projectGameEventForViewer(event, "bob");
     expect(bobEvent.payload.tournamentId).toBe(event.payload.tournamentId);
     expect(bobEvent.payload.sequence).toBe(event.payload.sequence);
     expect(bobEvent.payload.event).toEqual({ type: "DEAL_HOLE_CARD", payload: { playerId: "alice", seat: 0, cardIndex: 0 } });
+    expect(bobEvent.payload.patch).toEqual({});
     expect(JSON.stringify(bobEvent)).not.toContain(JSON.stringify(aliceCard));
   });
 
   it("applies strict player patches equivalently and rejects unknown player updates", () => {
     const before = projectPlayerView(source);
-    const after = applyPlayerViewPatch(before, { board: [aliceCard, bobCard, { rank: "2", suit: "CLUBS" }], currentActorPlayerId: "bob", players: [{ playerId: "alice", stack: 990, streetBet: 10 }] });
+    const after = applyPlayerViewPatch(before, { board: [aliceCard, bobCard, { rank: "2", suit: "CLUBS" }], currentActorPlayerId: "bob", players: [{ playerId: "alice", stack: 990, streetBet: 10 }], viewer: { legalActions: null } });
     expect(after.board).toHaveLength(3);
     expect(after.currentActorPlayerId).toBe("bob");
     expect(after.players.find((player) => player.playerId === "alice")?.stack).toBe(990);

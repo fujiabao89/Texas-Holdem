@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { GameEventMessageSchema } from "../events";
-import { CardSchema, LegalActionsSchema, OpaqueIdSchema, SafeIntegerSchema } from "./common";
+import { CardSchema, DisplayNameSchema, LegalActionsSchema, OpaqueIdSchema, SafeIntegerSchema } from "./common";
 import { BotViewSchema, PlayerViewPatchSchema, PlayerViewSchema } from "./views";
 
 /**
@@ -11,7 +11,7 @@ import { BotViewSchema, PlayerViewPatchSchema, PlayerViewSchema } from "./views"
  */
 const ProjectablePlayerSchema = z.strictObject({
   playerId: OpaqueIdSchema,
-  displayName: z.string().min(2).max(64),
+  displayName: DisplayNameSchema,
   seat: z.number().int().min(0).max(9),
   stack: SafeIntegerSchema,
   streetBet: SafeIntegerSchema,
@@ -62,7 +62,7 @@ export function projectPlayerView(sourceInput: z.infer<typeof ProjectableGameSou
       playerId: source.viewer.playerId,
       role: isSpectator ? "ELIMINATED_SPECTATOR" : "PLAYER",
       holeCards: isSpectator ? [] : owner.privateHoleCards,
-      legalActions: isSpectator ? null : source.viewer.legalActions,
+      legalActions: isSpectator || source.currentActorPlayerId !== source.viewer.playerId ? null : source.viewer.legalActions,
       timeBankRemainingMs: source.viewer.timeBankRemainingMs,
     },
     rankings: source.rankings,
@@ -84,9 +84,10 @@ export function projectGameEventForViewer(
   const viewer = OpaqueIdSchema.parse(viewerPlayerId);
   if (message.payload.event.type !== "DEAL_HOLE_CARD" || message.payload.event.payload.playerId === viewer) return message;
   const { card: _card, ...publicPayload } = message.payload.event.payload;
+  const { viewer: _viewer, ...publicPatch } = message.payload.patch;
   return GameEventMessageSchema.parse({
     ...message,
-    payload: { ...message.payload, event: { type: "DEAL_HOLE_CARD", payload: publicPayload } },
+    payload: { ...message.payload, event: { type: "DEAL_HOLE_CARD", payload: publicPayload }, patch: publicPatch },
   });
 }
 
