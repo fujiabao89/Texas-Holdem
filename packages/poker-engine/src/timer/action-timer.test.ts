@@ -54,4 +54,12 @@ describe("consumeTimeBank", () => {
     expect(next.usedThisOpportunity).toBe(false);
     expect(consumeTimeBank(next)!.secondsRemaining).toBe(0);
   });
+
+  it("拒绝非法的公开 Time Bank 余额，避免污染后续状态", () => {
+    for (const secondsRemaining of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
+      const state = { secondsRemaining, usedThisOpportunity: false };
+      expect(() => consumeTimeBank(state)).toThrow();
+      expect(() => resetTimeBankOpportunity(state)).toThrow();
+    }
+  });
 });

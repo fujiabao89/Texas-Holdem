@@ -132,7 +132,10 @@ export class TournamentEngine {
     if (active.length < 2) throw new Error("startNextHand: ACTIVE 玩家不足 2");
     if (active.some((p) => p.chips <= 0)) throw new Error("startNextHand: 存在非正筹码的 ACTIVE 玩家");
 
-    if (this.handNumber > 0) {
+    if (
+      this.handNumber > 0 ||
+      !active.some((p) => p.seatIndex === this.dealerSeat)
+    ) {
       this.dealerSeat = nextTournamentDealer(this.dealerSeat!, active.map((p) => p.seatIndex));
     }
 

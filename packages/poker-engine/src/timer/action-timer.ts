@@ -72,6 +72,7 @@ export function initialTimeBankState(timeBank: TimeBankSeconds): TimeBankState {
  * 否则扣减 `min(TIME_BANK_STEP_SECONDS, secondsRemaining)` 并标记已使用。
  */
 export function consumeTimeBank(state: TimeBankState): TimeBankState | null {
+  assertValidTimeBankState(state);
   if (state.usedThisOpportunity || state.secondsRemaining <= 0) {
     return null;
   }
@@ -84,5 +85,12 @@ export function consumeTimeBank(state: TimeBankState): TimeBankState | null {
 
 /** 进入新行动机会时复位「本机会已使用」标记（余额保留）。 */
 export function resetTimeBankOpportunity(state: TimeBankState): TimeBankState {
+  assertValidTimeBankState(state);
   return { ...state, usedThisOpportunity: false };
+}
+
+function assertValidTimeBankState(state: TimeBankState): void {
+  if (!Number.isInteger(state.secondsRemaining) || state.secondsRemaining < 0) {
+    throw new Error(`TimeBankState.secondsRemaining 必须为非负整数，收到 ${state.secondsRemaining}`);
+  }
 }

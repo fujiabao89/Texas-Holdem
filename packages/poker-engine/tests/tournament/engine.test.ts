@@ -129,6 +129,31 @@ describe("TournamentEngine 首手 Dealer 与状态", () => {
     expect(hand.seats.map((s) => s.seatIndex)).toEqual([0, 1, 2]);
     expect(hand.dealerSeat).toBe(state.dealerSeat);
   });
+
+  it("首手庄家在开局前撤回时，将庄家转给仍 ACTIVE 的座位", () => {
+    const t = makeTourney(fixedCfg(), [0, 1, 2]);
+    t.withdrawParticipant(0);
+
+    t.startNextHand();
+
+    const state = t.getState();
+    expect(state.dealerSeat).toBe(1);
+    expect(state.hand!.dealerSeat).toBe(1);
+    expect(state.hand!.seats.map((s) => s.seatIndex)).toEqual([1, 2]);
+  });
+
+  it("getState 返回的底牌数组不可变，不能污染权威状态", () => {
+    const t = makeTourney(fixedCfg(), [0, 1, 2]);
+    t.startNextHand();
+
+    const hand = t.getState().hand!;
+    const holeCards = hand.seats[0]!.holeCards;
+    expect(Object.isFrozen(holeCards)).toBe(true);
+    expect(() => {
+      (holeCards as unknown as { push(card: unknown): void }).push(hand.remainingDeck[0]!);
+    }).toThrow(TypeError);
+    expect(holeCards).toHaveLength(2);
+  });
 });
 
 describe("TournamentEngine 淘汰、Heads-Up 与冠军", () => {
@@ -267,6 +292,19 @@ describe("TournamentEngine 退出/撤回与筹码守恒", () => {
     expect(state.champion).toBe(0);
     expect(state.participants.find((p) => p.seatIndex === 0)!.chips).toBe(220); // 100 + 主池220
     expect(state.forfeitedChips + state.participants.find((p) => p.seatIndex === 0)!.chips).toBe(300); // 守恒
+  });
+
+  it("撤回非当前待行动者不占回合，当前行动者保持不变", () => {
+    const t = makeTourney(fixedCfg(), [0, 1, 2]);
+    t.startNextHand();
+    expect(t.getState().hand!.currentActor).toBe(0);
+
+    t.withdrawParticipant(1);
+
+    const state = t.getState();
+    expect(state.hand!.currentActor).toBe(0);
+    expect(state.hand!.seats.find((s) => s.seatIndex === 1)!.folded).toBe(true);
+    expect(state.participants.find((p) => p.seatIndex === 1)!.status).toBe("EXIT_PENDING");
   });
 
   it("淘汰/撤回者不可参与下一手", () => {

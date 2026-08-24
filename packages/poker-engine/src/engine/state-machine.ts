@@ -27,6 +27,7 @@ import {
 import {
   anyPending,
   computeLegalActions,
+  isPending,
   resolveAllIn,
   resolveBetOrRaise,
   resolveCall,
@@ -60,7 +61,9 @@ function toMutableSeats(seats: readonly PlayerState[]): MutableSeat[] {
 }
 
 function freezeSeats(seats: readonly MutableSeat[]): readonly PlayerState[] {
-  return Object.freeze(seats.map((s) => Object.freeze({ ...s })));
+  return Object.freeze(
+    seats.map((s) => Object.freeze({ ...s, holeCards: Object.freeze([...s.holeCards]) })),
+  );
 }
 
 export interface HandResult {
@@ -397,7 +400,21 @@ export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandRe
     nextSequence: seq.value,
   });
   const result = advanceAfterAction(next, emit);
-  return { state: Object.freeze({ ...result, nextSequence: seq.value }), events: Object.freeze(events) };
+  const previousActor = state.currentActor;
+  const actorStillPending =
+    previousActor !== seatIndex &&
+    result.phase === result.street &&
+    result.seats.some(
+      (s) => s.seatIndex === previousActor && isPending(s, result.currentBet),
+    );
+  return {
+    state: Object.freeze({
+      ...result,
+      ...(actorStillPending ? { currentActor: previousActor } : {}),
+      nextSequence: seq.value,
+    }),
+    events: Object.freeze(events),
+  };
 }
 
 /** 动作后推进：提前结算 / Runout / 同街下一行动者 / 下一街或比牌。 */
