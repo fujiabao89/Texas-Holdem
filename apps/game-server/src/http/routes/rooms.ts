@@ -40,6 +40,8 @@ export interface RoomRoutesDeps {
   readonly idempotency: IdempotencyStore;
   /** 规则权威校验：poker-engine 的 validateTournamentConfig（只调用，不复制规则）。 */
   readonly validateConfig: (config: TournamentConfig) => TournamentConfig;
+  /** 受保护路由的 @fastify/rate-limit 配置（CodeQL 识别 config.rateLimit 为路由级限流）。 */
+  readonly rateLimit: { readonly max: number; readonly timeWindow: string };
   readonly now: () => number;
   readonly makeTraceId: () => string;
 }
@@ -167,7 +169,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   });
 
   // PATCH /api/v1/rooms/:roomId —— 低频 Lobby 设置（仅 LOBBY；改配置/踢人仅 Host；换座只移动当前身份）。
-  app.patch<{ Params: RoomParams }>("/api/v1/rooms/:roomId", async (request, reply) => {
+  app.patch<{ Params: RoomParams }>("/api/v1/rooms/:roomId", { config: { rateLimit: deps.rateLimit } }, async (request, reply) => {
     const traceId = deps.makeTraceId();
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;
@@ -217,7 +219,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   });
 
   // POST /api/v1/rooms/:roomId/tournaments —— 开局（仅 Host；LOBBY + 全部入座 + 全部 Ready + revision 精确匹配）。
-  app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/tournaments", async (request, reply) => {
+  app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/tournaments", { config: { rateLimit: deps.rateLimit } }, async (request, reply) => {
     const traceId = deps.makeTraceId();
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;
@@ -247,7 +249,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   });
 
   // POST /api/v1/rooms/:roomId/leave —— 主动离开（Host 离开立即转移 Host）。
-  app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/leave", async (request, reply) => {
+  app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/leave", { config: { rateLimit: deps.rateLimit } }, async (request, reply) => {
     const traceId = deps.makeTraceId();
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;

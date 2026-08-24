@@ -111,6 +111,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       rateLimiter: options.rateLimiter ?? createRateLimiter(),
       idempotency: options.idempotency ?? new IdempotencyStore(),
       validateConfig: validateRoomConfig,
+      rateLimit: globalRateLimit,
       now: options.now ?? Date.now,
       makeTraceId: () => randomUUID(),
     });
