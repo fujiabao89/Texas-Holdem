@@ -56,11 +56,11 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
           tier="${{ github.event_name == 'schedule' && 'nightly' || inputs.tier }}"
-          games_args=""
+          games_args=()
           if [[ -n "${{ inputs.games }}" ]]; then
-            games_args="--games ${{ inputs.games }}"
+            games_args=(--games "${{ inputs.games }}")
           fi
-          pnpm run test:sim -- --tier "$tier" $games_args
+          pnpm run test:sim -- --tier "$tier" "${games_args[@]}"
 
       - name: Upload simulator artifacts
         if: always()

@@ -24,71 +24,10 @@ import {
   formatFailureReport,
   writeFailureArtifact,
 } from "./long-running-games/failure";
+import { parseArgs, USAGE } from "./cli-args";
+import type { CliArgs } from "./cli-args";
 import { planNightlySeeds, planRcSeeds, planSmokeSeeds } from "./tiers";
 import type { SimulatorTier, TierPlan } from "./tiers";
-
-interface CliArgs {
-  games?: number;
-  tier?: SimulatorTier;
-  sha?: string;
-  ledger?: string;
-  out: string;
-}
-
-const USAGE = `用法：
-  pnpm test:sim -- --seed <n> [--games <n>]
-  pnpm test:sim -- --tier smoke|nightly --sha <hex> [--games <n>] [--ledger <file>]
-  pnpm test:sim -- --tier rc --sha <hex> --ledger <file> [--games <n>]
-选项：--out <dir> 产物目录（默认 tests/simulator/.artifacts）`;
-
-function parseArgs(argv: readonly string[]): CliArgs {
-  const args: CliArgs = { out: join(dirname(fileURLToPath(import.meta.url)), ".artifacts") };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
-    const next = argv[i + 1];
-    if (arg === "--games" || arg.startsWith("--games=")) {
-      const raw = arg.includes("=") ? arg.slice("--games=".length) : next;
-      if (raw === undefined || !/^\d+$/.test(raw) || Number(raw) < 1) {
-        throw new Error(`--games 需要正整数，收到 ${raw ?? "(缺失)"}`);
-      }
-      args.games = Number(raw);
-      if (!arg.includes("=")) i++;
-    } else if (arg === "--tier" || arg.startsWith("--tier=")) {
-      const raw = arg.includes("=") ? arg.slice("--tier=".length) : next;
-      if (raw !== "smoke" && raw !== "nightly" && raw !== "rc") {
-        throw new Error(`--tier 只支持 smoke|nightly|rc，收到 ${raw ?? "(缺失)"}`);
-      }
-      args.tier = raw;
-      if (!arg.includes("=")) i++;
-    } else if (arg === "--sha" || arg.startsWith("--sha=")) {
-      const raw = arg.includes("=") ? arg.slice("--sha=".length) : next;
-      if (raw === undefined || !/^[0-9a-f]{7,40}$/i.test(raw)) {
-        throw new Error(`--sha 需要 7–40 位十六进制提交 SHA，收到 ${raw ?? "(缺失)"}`);
-      }
-      args.sha = raw;
-      if (!arg.includes("=")) i++;
-    } else if (arg === "--ledger" || arg.startsWith("--ledger=")) {
-      const raw = arg.includes("=") ? arg.slice("--ledger=".length) : next;
-      if (raw === undefined || raw === "") {
-        throw new Error("--ledger 需要文件路径");
-      }
-      args.ledger = raw;
-      if (!arg.includes("=")) i++;
-    } else if (arg === "--out" || arg.startsWith("--out=")) {
-      const raw = arg.includes("=") ? arg.slice("--out=".length) : next;
-      if (raw === undefined || raw === "") {
-        throw new Error("--out 需要目录路径");
-      }
-      args.out = raw;
-      if (!arg.includes("=")) i++;
-    } else if (arg === "--seed" || arg.startsWith("--seed=")) {
-      if (!arg.includes("=")) i++; // 由 resolveTestSeed 解析
-    } else {
-      throw new Error(`未知参数 ${arg}\n${USAGE}`);
-    }
-  }
-  return args;
-}
 
 interface LedgerFile {
   readonly version: 1;
@@ -165,7 +104,7 @@ function writeSummary(outDir: string, summary: Record<string, unknown>): void {
 }
 
 async function main(): Promise<number> {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2), join(dirname(fileURLToPath(import.meta.url)), ".artifacts"));
   const startedAt = performance.now();
   const stats = new CoverageStats();
 

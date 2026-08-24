@@ -47,7 +47,8 @@ Nightly/RC 等大规模运行不得塞进普通 PR CI；如需 CI 触发，只�
 
 | 目录/文件 | 职责 |
 | --- | --- |
-| [run.ts](./run.ts) | CLI 入口：参数解析、档位规划、批处理循环、摘要/失败产物输出 |
+| [run.ts](./run.ts) | CLI 入口：档位规划、批处理循环、摘要/失败产物输出 |
+| [cli-args.ts](./cli-args.ts) | 参数解析（含跨平台 `--` 分隔符容忍，自带单测） |
 | [tiers.ts](./tiers.ts) | Smoke/Nightly/RC 种子规划与 SHA 派生（FNV-1a 纯函数） |
 | [known-seeds.ts](./known-seeds.ts) | 已知失败 seed 回归集（当前为空，随首个失败回填） |
 | [random-hands/](./random-hands) | 加权场景生成与 LegalActions 代理 |
