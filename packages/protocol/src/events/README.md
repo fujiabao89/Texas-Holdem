@@ -1,3 +1,3 @@
 # Events
 
-服务端到客户端的事件 Schema。事件需包含协议版本、牌桌与牌局标识及单调序列号。
+服务端到客户端的严格消息 Schema。每条消息携带 v1 `protocolVersion` 和 `serverTime`；`GAME_EVENT` 额外固定 `tournamentId`、nullable `handId` 与 uint64 十进制 `sequence`。事件投影保留这些身份字段，只删除未授权的私有发牌字段。
