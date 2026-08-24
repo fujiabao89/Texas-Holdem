@@ -114,6 +114,7 @@ async function main(): Promise<number> {
 
   let seeds: number[];
   let blindModes: readonly (BlindMode | undefined)[] | undefined;
+  // 单 seed 批次的强制模式（重放失败用）；分层批次的强制模式在 plan.blindModes 中。
   let modeLabel: string;
   let tier: SimulatorTier | null = null;
   let sha: string | null = null;
@@ -134,7 +135,10 @@ async function main(): Promise<number> {
     const { seed, source } = resolveTestSeed();
     const games = args.games ?? 32;
     seeds = singleModeSeeds(seed, games);
-    modeLabel = `single seed=${seed}（来源 ${source}）games=${games}`;
+    if (args.blindMode !== undefined) {
+      blindModes = seeds.map(() => args.blindMode);
+    }
+    modeLabel = `single seed=${seed}（来源 ${source}）games=${games}${args.blindMode !== undefined ? ` blind-mode=${args.blindMode}` : ""}`;
     console.info(formatSeedReport(seed));
     console.info(`[tex-sim] ${modeLabel}`);
   }
@@ -169,6 +173,7 @@ async function main(): Promise<number> {
               seed,
               scenario: null,
               stats: stats.summary(),
+              forcedBlindMode,
             });
       const artifact = writeFailureArtifact(args.out, failure);
       console.error(formatFailureReport(failure));

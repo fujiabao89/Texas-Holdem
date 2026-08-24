@@ -8,6 +8,7 @@
  * `pnpm run script -- --flag` 的 `--` 透传给脚本（Windows 不透传），
  * 忽略它保证跨平台行为一致。未知参数显式抛错（退出码 2）。
  */
+import type { BlindMode } from "../../packages/poker-engine/src/index";
 import type { SimulatorTier } from "./tiers";
 
 export interface CliArgs {
@@ -15,14 +16,17 @@ export interface CliArgs {
   tier?: SimulatorTier;
   sha?: string;
   ledger?: string;
+  /** 强制场景 Blind Mode（重放 Nightly 逐模式批次的失败时必须与原运行一致）。 */
+  blindMode?: BlindMode;
   out: string;
 }
 
 export const USAGE = `用法：
-  pnpm test:sim -- --seed <n> [--games <n>]
+  pnpm test:sim -- --seed <n> [--games <n>] [--blind-mode fixed|hands|time]
   pnpm test:sim -- --tier smoke|nightly --sha <hex> [--games <n>] [--ledger <file>]
   pnpm test:sim -- --tier rc --sha <hex> --ledger <file> [--games <n>]
-选项：--out <dir> 产物目录（默认 tests/simulator/.artifacts）`;
+选项：--out <dir> 产物目录（默认 tests/simulator/.artifacts）；
+      --blind-mode 仅对单 seed 批次生效（重放强制模式批次失败时使用，见失败产物 replayCommand）`;
 
 export function parseArgs(argv: readonly string[], defaultOut: string): CliArgs {
   const args: CliArgs = { out: defaultOut };
@@ -70,6 +74,13 @@ export function parseArgs(argv: readonly string[], defaultOut: string): CliArgs 
       if (!arg.includes("=")) i++;
     } else if (arg === "--seed" || arg.startsWith("--seed=")) {
       if (!arg.includes("=")) i++; // 由 resolveTestSeed 解析
+    } else if (arg === "--blind-mode" || arg.startsWith("--blind-mode=")) {
+      const raw = arg.includes("=") ? arg.slice("--blind-mode=".length) : next;
+      if (raw !== "fixed" && raw !== "hands" && raw !== "time") {
+        throw new Error(`--blind-mode 只支持 fixed|hands|time，收到 ${raw ?? "(缺失)"}`);
+      }
+      args.blindMode = raw;
+      if (!arg.includes("=")) i++;
     } else {
       throw new Error(`未知参数 ${arg}\n${USAGE}`);
     }

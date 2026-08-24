@@ -36,7 +36,7 @@ Nightly/RC 等大规模运行不得塞进普通 PR CI；如需 CI 触发，只�
 
 - 每场的 `randomSeed` 即该场 seed：场景、引擎洗牌/首手 Dealer（`SeededRandomSource`）与代理决策全部由 seed 派生，同 seed 100% 重放（docs/01 §16）。
 - 失败时（不变量违反 / 引擎错误 / Watchdog / 覆盖空洞）：
-  - 控制台输出失败类别、原因、**重放命令**（`pnpm test:sim -- --seed <n> --games 1`）与场景摘要；
+  - 控制台输出失败类别、原因、**重放命令**（`pnpm test:sim -- --seed <n> --games 1`；强制 Blind Mode 批次的失败自动追加 `--blind-mode <mode>`，缺失该参数重放会得到不同场景）与场景摘要；
   - 失败产物目录写入 `failure-seed<n>-<category>.json`：类别、seed、最小场景 fixture（players/stack/blind 结构/风格）、完整 Action/Event 轨迹、失败时状态与统计摘要；
   - 退出码非 0。成功运行只在产物目录保存聚合统计 `summary.json`，不输出逐场细节。
 - 每次状态转移后与每手结束后断言全部引擎不变量（复用 `packages/poker-engine` 的 `assertInvariants` / `assertTournamentInvariants`）与主事件流 sequence 连续性（[invariants/](./invariants)）。

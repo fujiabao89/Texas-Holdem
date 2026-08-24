@@ -8,7 +8,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { PokerEvent } from "../../../packages/poker-engine/src/index";
+import type { BlindMode, PokerEvent } from "../../../packages/poker-engine/src/index";
 import type { TournamentState } from "../../../packages/poker-engine/src/index";
 import type { SimulatorScenario } from "../random-hands/scenario";
 
@@ -46,6 +46,8 @@ export interface SimulationFailureArgs {
   readonly missingCategories?: readonly string[];
   /** 关联的候选提交（可空；由 CLI 传入）。 */
   readonly gitSha?: string;
+  /** 运行时的强制 Blind Mode（Nightly 逐模式批次）；重放命令必须带上它才能复现同一场景。 */
+  readonly forcedBlindMode?: BlindMode;
 }
 
 export class SimulationFailure extends Error {
@@ -58,6 +60,7 @@ export class SimulationFailure extends Error {
   readonly stats: Record<string, number> | null;
   readonly missingCategories: readonly string[];
   readonly gitSha: string | null;
+  readonly forcedBlindMode: BlindMode | null;
 
   constructor(args: SimulationFailureArgs) {
     super(args.message);
@@ -71,11 +74,18 @@ export class SimulationFailure extends Error {
     this.stats = args.stats ?? null;
     this.missingCategories = args.missingCategories ?? [];
     this.gitSha = args.gitSha ?? null;
+    this.forcedBlindMode = args.forcedBlindMode ?? null;
   }
 
-  /** 100% 重放命令（docs/06 §5：同一 seed 必须完全重放）。 */
+  /**
+   * 100% 重放命令（docs/06 §5：同一 seed 必须完全重放）。
+   * 强制 Blind Mode 的批次（Nightly）必须带 `--blind-mode`：强制模式会改变场景
+   * 派生的随机流，仅凭 seed 重放会得到不同场景，而非仅模式不同。
+   */
   replayCommand(): string | null {
-    return this.seed === null ? null : `pnpm test:sim -- --seed ${this.seed} --games 1`;
+    if (this.seed === null) return null;
+    const modePart = this.forcedBlindMode === null ? "" : ` --blind-mode ${this.forcedBlindMode}`;
+    return `pnpm test:sim -- --seed ${this.seed} --games 1${modePart}`;
   }
 }
 
@@ -88,6 +98,7 @@ export function serializeFailure(failure: SimulationFailure): Record<string, unk
     seed: failure.seed,
     replayCommand: failure.replayCommand(),
     gitSha: failure.gitSha,
+    forcedBlindMode: failure.forcedBlindMode,
     scenario: failure.scenario,
     actionCount: failure.actions.length,
     actions: failure.actions,

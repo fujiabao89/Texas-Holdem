@@ -55,6 +55,15 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--out"], DEFAULT_OUT)).toThrow(/--out/);
   });
 
+  it("--blind-mode 解析合法值并拒绝非法值", () => {
+    expect(parseArgs(["--blind-mode", "hands"], DEFAULT_OUT).blindMode).toBe("hands");
+    expect(parseArgs(["--blind-mode=time"], DEFAULT_OUT).blindMode).toBe("time");
+    expect(parseArgs(["--blind-mode", "fixed"], DEFAULT_OUT).blindMode).toBe("fixed");
+    expect(parseArgs([], DEFAULT_OUT).blindMode).toBeUndefined();
+    expect(() => parseArgs(["--blind-mode", "weekly"], DEFAULT_OUT)).toThrow(/--blind-mode/);
+    expect(() => parseArgs(["--blind-mode"], DEFAULT_OUT)).toThrow(/--blind-mode/);
+  });
+
   it("空参数返回默认产物目录", () => {
     expect(parseArgs([], DEFAULT_OUT)).toEqual({ out: DEFAULT_OUT });
   });

@@ -206,6 +206,7 @@ export function runTournament(seed: number, options: RunTournamentOptions = {}):
       events,
       state,
       stats: options.statsSummary ? options.statsSummary() : null,
+      forcedBlindMode: options.blindMode,
     });
   }
 

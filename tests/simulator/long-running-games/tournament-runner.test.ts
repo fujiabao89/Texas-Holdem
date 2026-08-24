@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { runTournament, isShortAllIn } from "./tournament-runner";
+import { parseArgs } from "../cli-args";
 import type { GameState, LegalActions } from "../../../packages/poker-engine/src/index";
 import { CoverageStats } from "./stats";
 import {
@@ -108,6 +109,63 @@ describe("isShortAllIn 分类（总额语义：allInTo 对 currentBet，docs/01 
     expect(isShortAllIn(handCtx(0, 20, 20, false), { allInTo: 15, callAmount: 0 } as LegalActions)).toBe(true);
     expect(isShortAllIn(handCtx(0, 20, 20, false), { allInTo: 20, callAmount: 0 } as LegalActions)).toBe(false);
     expect(isShortAllIn(handCtx(0, 20, 20, false), { allInTo: 100, callAmount: 0 } as LegalActions)).toBe(false);
+  });
+});
+
+describe("强制 Blind Mode 失败重放（P1：重放必须保留强制模式）", () => {
+  const tightActionLimit = {
+    maxActionsPerTournament: 2,
+    maxElapsedMsPerTournament: 60_000,
+    maxTransitionsPerHand: 1_000,
+  };
+
+  it.each([["hands"], ["time"], ["fixed"]] as const)(
+    "强制 %s 失败的重放命令带 --blind-mode %s，且按命令重放得到相同模式的场景",
+    (mode) => {
+      let failure: SimulationFailure;
+      try {
+        runTournament(888_000 + mode.length, { blindMode: mode, thresholds: tightActionLimit });
+        throw new Error("不可达：应触发 watchdog 失败");
+      } catch (error) {
+        failure = error as SimulationFailure;
+      }
+      expect(failure.forcedBlindMode).toBe(mode);
+      const command = failure.replayCommand()!;
+      expect(command).toContain(`--seed ${failure.seed}`);
+      expect(command).toContain(`--blind-mode ${mode}`);
+
+      // 按重放命令的参数重放：场景与原失败场景完全一致（同 seed + 同强制模式）。
+      const replayArgs = command.replace(/^pnpm test:sim -- /, "").split(/\s+/);
+      const parsed = parseArgs(replayArgs, "unused");
+      expect(parsed.blindMode).toBe(mode);
+      const replayed = runTournament(failure.seed!, { blindMode: parsed.blindMode });
+      expect(replayed.scenario).toEqual(failure.scenario);
+    },
+  );
+
+  it("非强制模式失败的失败对象 forcedBlindMode 为 null，重放命令不带 --blind-mode", () => {
+    let failure: SimulationFailure;
+    try {
+      runTournament(999_001, { thresholds: tightActionLimit });
+      throw new Error("不可达：应触发 watchdog 失败");
+    } catch (error) {
+      failure = error as SimulationFailure;
+    }
+    expect(failure.forcedBlindMode).toBeNull();
+    expect(failure.replayCommand()).toBe(`pnpm test:sim -- --seed ${failure.seed} --games 1`);
+  });
+
+  it("serializeFailure 包含 forcedBlindMode 与带模式的 replayCommand", () => {
+    let failure: SimulationFailure;
+    try {
+      runTournament(999_002, { blindMode: "hands", thresholds: tightActionLimit });
+      throw new Error("不可达：应触发 watchdog 失败");
+    } catch (error) {
+      failure = error as SimulationFailure;
+    }
+    const serialized = serializeFailure(failure) as Record<string, unknown>;
+    expect(serialized["forcedBlindMode"]).toBe("hands");
+    expect(serialized["replayCommand"]).toContain("--blind-mode hands");
   });
 });
 
