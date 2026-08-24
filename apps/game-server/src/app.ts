@@ -1,7 +1,12 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
+import rateLimit from "@fastify/rate-limit";
 import { validateTournamentConfig } from "@texas-holdem/poker-engine";
-import type { TournamentConfig } from "@texas-holdem/protocol";
+import {
+  createProtocolError,
+  type ErrorEnvelope,
+  type TournamentConfig,
+} from "@texas-holdem/protocol";
 import type { AppConfig } from "./config";
 import { registerRoomRoutes } from "./http/routes/rooms";
 import { IdempotencyStore } from "./http/middleware/idempotency";
@@ -23,12 +28,24 @@ function validateRoomConfig(config: TournamentConfig): TournamentConfig {
   };
 }
 
+/** @fastify/rate-limit 超额时抛出的标记对象（{ statusCode: 429, envelope }）。 */
+function isRateLimitEnvelope(error: unknown): error is { statusCode: number; envelope: ErrorEnvelope } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { statusCode?: unknown }).statusCode === 429 &&
+    "envelope" in error
+  );
+}
+
 export interface BuildAppOptions {
   readonly config: AppConfig;
   readonly roomManager: RoomManager;
   readonly rateLimiter?: RateLimiter;
   readonly idempotency?: IdempotencyStore;
   readonly now?: () => number;
+  /** @fastify/rate-limit 全局 per-IP 额度（CodeQL 识别为 RateLimitingMiddleware）。 */
+  readonly rateLimit?: { readonly max: number; readonly timeWindow: string };
 }
 
 /**
@@ -55,17 +72,48 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     done();
   });
 
+  // 路由级 per-IP 限流（docs/04 §10.3 受保护变更额度）：@fastify/rate-limit 全局应用，
+  // 429 响应保持协议 ErrorEnvelope（失败一律 { error }）。自定义限流器只保留
+  // create/join/inviteCode 的规格额度（本插件无法表达 per-inviteCode 桶）。
+  const globalRateLimit = options.rateLimit ?? { max: 60, timeWindow: "1 minute" };
+  app.register(rateLimit, {
+    max: globalRateLimit.max,
+    timeWindow: globalRateLimit.timeWindow,
+    keyGenerator: (request) => request.ip,
+    errorResponseBuilder: (request, context) => ({
+      statusCode: 429,
+      envelope: createProtocolError("RATE_LIMITED", request.id, {
+        retryable: true,
+        details: { retryAfterMs: context.ttl },
+      }),
+    }),
+  });
+
+  // @fastify/rate-limit 以 throw 方式上报超额；自定义错误处理器把标记对象转成
+  // 纯净的 ErrorEnvelope + 429，其余错误走 Fastify 默认处理。
+  const defaultErrorHandler = app.errorHandler;
+  app.setErrorHandler((error, request, reply) => {
+    if (isRateLimitEnvelope(error)) {
+      return reply.status(429).send({ error: error.envelope });
+    }
+    return defaultErrorHandler.call(app, error, request, reply);
+  });
+
   app.get("/health", async () => {
     return { status: "ok" };
   });
 
-  registerRoomRoutes(app, {
-    manager: options.roomManager,
-    rateLimiter: options.rateLimiter ?? createRateLimiter(),
-    idempotency: options.idempotency ?? new IdempotencyStore(),
-    validateConfig: validateRoomConfig,
-    now: options.now ?? Date.now,
-    makeTraceId: () => randomUUID(),
+  // 路由必须在限流插件加载之后再注册（onRoute 钩子只在路由注册时触发），
+  // 否则全局限流不会应用到这些路由。
+  app.after(() => {
+    registerRoomRoutes(app, {
+      manager: options.roomManager,
+      rateLimiter: options.rateLimiter ?? createRateLimiter(),
+      idempotency: options.idempotency ?? new IdempotencyStore(),
+      validateConfig: validateRoomConfig,
+      now: options.now ?? Date.now,
+      makeTraceId: () => randomUUID(),
+    });
   });
 
   return app;

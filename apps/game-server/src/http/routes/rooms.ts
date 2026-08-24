@@ -114,26 +114,7 @@ function authenticate(
   }
 }
 
-/**
- * 鉴权前按源 IP 限流的路由级中间件（防 token 暴力破解；鉴权失败也计入该桶）。
- * 注册为受保护路由的 `preHandler`（CodeQL：route-level RateLimitingMiddleware）。
- */
-function createAuthRateLimitMiddleware(deps: Pick<RoomRoutesDeps, "rateLimiter" | "makeTraceId">) {
-  function rateLimitAuthByIp(request: FastifyRequest, reply: FastifyReply, done: () => void): void {
-    const rate = deps.rateLimiter.checkAuthByIp(request.ip);
-    if (!rate.allowed) {
-      const traceId = deps.makeTraceId();
-      void sendRateLimited(reply, traceId, rate.retryAfterMs);
-      return;
-    }
-    done();
-  }
-  return rateLimitAuthByIp;
-}
-
 export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): void {
-  const rateLimitAuthByIp = createAuthRateLimitMiddleware(deps);
-
   // POST /api/v1/rooms —— 创建房间并加入创建者（创建者即 Host）。
   app.post("/api/v1/rooms", async (request, reply) => {
     const traceId = deps.makeTraceId();
@@ -186,7 +167,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   });
 
   // PATCH /api/v1/rooms/:roomId —— 低频 Lobby 设置（仅 LOBBY；改配置/踢人仅 Host；换座只移动当前身份）。
-  app.patch<{ Params: RoomParams }>("/api/v1/rooms/:roomId", { preHandler: [rateLimitAuthByIp] }, async (request, reply) => {
+  app.patch<{ Params: RoomParams }>("/api/v1/rooms/:roomId", async (request, reply) => {
     const traceId = deps.makeTraceId();
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;
@@ -236,7 +217,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   });
 
   // POST /api/v1/rooms/:roomId/tournaments —— 开局（仅 Host；LOBBY + 全部入座 + 全部 Ready + revision 精确匹配）。
-  app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/tournaments", { preHandler: [rateLimitAuthByIp] }, async (request, reply) => {
+  app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/tournaments", async (request, reply) => {
     const traceId = deps.makeTraceId();
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;
@@ -266,7 +247,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   });
 
   // POST /api/v1/rooms/:roomId/leave —— 主动离开（Host 离开立即转移 Host）。
-  app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/leave", { preHandler: [rateLimitAuthByIp] }, async (request, reply) => {
+  app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/leave", async (request, reply) => {
     const traceId = deps.makeTraceId();
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;

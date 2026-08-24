@@ -34,7 +34,9 @@ function makeIds(): IdSource {
   };
 }
 
-function makeApp(overrides: { now?: () => number } = {}): FastifyInstance {
+function makeApp(
+  overrides: { now?: () => number; rateLimit?: { max: number; timeWindow: string } } = {},
+): FastifyInstance {
   const config = parseAppConfig({ TOKEN_HMAC_SECRET: TOKEN_SECRET });
   const manager = createRoomManager({
     persistence: fakePersistence(),
@@ -49,6 +51,7 @@ function makeApp(overrides: { now?: () => number } = {}): FastifyInstance {
     rateLimiter: createRateLimiter(overrides.now ?? (() => 1000)),
     idempotency: new IdempotencyStore(),
     now: overrides.now ?? (() => 1000),
+    rateLimit: overrides.rateLimit,
   });
 }
 
@@ -232,9 +235,10 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
     expect(bad.json().error.code).toBe("AUTH_FAILED");
   });
 
-  it("鉴权前按源 IP 限流：同一 IP 连续鉴权失败 20 次后返回 429 RATE_LIMITED", async () => {
-    const app = makeApp({ now: () => 0 });
-    const host = await createRoom(app, "11.0.0.1");
+  it("路由级 IP 限流（@fastify/rate-limit）：同一 IP 连续请求超额度后返回 429 RATE_LIMITED（ErrorEnvelope）", async () => {
+    const app = makeApp({ now: () => 0, rateLimit: { max: 3, timeWindow: "1 minute" } });
+    // 创建从 10.0.0.1，鉴权尝试从 11.0.0.1（独立 IP 桶，避免创建计数干扰）
+    const host = await createRoom(app, "10.0.0.1");
     const attempt = (idemKey: string) =>
       app.inject({
         method: "PATCH",
@@ -243,7 +247,7 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
         remoteAddress: "11.0.0.1",
         payload: { expectedRoomRevision: host.roomSnapshot.roomRevision, operation: { type: "CHANGE_SEAT", seat: 0 } },
       });
-    for (let i = 0; i < 20; i += 1) {
+    for (let i = 0; i < 3; i += 1) {
       const res = await attempt(key());
       expect(res.statusCode).toBe(401);
       expect(res.json().error.code).toBe("AUTH_FAILED");
@@ -251,6 +255,7 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
     const blocked = await attempt(key());
     expect(blocked.statusCode).toBe(429);
     expect(blocked.json().error.code).toBe("RATE_LIMITED");
+    expect(blocked.json().error.details?.retryAfterMs).toBeTypeOf("number");
   });
 
   it("改配置仅 Host：非 Host 返回 403 NOT_HOST", async () => {
