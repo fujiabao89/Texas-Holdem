@@ -209,6 +209,9 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
             expectedRevision,
           });
           break;
+        default:
+          // operation 判别联合未来新增类型时，不静默 500，稳定返回 INVALID_MESSAGE。
+          throw new RoomDomainError("INVALID_MESSAGE");
       }
       const response = { data: { roomSnapshot: projectRoomSnapshot(result!.state) } };
       deps.idempotency.store(idem.idemKey, { payloadHash: idem.bodyHash, statusCode: 200, body: response });
