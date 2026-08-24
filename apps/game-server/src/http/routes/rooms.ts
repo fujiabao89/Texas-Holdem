@@ -169,6 +169,9 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   // PATCH /api/v1/rooms/:roomId —— 低频 Lobby 设置（仅 LOBBY；改配置/踢人仅 Host；换座只移动当前身份）。
   app.patch<{ Params: RoomParams }>("/api/v1/rooms/:roomId", async (request, reply) => {
     const traceId = deps.makeTraceId();
+    // 鉴权前按源 IP 限流：防 token 暴力破解（鉴权失败也计入该桶）。
+    const authRate = deps.rateLimiter.checkAuthByIp(request.ip);
+    if (!authRate.allowed) return sendRateLimited(reply, traceId, authRate.retryAfterMs);
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;
     const rate = deps.rateLimiter.checkProtected(auth.playerId);
@@ -219,6 +222,9 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   // POST /api/v1/rooms/:roomId/tournaments —— 开局（仅 Host；LOBBY + 全部入座 + 全部 Ready + revision 精确匹配）。
   app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/tournaments", async (request, reply) => {
     const traceId = deps.makeTraceId();
+    // 鉴权前按源 IP 限流：防 token 暴力破解（鉴权失败也计入该桶）。
+    const authRate = deps.rateLimiter.checkAuthByIp(request.ip);
+    if (!authRate.allowed) return sendRateLimited(reply, traceId, authRate.retryAfterMs);
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;
     const rate = deps.rateLimiter.checkProtected(auth.playerId);
@@ -249,6 +255,9 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
   // POST /api/v1/rooms/:roomId/leave —— 主动离开（Host 离开立即转移 Host）。
   app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/leave", async (request, reply) => {
     const traceId = deps.makeTraceId();
+    // 鉴权前按源 IP 限流：防 token 暴力破解（鉴权失败也计入该桶）。
+    const authRate = deps.rateLimiter.checkAuthByIp(request.ip);
+    if (!authRate.allowed) return sendRateLimited(reply, traceId, authRate.retryAfterMs);
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;
     const rate = deps.rateLimiter.checkProtected(auth.playerId);

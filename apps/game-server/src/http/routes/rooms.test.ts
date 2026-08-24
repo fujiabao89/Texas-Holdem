@@ -232,6 +232,27 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
     expect(bad.json().error.code).toBe("AUTH_FAILED");
   });
 
+  it("鉴权前按源 IP 限流：同一 IP 连续鉴权失败 20 次后返回 429 RATE_LIMITED", async () => {
+    const app = makeApp({ now: () => 0 });
+    const host = await createRoom(app, "11.0.0.1");
+    const attempt = (idemKey: string) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/v1/rooms/${host.roomId}`,
+        headers: { "idempotency-key": idemKey, authorization: "Bearer wrong-token" },
+        remoteAddress: "11.0.0.1",
+        payload: { expectedRoomRevision: host.roomSnapshot.roomRevision, operation: { type: "CHANGE_SEAT", seat: 0 } },
+      });
+    for (let i = 0; i < 20; i += 1) {
+      const res = await attempt(key());
+      expect(res.statusCode).toBe(401);
+      expect(res.json().error.code).toBe("AUTH_FAILED");
+    }
+    const blocked = await attempt(key());
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json().error.code).toBe("RATE_LIMITED");
+  });
+
   it("改配置仅 Host：非 Host 返回 403 NOT_HOST", async () => {
     const app = makeApp();
     const host = await createRoom(app, "10.0.0.1");

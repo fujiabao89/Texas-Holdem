@@ -49,6 +49,8 @@ export interface RateLimiter {
   checkCreateRoom(ip: string): RateLimitResult;
   checkJoinByIp(ip: string): RateLimitResult;
   checkJoinByInviteCode(inviteCode: string): RateLimitResult;
+  /** 受保护接口鉴权前的源 IP 限流：防 token 暴力破解（docs/04 §10.3 受保护变更额度按 IP 前置）。 */
+  checkAuthByIp(ip: string): RateLimitResult;
   checkProtected(playerId: string): RateLimitResult;
 }
 
@@ -75,6 +77,10 @@ export function createRateLimiter(now: () => number = Date.now): RateLimiter {
     },
     checkJoinByInviteCode(inviteCode) {
       return bucket(`join-code:${inviteCode}`, 10, 10 / 60).consume();
+    },
+    checkAuthByIp(ip) {
+      // 与受保护变更同一默认额度（60/min，burst 20），按源 IP 前置鉴权。
+      return bucket(`auth:${ip}`, 20, 60 / 60).consume();
     },
     checkProtected(playerId) {
       return bucket(`protected:${playerId}`, 20, 60 / 60).consume();
