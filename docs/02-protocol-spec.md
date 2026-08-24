@@ -1,13 +1,13 @@
 # 02 · 联机协议规格（`packages/protocol`）
 
-> 状态：P0 可实施基线（设计意图 · 未实现）
-> 规划核对：2026-08-21（Engineering Documentation Agent）——项目尚无代码，本文全文为**设计意图**，未与任何实现核对
+> 状态：P0 协议契约已实现（TEX-17）；WebSocket 运行时、HTTP handler 与客户端消费仍待后续任务实现
+> 实现核对：2026-08-24（TEX-17）——`packages/protocol` 已提供严格运行时 Schema、Schema 推导类型、消息/错误信封及纯 PlayerView/BotView 投影；本规格中的运行时编排条款仍为设计意图
 > 权威范围：本文是客户端与服务器之间联机协议的唯一权威来源——HTTP/WebSocket 通道分工、身份与凭证、消息信封与 `Snapshot + Event Stream`、`sequence` 与幂等（`actionId`/`expectedSequence`/`receivedAt`）、超时竞争裁决、消息目录、`PlayerView`/`BotView` 投影契约、ErrorCode 码表。范围之外的事实（Engine 规则语义、Game Events 目录、串行队列与 Timer 实现、持久化模型、AI 推理、UI）见 [工程文档总索引](./README.md)。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§3/§4/§5/§6/§8/§9）；《德州扑克项目规划_区块6-10_v0.2.docx》§7/§8/§10.4/§10.8（仅在《总规划》未覆盖处补充）；《德州扑克项目规划_区块1-5_v0.1.docx》§1.5/§3.8/§4；规则语义与事件目录见 [01-engine-spec.md](./01-engine-spec.md)
-> 对应代码：`packages/protocol/`（**待创建**；按《总规划》§6 树为 Action/Event/Snapshot/ErrorCode 与 Schema；使用方 `apps/web`、`apps/game-server`、P1 `server/ai`）
+> 对应代码：`packages/protocol/`（TEX-17 已实现 Action/Event/Snapshot/ErrorCode 与 Schema；使用方 `apps/web`、`apps/game-server`、P1 `server/ai` 尚待接入）
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【设计意图 · 未实现】** 本文尚无代码可核对；其中标注“规范性决定”的内容是在既有规划约束内补齐的 P0 工程默认值。实现落地后须逐条对照实现回填真实行为，把“设计意图”改为“现状”。决策登记与剩余产品参数见 §17。
+> **【实现边界】** TEX-17 已实现本文的 Schema、推导类型、消息/错误信封和纯投影契约；其中运行时编排（认证、串行队列、计时、HTTP handler、WebSocket 发送与客户端状态机）仍待后续任务按本文接入。决策登记与剩余产品参数见 §17。
 
 ## 1. Purpose
 
@@ -297,6 +297,7 @@ type SubmitActionPayload = {
 | `UNCALLED_BET_RETURNED` | `{ playerId, seat, amount }` |
 | `POT_AWARDED` | `{ potIndex, potAmount, awards, winningHandRank }`；`winningHandRank` 可为 `null`（无人跟注）；`awards[] = { playerId, amount }` 且金额和等于 `potAmount` |
 | `PLAYER_ELIMINATED` | `{ playerId, finishPosition, tied }` |
+| `PLAYER_WITHDRAWN` | `{ playerId, seat, forfeitedChips }` |
 | `TOURNAMENT_FINISHED` | `{ winnerPlayerId, rankings }` |
 
 自动 Check/Fold 不引入第二套 Event 名：仍发送 `PLAYER_CHECKED`/`PLAYER_FOLDED`，并令 `source=SYSTEM_TIMER`。P1 Bot 同理使用普通动作事件且 `source=BOT_CONTROLLER`。

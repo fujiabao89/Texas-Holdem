@@ -1,0 +1,16 @@
+{
+  "name": "@texas-holdem/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "客户端与服务端共享的严格通信 Schema、推导类型与安全投影契约",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

@@ -103,6 +103,12 @@ importers:
 
   packages/poker-engine: {}
 
+  packages/protocol:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
 packages:
 
   '@alloc/quick-lru@5.2.0':
