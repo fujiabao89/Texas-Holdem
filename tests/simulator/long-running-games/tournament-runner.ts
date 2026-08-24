@@ -42,6 +42,26 @@ export interface TournamentRunResult extends TournamentRecord {
   readonly elapsedMs: number;
 }
 
+/**
+ * Short All-in 分类（仅统计用途，不裁决合法性）。
+ * 语义对齐 docs/01 §5.2：`allInTo` 为本街**目标总投入**，须与同为总额的 `currentBet`
+ * 比较（不得与增量语义的 `callAmount` 直接比较——`streetBet>0` 时两者不可比）。
+ * - Short Call All-in（§8.4）：`allInTo < currentBet`（全下不足以至跟注）。
+ * - Short Raise All-in（§8.3）：`currentBet < allInTo < fullRaiseTo`（超过跟注但不足完整加注）。
+ * - Short Bet 开注：`currentBet = 0` 且 `allInTo < bigBlind`（低于 BB 的全下开注）。
+ * 注：Engine 的 `canAllIn` 保证 all-in 动作 `allInTo !== currentBet`，两分支完整覆盖。
+ */
+export function isShortAllIn(hand: GameState, legal: LegalActions): boolean {
+  if (hand.currentBet > 0) {
+    if (legal.allInTo < hand.currentBet) return true;
+    const fullRaiseTo = hand.hasFullBetOrRaise
+      ? hand.currentBet + hand.lastFullRaiseSize
+      : hand.bigBlind;
+    return legal.allInTo > hand.currentBet && legal.allInTo < fullRaiseTo;
+  }
+  return legal.allInTo < hand.bigBlind;
+}
+
 export interface RunTournamentOptions {
   /** Watchdog 阈值（默认 docs/06 §5 规格值）。 */
   readonly thresholds?: WatchdogThresholds;
@@ -159,22 +179,6 @@ export function runTournament(seed: number, options: RunTournamentOptions = {}):
       stackDepth: scenario2.stackDepth,
       agentStyle: scenario2.agentStyle,
     };
-  }
-
-  /**
-   * Short All-in 分类（仅统计用途，不裁决合法性；金额公式取自 docs/01 §5.2/§8.2）：
-   * - Short Call All-in（§8.4）：全下不足以跟注（allInTo < callAmount）。
-   * - Short Raise/Bet All-in（§8.3）：高于跟注额的全下不足以完成完整加注/开注。
-   */
-  function isShortAllIn(hand: GameState, legal: LegalActions): boolean {
-    if (legal.callAmount > 0 && legal.allInTo < legal.callAmount) return true;
-    const fullRaiseTo = hand.hasFullBetOrRaise
-      ? hand.currentBet + hand.lastFullRaiseSize
-      : hand.bigBlind;
-    if (hand.currentBet > 0) {
-      return legal.allInTo > legal.callAmount && legal.allInTo < fullRaiseTo;
-    }
-    return legal.allInTo < hand.bigBlind; // 无人下注时低于 BB 的全下开注
   }
 
   function toSimulationFailure(error: unknown): SimulationFailure {

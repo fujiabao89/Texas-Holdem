@@ -2,7 +2,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { runTournament } from "./tournament-runner";
+import { runTournament, isShortAllIn } from "./tournament-runner";
+import type { GameState, LegalActions } from "../../../packages/poker-engine/src/index";
 import { CoverageStats } from "./stats";
 import {
   SimulationFailure,
@@ -72,6 +73,42 @@ describe("runTournament 端到端", () => {
       expect(stats.missingCategories()).toEqual([]);
     },
   );
+});
+
+describe("isShortAllIn 分类（总额语义：allInTo 对 currentBet，docs/01 §5.2/§8.2–8.4）", () => {
+  /** 只填充分类所需字段的最小 GameState。 */
+  function handCtx(currentBet: number, bigBlind: number, lastFullRaiseSize: number, hasFullBetOrRaise: boolean) {
+    return { currentBet, bigBlind, lastFullRaiseSize, hasFullBetOrRaise } as GameState;
+  }
+
+  it("审查报告的漏计场景：streetBet=30/currentBet=80/chips=20（allInTo=callAmount=50）判为 Short Call", () => {
+    // 全下目标总额 50 < currentBet 80：真实 Short Call All-in（§8.4），
+    // 旧实现误用增量语义 callAmount 比较（50<50、50>50 均假）而漏计。
+    const hand = handCtx(80, 20, 20, true);
+    const legal = { allInTo: 50, callAmount: 50 } as LegalActions;
+    expect(isShortAllIn(hand, legal)).toBe(true);
+  });
+
+  it("Short Call：目标总额低于 currentBet 的其余情形", () => {
+    expect(isShortAllIn(handCtx(100, 20, 20, true), { allInTo: 60, callAmount: 40 } as LegalActions)).toBe(true);
+    expect(isShortAllIn(handCtx(100, 20, 20, true), { allInTo: 99, callAmount: 1 } as LegalActions)).toBe(true);
+  });
+
+  it("Short Raise（§8.3）：超过 currentBet 但不足完整加注", () => {
+    // currentBet=80、lastFullRaiseSize=50 → fullRaiseTo=130；allInTo=100 ∈ (80,130)。
+    expect(isShortAllIn(handCtx(80, 20, 50, true), { allInTo: 100, callAmount: 0 } as LegalActions)).toBe(true);
+  });
+
+  it("完整加注幅度的全下不是 Short（allInTo ≥ fullRaiseTo）", () => {
+    expect(isShortAllIn(handCtx(80, 20, 50, true), { allInTo: 130, callAmount: 0 } as LegalActions)).toBe(false);
+    expect(isShortAllIn(handCtx(80, 20, 50, true), { allInTo: 300, callAmount: 0 } as LegalActions)).toBe(false);
+  });
+
+  it("无人下注（currentBet=0）：低于 BB 的全下开注为 Short，≥BB 不是", () => {
+    expect(isShortAllIn(handCtx(0, 20, 20, false), { allInTo: 15, callAmount: 0 } as LegalActions)).toBe(true);
+    expect(isShortAllIn(handCtx(0, 20, 20, false), { allInTo: 20, callAmount: 0 } as LegalActions)).toBe(false);
+    expect(isShortAllIn(handCtx(0, 20, 20, false), { allInTo: 100, callAmount: 0 } as LegalActions)).toBe(false);
+  });
 });
 
 describe("强制 Blind Mode（Nightly 逐模式下限，docs/06 §5）", () => {
