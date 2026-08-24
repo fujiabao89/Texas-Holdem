@@ -88,6 +88,7 @@ export function runTournament(seed: number, options: RunTournamentOptions = {}):
   let trackedHandNumber = 0;
   let recordedHandNumber = 0;
   let currentActionCounts: Partial<Record<ActionType, number>> = {};
+  let currentShortAllIns = 0;
   const startedAt = now();
 
   /** 每次状态转移后的统一检查：事件序列 → 不变量 → 手结束记录 → Watchdog。 */
@@ -96,9 +97,12 @@ export function runTournament(seed: number, options: RunTournamentOptions = {}):
     eventChecker.observe(engine.getEvents());
     assertTournamentStateInvariants(state);
 
-    if (state.handInProgress && state.hand && state.hand.handNumber !== trackedHandNumber) {
+    // 新手检测不能依赖 handInProgress：一手可能在 startNextHand() 内即时完成
+    // （如浅筹码盲注全下自动 runout），此时仍须重置 per-hand 统计并检测 Heads-Up。
+    if (state.hand && state.hand.handNumber !== trackedHandNumber) {
       trackedHandNumber = state.hand.handNumber;
       currentActionCounts = {};
+      currentShortAllIns = 0;
       if (state.participants.filter((p) => p.status === "ACTIVE").length === 2) {
         headsUpReached = true;
       }
@@ -146,11 +150,28 @@ export function runTournament(seed: number, options: RunTournamentOptions = {}):
       showdown: outcome.showdown,
       potCount: outcome.pots.length,
       allInPlayers: hand.seats.filter((s) => s.isAllIn).length,
+      shortAllInCount: currentShortAllIns,
       actionCounts: { ...currentActionCounts },
       winnerHandRanks,
       stackDepth: scenario2.stackDepth,
       agentStyle: scenario2.agentStyle,
     };
+  }
+
+  /**
+   * Short All-in 分类（仅统计用途，不裁决合法性；金额公式取自 docs/01 §5.2/§8.2）：
+   * - Short Call All-in（§8.4）：全下不足以跟注（allInTo < callAmount）。
+   * - Short Raise/Bet All-in（§8.3）：高于跟注额的全下不足以完成完整加注/开注。
+   */
+  function isShortAllIn(hand: GameState, legal: LegalActions): boolean {
+    if (legal.callAmount > 0 && legal.allInTo < legal.callAmount) return true;
+    const fullRaiseTo = hand.hasFullBetOrRaise
+      ? hand.currentBet + hand.lastFullRaiseSize
+      : hand.bigBlind;
+    if (hand.currentBet > 0) {
+      return legal.allInTo > legal.callAmount && legal.allInTo < fullRaiseTo;
+    }
+    return legal.allInTo < hand.bigBlind; // 无人下注时低于 BB 的全下开注
   }
 
   function toSimulationFailure(error: unknown): SimulationFailure {
@@ -209,7 +230,11 @@ export function runTournament(seed: number, options: RunTournamentOptions = {}):
       if (hand === null || actor === null) {
         throw new Error(`下注阶段缺少 currentActor（hand ${engine.getState().handNumber}）`);
       }
-      const action: PlayerAction = chooseAction(actor, engine.getLegalActions(), agentRng, scenario.agentStyle);
+      const currentLegal = engine.getLegalActions();
+      const action: PlayerAction = chooseAction(actor, currentLegal, agentRng, scenario.agentStyle);
+      if (action.type === "all-in" && isShortAllIn(hand, currentLegal)) {
+        currentShortAllIns++;
+      }
       actions.push({
         hand: hand.handNumber,
         street: hand.street,

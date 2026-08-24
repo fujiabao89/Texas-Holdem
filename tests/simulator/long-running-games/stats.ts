@@ -24,6 +24,8 @@ export interface HandRecord {
   readonly potCount: number;
   /** 本手全下玩家数。 */
   readonly allInPlayers: number;
+  /** 本手 Short All-in 动作数（Short Call §8.4 / Short Raise、低于 BB 开注 §8.3）。 */
+  readonly shortAllInCount: number;
   readonly actionCounts: Partial<Record<ActionType, number>>;
   /** 摊牌赢家（含平分）的牌型名；非摊牌手为空。 */
   readonly winnerHandRanks: readonly string[];
@@ -61,6 +63,7 @@ export const TIER_REQUIRED_CATEGORIES: readonly string[] = [
   "hand-fold-end",
   "pot-side",
   "allin-multi",
+  "allin-short",
   "heads-up-reached",
   "action-fold",
   "action-check",
@@ -104,6 +107,9 @@ export class CoverageStats {
         bump(this.counters, "allin-multi");
       } else if (hand.allInPlayers === 1) {
         bump(this.counters, "allin-single");
+      }
+      if (hand.shortAllInCount > 0) {
+        bump(this.counters, "allin-short", hand.shortAllInCount);
       }
       if (hand.previousBlinds) {
         if (hand.bigBlind > hand.previousBlinds.bb || hand.smallBlind > hand.previousBlinds.sb) {

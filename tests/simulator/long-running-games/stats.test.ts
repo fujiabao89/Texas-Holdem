@@ -30,6 +30,7 @@ function hand(over: Partial<HandRecord> = {}): HandRecord {
     showdown: false,
     potCount: 1,
     allInPlayers: 0,
+    shortAllInCount: 0,
     actionCounts: { fold: 2 },
     winnerHandRanks: [],
     stackDepth: "shallow",
@@ -56,7 +57,7 @@ describe("CoverageStats 聚合", () => {
     stats.recordTournament(
       tournament({
         hands: [
-          hand({ showdown: true, potCount: 2, allInPlayers: 2, winnerHandRanks: ["One Pair"], previousBlinds: null, actionCounts: { call: 3, "all-in": 2 } }),
+          hand({ showdown: true, potCount: 2, allInPlayers: 2, shortAllInCount: 2, winnerHandRanks: ["One Pair"], previousBlinds: null, actionCounts: { call: 3, "all-in": 2 } }),
           hand({ handNumber: 2, bigBlind: 10, smallBlind: 5, previousBlinds: { sb: 10, bb: 20 }, actionCounts: { fold: 2 } }),
         ],
         headsUpReached: true,
@@ -74,6 +75,7 @@ describe("CoverageStats 聚合", () => {
     expect(stats.get("pot-side")).toBe(1);
     expect(stats.get("pot-single")).toBe(1);
     expect(stats.get("allin-multi")).toBe(1);
+    expect(stats.get("allin-short")).toBe(2);
     expect(stats.get("blind-decrease")).toBe(1);
     expect(stats.get("blind-increase")).toBe(0);
     expect(stats.get("action-fold")).toBe(2);
@@ -108,6 +110,7 @@ describe("覆盖空洞检测（分层运行必需类别）", () => {
           showdown: true,
           potCount: 2,
           allInPlayers: 2,
+          shortAllInCount: 1,
           previousBlinds: { sb: 5, bb: 10 },
           actionCounts: { fold: 1, check: 1, call: 1, bet: 1, raise: 1, "all-in": 1 },
         }),

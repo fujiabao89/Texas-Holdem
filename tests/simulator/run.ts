@@ -26,7 +26,7 @@ import {
 } from "./long-running-games/failure";
 import { parseArgs, USAGE } from "./cli-args";
 import type { CliArgs } from "./cli-args";
-import { planNightlySeeds, planRcSeeds, planSmokeSeeds } from "./tiers";
+import { planNightlySeeds, planRcSeeds, planSmokeSeeds, RC_CUMULATIVE_TARGET } from "./tiers";
 import type { SimulatorTier, TierPlan } from "./tiers";
 
 interface LedgerFile {
@@ -82,7 +82,10 @@ function resolveTierPlan(args: CliArgs): { plan: TierPlan; sha: string; ledger: 
     plan: planRcSeeds(sha, {
       ranForSha,
       ranEver,
-      ...(args.games !== undefined ? { totalTarget: args.games } : {}),
+      // --games 只可上调（CLI 文档语义）：RC 累计下限 50,000 不因显式小值而降低（docs/06 §5）。
+      ...(args.games !== undefined
+        ? { totalTarget: Math.max(RC_CUMULATIVE_TARGET, args.games) }
+        : {}),
     }),
     sha,
     ledger,

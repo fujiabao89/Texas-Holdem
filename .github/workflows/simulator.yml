@@ -50,17 +50,20 @@ jobs:
       - name: Run simulator
         shell: bash
         env:
+          # dispatch 输入经环境变量传入并以数据引用（不内插进 shell 源码），
+          # 校验仍由模拟器 CLI 完成。
           TEX_SIM_SHA: ${{ inputs.sha || github.sha }}
+          TEX_SIM_TIER: ${{ github.event_name == 'schedule' && 'nightly' || inputs.tier }}
+          TEX_SIM_GAMES: ${{ inputs.games }}
         run: |
           set -euo pipefail
           corepack enable
           pnpm install --frozen-lockfile
-          tier="${{ github.event_name == 'schedule' && 'nightly' || inputs.tier }}"
           games_args=()
-          if [[ -n "${{ inputs.games }}" ]]; then
-            games_args=(--games "${{ inputs.games }}")
+          if [[ -n "$TEX_SIM_GAMES" ]]; then
+            games_args=(--games "$TEX_SIM_GAMES")
           fi
-          pnpm run test:sim -- --tier "$tier" "${games_args[@]}"
+          pnpm run test:sim -- --tier "$TEX_SIM_TIER" "${games_args[@]}"
 
       - name: Upload simulator artifacts
         if: always()
