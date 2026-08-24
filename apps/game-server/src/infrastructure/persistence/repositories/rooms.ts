@@ -1,13 +1,15 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Database, GameTransaction } from "../database";
-import { rooms, roomPlayers } from "../schema";
+import { rooms, roomPlayers, tournaments, tournamentPlayers } from "../schema";
 import { validateDisplayName, normalizeDisplayNameKey } from "../display-name";
+import type { TournamentPlayerSeed } from "./tournaments";
 
 /**
  * Room 控制面仓储（docs/03-data-model.md §5.1/§5.2/§7.2）。
  *
- * 只提供控制面所需的最小原子写入：Room + 首个 Host 在同一事务提交。
- * 大厅业务（加入/离开/踢人/Host 转移/邀请码限流）属 TEX-19，不在本仓储。
+ * 提供控制面原子写入：Room + 首个 Host 在同一事务提交；Lobby 生命周期
+ * （加入/离开/踢人/Host 转移/配置/状态迁移/开局）的原子写操作自 TEX-19 起
+ * 也收在本仓储，均复用同一事务边界与既有表，不新建表或迁移。
  */
 
 export type RoomMode = "MULTIPLAYER" | "SINGLE_PLAYER";
@@ -28,6 +30,36 @@ export interface CreateRoomWithHostInput {
   };
 }
 
+export type RoomStatusDb = "CREATED" | "LOBBY" | "IN_GAME" | "FINISHED" | "CLOSED";
+export type LeftReasonDb = "USER_LEFT" | "DISCONNECT_TIMEOUT" | "ROOM_CLOSED";
+
+/** 加入成员（room_players 行）的输入。id 由调用方预生成（幂等重试的前提）。 */
+export interface InsertRoomPlayerInput {
+  readonly roomId: string;
+  readonly playerId: string;
+  readonly displayName: string;
+  readonly displayNameKey: string;
+  readonly kind: "HUMAN" | "BOT";
+  readonly tokenDigest: Buffer;
+  readonly tokenKeyId: string;
+}
+
+/** 关闭/终态 Room 需要的可选字段（rooms_closed_* CHECK 要求一致出现）。 */
+export interface RoomStatusFields {
+  readonly closedReason?: string;
+  readonly closedAt?: Date;
+  readonly retentionExpiresAt?: Date;
+}
+
+/** 开局原子写入输入：Tournament + locked players + Room→IN_GAME 单事务。 */
+export interface StartTournamentPersistenceInput {
+  readonly roomId: string;
+  readonly tournamentId: string;
+  readonly tournamentNo: number;
+  readonly configJson: unknown;
+  readonly players: readonly TournamentPlayerSeed[];
+}
+
 export interface RoomRepository {
   /**
    * 单事务写入 Room + 首个 Host（§5.1 的三步顺序）：
@@ -37,6 +69,28 @@ export interface RoomRepository {
    * DEFERRABLE 复合外键在提交时才检查 Host 属于本 Room。
    */
   createRoomWithHost(input: CreateRoomWithHostInput): Promise<void>;
+
+  /** 加入成员：单事务插入 `room_players`（ACTIVE）。 */
+  insertRoomPlayer(input: InsertRoomPlayerInput): Promise<void>;
+
+  /** 状态迁移：更新 `rooms.status` 与可选的关闭元数据（CLOSED 时必须一致出现）。 */
+  setRoomStatus(roomId: string, status: RoomStatusDb, fields?: RoomStatusFields): Promise<void>;
+
+  /** 配置变更：更新 `rooms.config_json`。 */
+  updateRoomConfig(roomId: string, configJson: unknown): Promise<void>;
+
+  /** Host 转移：更新 `rooms.host_player_id`（可为 NULL）。 */
+  setRoomHost(roomId: string, hostPlayerId: string | null): Promise<void>;
+
+  /** 成员离开/被踢：标记 `room_players` 为 LEFT 并记录原因与时间。 */
+  markRoomPlayerLeft(roomId: string, playerId: string, reason: LeftReasonDb, leftAt: Date): Promise<void>;
+
+  /**
+   * 开局原子写入：单事务写入 Tournament（IN_GAME、last_committed_sequence=0）、
+   * 全部 tournament_players 锁定快照，并把 `rooms.status` 置为 IN_GAME；
+   * 任一失败整体回滚，不留半开比赛（docs/03-data-model.md §5.3/§7.2）。
+   */
+  startTournament(input: StartTournamentPersistenceInput): Promise<void>;
 }
 
 export function createRoomRepository(database: Database): RoomRepository {
@@ -66,5 +120,91 @@ export function createRoomRepository(database: Database): RoomRepository {
     });
   }
 
-  return { createRoomWithHost };
+  async function insertRoomPlayer(input: InsertRoomPlayerInput): Promise<void> {
+    validateDisplayName(input.displayName);
+    await database.withTransaction(async (tx: GameTransaction) => {
+      await tx.insert(roomPlayers).values({
+        id: input.playerId,
+        roomId: input.roomId,
+        displayName: input.displayName,
+        displayNameKey: input.displayNameKey,
+        kind: input.kind,
+        tokenDigest: input.tokenDigest,
+        tokenKeyId: input.tokenKeyId,
+        status: "ACTIVE",
+      });
+    });
+  }
+
+  async function setRoomStatus(roomId: string, status: RoomStatusDb, fields?: RoomStatusFields): Promise<void> {
+    await database.withTransaction(async (tx: GameTransaction) => {
+      await tx
+        .update(rooms)
+        .set({
+          status,
+          closedReason: fields?.closedReason ?? null,
+          closedAt: fields?.closedAt ?? null,
+          retentionExpiresAt: fields?.retentionExpiresAt ?? null,
+        })
+        .where(eq(rooms.id, roomId));
+    });
+  }
+
+  async function updateRoomConfig(roomId: string, configJson: unknown): Promise<void> {
+    await database.withTransaction(async (tx: GameTransaction) => {
+      await tx.update(rooms).set({ configJson }).where(eq(rooms.id, roomId));
+    });
+  }
+
+  async function setRoomHost(roomId: string, hostPlayerId: string | null): Promise<void> {
+    await database.withTransaction(async (tx: GameTransaction) => {
+      await tx.update(rooms).set({ hostPlayerId }).where(eq(rooms.id, roomId));
+    });
+  }
+
+  async function markRoomPlayerLeft(
+    roomId: string,
+    playerId: string,
+    reason: LeftReasonDb,
+    leftAt: Date,
+  ): Promise<void> {
+    await database.withTransaction(async (tx: GameTransaction) => {
+      await tx
+        .update(roomPlayers)
+        .set({ status: "LEFT", leftReason: reason, leftAt })
+        .where(and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.id, playerId)));
+    });
+  }
+
+  async function startTournament(input: StartTournamentPersistenceInput): Promise<void> {
+    for (const player of input.players) {
+      validateDisplayName(player.displayName);
+    }
+    await database.withTransaction(async (tx: GameTransaction) => {
+      await tx.insert(tournaments).values({
+        id: input.tournamentId,
+        roomId: input.roomId,
+        tournamentNo: input.tournamentNo,
+        status: "IN_GAME",
+        configJson: input.configJson,
+        lastCommittedSequence: 0n,
+      });
+      await tx.insert(tournamentPlayers).values(
+        input.players.map((player) => ({
+          id: player.id,
+          tournamentId: input.tournamentId,
+          roomId: input.roomId,
+          playerId: player.playerId,
+          displayName: player.displayName,
+          seatIndex: player.seatIndex,
+          kind: player.kind,
+          startingStack: player.startingStack,
+          pokerStatus: "ACTIVE" as const,
+        })),
+      );
+      await tx.update(rooms).set({ status: "IN_GAME" }).where(eq(rooms.id, input.roomId));
+    });
+  }
+
+  return { createRoomWithHost, insertRoomPlayer, setRoomStatus, updateRoomConfig, setRoomHost, markRoomPlayerLeft, startTournament };
 }

@@ -56,6 +56,12 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.0
         version: 11.3.0
+      '@texas-holdem/poker-engine':
+        specifier: workspace:*
+        version: link:../../packages/poker-engine
+      '@texas-holdem/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)

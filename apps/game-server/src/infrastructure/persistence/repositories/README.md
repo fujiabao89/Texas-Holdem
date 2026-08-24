@@ -6,7 +6,7 @@
 
 | 工厂 | 能力 | 规格 |
 | --- | --- | --- |
-| `createRoomRepository(database)` | `createRoomWithHost`：Room + 首个 Host 单事务原子写入（插入 rooms → 插入 room_players（含 HMAC 摘要）→ 回填 host_player_id，DEFERRABLE FK 提交时检查） | §5.1/§7.2 |
+| `createRoomRepository(database)` | `createRoomWithHost`：Room + 首个 Host 单事务原子写入（插入 rooms → 插入 room_players（含 HMAC 摘要）→ 回填 host_player_id，DEFERRABLE FK 提交时检查）；TEX-19 新增 Lobby 写操作：`insertRoomPlayer`（加入）、`setRoomStatus`（状态迁移/关闭元数据）、`updateRoomConfig`、`setRoomHost`、`markRoomPlayerLeft`（离开/踢人）、`startTournament`（Tournament + locked players + Room→IN_GAME 单事务） | §5.1/§5.2/§5.3/§7.2 |
 | `createTournamentRepository(database)` | `createTournamentWithPlayers`：Tournament（`last_committed_sequence=0`）+ 全部 locked players 单事务写入 | §5.3/§5.4/§7.2 |
 | `createHandCommitRepository(database)` | `commitHandBundle`：手末 Commit Bundle 单事务原子提交（FOR UPDATE 锁 Tournament 行 → 幂等/部分冲突检查 → 序列完整性验证 → hands + hand_events + game_snapshots + tournament_players 结果更新 + last_committed_sequence + 可选终局更新；`roomStatus=CLOSED` 时以 `roomClosure` 同事务写齐关房元数据） | §5.1/§7.3/§7.4 |
 
