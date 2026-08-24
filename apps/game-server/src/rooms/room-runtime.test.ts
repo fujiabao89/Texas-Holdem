@@ -280,6 +280,20 @@ describe("leaveRoom / transferHost", () => {
     expect(after.closedReason).toBe("ABANDONED_NO_HUMAN");
   });
 
+  it("IN_GAME 末位真人离开不关闭房间：保留 activeTournamentId 与邀请码，交 TEX-20 撤回/弃赛流程", () => {
+    const { state: s } = readyRoom();
+    const started = startTournament(s, {
+      actorPlayerId: "host-1",
+      expectedRevision: s.roomRevision,
+      tournamentId: "t-1",
+    });
+    const afterHost = leaveRoom(started, "host-1", { reason: "USER_LEFT", leftAt: 9000 });
+    const afterAlice = leaveRoom(afterHost, "alice", { reason: "USER_LEFT", leftAt: 10000 });
+    expect(afterAlice.status).toBe("IN_GAME");
+    expect(afterAlice.activeTournamentId).toBe("t-1");
+    expect(afterAlice.inviteCode).not.toBeNull();
+  });
+
   it("transferHost 是显式可注入入口：把 Host 转给最早加入且在线的真人；无在线真人时保持 null", () => {
     const { state } = baseRoom();
     let s = joinRoom(state, makeMember("alice", "Alice", { joinedAt: 2000 }));

@@ -233,8 +233,9 @@ export function leaveRoom(state: RoomState, playerId: string, _input: LeaveInput
     hostPlayerId = pickNextHost({ ...state, members });
   }
   const humansRemaining = [...members.values()].some((member) => member.kind === "HUMAN");
-  if (!humansRemaining) {
-    // 无真人 → CLOSED、邀请码立即失效（docs/04-game-server-architecture.md §6.5）。
+  // 仅 LOBBY 的末位真人离开才关闭房间（§6.5）；IN_GAME 的无真人处置走
+  // Tournament 撤回/弃赛流程（§6.6，TEX-20），本分支不得把进行中比赛留在半态。
+  if (!humansRemaining && state.status === "LOBBY") {
     return advance(state, {
       members,
       hostPlayerId: null,
