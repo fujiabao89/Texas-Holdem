@@ -222,6 +222,19 @@ describe("updateConfig", () => {
       new RoomDomainError("INVALID_ACTION"),
     );
   });
+
+  it("缩小 maxPlayers 时清掉越界座位并重置 Ready，避免残留 seat >= maxPlayers 写入开局快照", () => {
+    const { state } = baseRoom();
+    let s = joinRoom(state, makeMember("alice", "Alice", { joinedAt: 2000 }));
+    s = changeSeat(s, "host-1", 2);
+    s = changeSeat(s, "alice", 3);
+    s = setReady(s, "host-1", true);
+    s = setReady(s, "alice", true);
+    const shrunk = updateConfig(s, "host-1", makeConfig({ maxPlayers: 2 }));
+    expect(shrunk.members.get("host-1")?.seat).toBeNull();
+    expect(shrunk.members.get("alice")?.seat).toBeNull();
+    expect([...shrunk.members.values()].every((m) => m.ready === false)).toBe(true);
+  });
 });
 
 describe("kickPlayer", () => {
@@ -369,8 +382,8 @@ describe("markTournamentFinished / returnToLobby / closeRoom", () => {
     const lobby = returnToLobby(finished);
     expect(lobby.status).toBe("LOBBY");
     expect(lobby.inviteCode).toBe("ABC123");
-    // 旧 Tournament 终局信号不能覆盖新比赛
-    expect(() => markTournamentFinished(finished, "t-9")).toThrowError(
+    // IN_GAME 时，非活跃 tournamentId 的终局信号必须被拒（旧信号不能覆盖新比赛）
+    expect(() => markTournamentFinished(started, "t-9")).toThrowError(
       new RoomDomainError("TOURNAMENT_NOT_ACTIVE"),
     );
   });

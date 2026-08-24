@@ -51,11 +51,18 @@ export function httpStatusForCode(code: ErrorCode): number {
   }
 }
 
+/** 可重试错误码：限流与临时性服务故障客户端应退避重试（docs/02-protocol-spec.md §11）。 */
+const RETRYABLE_CODES: ReadonlySet<ErrorCode> = new Set([
+  "INTERNAL_ERROR",
+  "RATE_LIMITED",
+  "GAME_UNAVAILABLE",
+]);
+
 export function toErrorResponse(error: unknown, traceId: string): ErrorResponse {
   if (error instanceof RoomDomainError) {
     const envelope = {
       error: createProtocolError(error.code, traceId, {
-        retryable: error.code === "INTERNAL_ERROR",
+        retryable: RETRYABLE_CODES.has(error.code),
         details: error.details,
       }),
     };

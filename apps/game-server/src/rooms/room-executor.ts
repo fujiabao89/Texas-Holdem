@@ -148,10 +148,14 @@ export class RoomRuntime {
         });
         return;
       case "LEAVE":
-        await p.markMemberLeft(before.roomId, command.playerId, command.reason, command.leftAt);
-        if (next.hostPlayerId !== before.hostPlayerId) {
-          await p.setRoomHost(before.roomId, next.hostPlayerId);
-        }
+        // 原子离开：同一事务内标记 LEFT 并回填新 Host，避免半提交。
+        await p.leaveRoomMember(
+          before.roomId,
+          command.playerId,
+          command.reason,
+          command.leftAt,
+          next.hostPlayerId,
+        );
         return;
       case "UPDATE_CONFIG":
         await p.updateRoomConfig(before.roomId, command.config);

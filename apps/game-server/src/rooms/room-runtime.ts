@@ -201,7 +201,9 @@ export function updateConfig(state: RoomState, actorPlayerId: string, config: To
   }
   const members = new Map<string, RoomMember>();
   for (const member of state.members.values()) {
-    members.set(member.playerId, { ...member, ready: false });
+    // 容量缩小后清掉越界座位（同时重置 Ready），避免残留 seat >= maxPlayers 被写入开局快照。
+    const seat = member.seat !== null && member.seat >= config.maxPlayers ? null : member.seat;
+    members.set(member.playerId, { ...member, seat, ready: false });
   }
   return advance(state, { config, members });
 }
@@ -267,6 +269,9 @@ export function startTournament(state: RoomState, input: StartTournamentInput): 
     });
   }
   requireLobby(state);
+  if (state.activeTournamentId !== null) {
+    throw new RoomDomainError("ROOM_LOCKED");
+  }
   requireHost(state, input.actorPlayerId);
   const seatedHumans = [...state.members.values()].filter(
     (member) => member.kind === "HUMAN" && member.seat !== null,

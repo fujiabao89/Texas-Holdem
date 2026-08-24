@@ -26,7 +26,8 @@ export class IdempotencyStore {
   }
 }
 
-/** 稳定 Payload 摘要（SHA-256 hex）。 */
+/** 稳定 Payload 摘要（SHA-256 hex）。`undefined` 请求体（无 body/无 Content-Type）归一化为稳定值，避免 update() 抛 TypeError。 */
 export function hashPayload(payload: unknown): string {
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  const serialized = payload === undefined ? "undefined" : JSON.stringify(payload);
+  return createHash("sha256").update(serialized).digest("hex");
 }

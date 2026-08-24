@@ -255,6 +255,7 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
     const blocked = await attempt(key());
     expect(blocked.statusCode).toBe(429);
     expect(blocked.json().error.code).toBe("RATE_LIMITED");
+    expect(blocked.json().error.retryable).toBe(true);
     expect(blocked.json().error.details?.retryAfterMs).toBeTypeOf("number");
   });
 

@@ -27,6 +27,7 @@ export function fakeRoomRepository(): FakeRoomRepository {
     async updateRoomConfig() {},
     async setRoomHost() {},
     async markRoomPlayerLeft() {},
+    async markRoomPlayerLeftAndSetHost() {},
     async startTournament() {},
   };
 }
@@ -50,6 +51,9 @@ export function fakePersistence(): FakePersistence {
     },
     async markMemberLeft() {
       calls.push("markMemberLeft");
+    },
+    async leaveRoomMember() {
+      calls.push("leaveRoomMember");
     },
     async updateRoomConfig() {
       calls.push("updateRoomConfig");

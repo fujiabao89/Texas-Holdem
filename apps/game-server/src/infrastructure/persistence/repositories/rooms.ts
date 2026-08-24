@@ -2,7 +2,15 @@ import { and, eq } from "drizzle-orm";
 import type { Database, GameTransaction } from "../database";
 import { rooms, roomPlayers, tournaments, tournamentPlayers } from "../schema";
 import { validateDisplayName, normalizeDisplayNameKey } from "../display-name";
+import { PersistenceError } from "./errors";
 import type { TournamentPlayerSeed } from "./tournaments";
+
+/** 控制面 UPDATE 必须恰好命中 1 行：拒绝静默 0 行更新与跨房间误改（docs/03 §7.4）。 */
+function assertOneRow(rowCount: number | null, message: string): void {
+  if (rowCount !== 1) {
+    throw new PersistenceError(message);
+  }
+}
 
 /**
  * Room 控制面仓储（docs/03-data-model.md §5.1/§5.2/§7.2）。
@@ -85,6 +93,15 @@ export interface RoomRepository {
   /** 成员离开/被踢：标记 `room_players` 为 LEFT 并记录原因与时间。 */
   markRoomPlayerLeft(roomId: string, playerId: string, reason: LeftReasonDb, leftAt: Date): Promise<void>;
 
+  /** 原子离开：同一事务内标记成员 LEFT 并回填新 Host（避免成员已 LEFT 但 Host 未转移的半提交）。 */
+  markRoomPlayerLeftAndSetHost(
+    roomId: string,
+    playerId: string,
+    reason: LeftReasonDb,
+    leftAt: Date,
+    newHostPlayerId: string | null,
+  ): Promise<void>;
+
   /**
    * 开局原子写入：单事务写入 Tournament（IN_GAME、last_committed_sequence=0）、
    * 全部 tournament_players 锁定快照，并把 `rooms.status` 置为 IN_GAME；
@@ -138,7 +155,7 @@ export function createRoomRepository(database: Database): RoomRepository {
 
   async function setRoomStatus(roomId: string, status: RoomStatusDb, fields?: RoomStatusFields): Promise<void> {
     await database.withTransaction(async (tx: GameTransaction) => {
-      await tx
+      const result = await tx
         .update(rooms)
         .set({
           status,
@@ -147,18 +164,21 @@ export function createRoomRepository(database: Database): RoomRepository {
           retentionExpiresAt: fields?.retentionExpiresAt ?? null,
         })
         .where(eq(rooms.id, roomId));
+      assertOneRow(result.rowCount, `room ${roomId} not found for status update`);
     });
   }
 
   async function updateRoomConfig(roomId: string, configJson: unknown): Promise<void> {
     await database.withTransaction(async (tx: GameTransaction) => {
-      await tx.update(rooms).set({ configJson }).where(eq(rooms.id, roomId));
+      const result = await tx.update(rooms).set({ configJson }).where(eq(rooms.id, roomId));
+      assertOneRow(result.rowCount, `room ${roomId} not found for config update`);
     });
   }
 
   async function setRoomHost(roomId: string, hostPlayerId: string | null): Promise<void> {
     await database.withTransaction(async (tx: GameTransaction) => {
-      await tx.update(rooms).set({ hostPlayerId }).where(eq(rooms.id, roomId));
+      const result = await tx.update(rooms).set({ hostPlayerId }).where(eq(rooms.id, roomId));
+      assertOneRow(result.rowCount, `room ${roomId} not found for host update`);
     });
   }
 
@@ -169,14 +189,36 @@ export function createRoomRepository(database: Database): RoomRepository {
     leftAt: Date,
   ): Promise<void> {
     await database.withTransaction(async (tx: GameTransaction) => {
-      await tx
+      const result = await tx
         .update(roomPlayers)
         .set({ status: "LEFT", leftReason: reason, leftAt })
         .where(and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.id, playerId)));
+      assertOneRow(result.rowCount, `room player ${playerId} not found in room ${roomId} for leave update`);
+    });
+  }
+
+  async function markRoomPlayerLeftAndSetHost(
+    roomId: string,
+    playerId: string,
+    reason: LeftReasonDb,
+    leftAt: Date,
+    newHostPlayerId: string | null,
+  ): Promise<void> {
+    await database.withTransaction(async (tx: GameTransaction) => {
+      const left = await tx
+        .update(roomPlayers)
+        .set({ status: "LEFT", leftReason: reason, leftAt })
+        .where(and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.id, playerId)));
+      assertOneRow(left.rowCount, `room player ${playerId} not found in room ${roomId} for leave update`);
+      const host = await tx.update(rooms).set({ hostPlayerId: newHostPlayerId }).where(eq(rooms.id, roomId));
+      assertOneRow(host.rowCount, `room ${roomId} not found for host transfer`);
     });
   }
 
   async function startTournament(input: StartTournamentPersistenceInput): Promise<void> {
+    if (input.players.length === 0) {
+      throw new PersistenceError("startTournament requires at least one player");
+    }
     for (const player of input.players) {
       validateDisplayName(player.displayName);
     }
@@ -206,5 +248,14 @@ export function createRoomRepository(database: Database): RoomRepository {
     });
   }
 
-  return { createRoomWithHost, insertRoomPlayer, setRoomStatus, updateRoomConfig, setRoomHost, markRoomPlayerLeft, startTournament };
+  return {
+    createRoomWithHost,
+    insertRoomPlayer,
+    setRoomStatus,
+    updateRoomConfig,
+    setRoomHost,
+    markRoomPlayerLeft,
+    markRoomPlayerLeftAndSetHost,
+    startTournament,
+  };
 }

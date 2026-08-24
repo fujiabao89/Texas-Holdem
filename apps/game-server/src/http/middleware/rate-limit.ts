@@ -68,7 +68,10 @@ export function createRateLimiter(now: () => number = Date.now): RateLimiter {
     checkCreateRoom(ip) {
       const perMinute = bucket(`create:${ip}`, 5, 5 / 60);
       const perHour = bucket(`create-hour:${ip}`, 30, 30 / 3600);
-      return stricter(perMinute.consume(), perHour.consume());
+      // 分钟桶拒绝时不消耗小时桶额度：被限流的请求不应提前耗尽小时配额。
+      const minuteResult = perMinute.consume();
+      if (!minuteResult.allowed) return minuteResult;
+      return stricter(minuteResult, perHour.consume());
     },
     checkJoinByIp(ip) {
       return bucket(`join:${ip}`, 10, 20 / 60).consume();

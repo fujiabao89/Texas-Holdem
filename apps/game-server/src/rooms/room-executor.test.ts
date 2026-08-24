@@ -54,6 +54,10 @@ function fakePersistence(): RoomPersistence & { calls: string[]; failNext: (erro
       calls.push(`left:${playerId}`);
       if (fail) throw fail;
     },
+    async leaveRoomMember(_roomId, playerId) {
+      calls.push(`left:${playerId}`);
+      if (fail) throw fail;
+    },
     async updateRoomConfig() {
       calls.push("config");
     },
@@ -173,8 +177,8 @@ describe("RoomRuntime（串行执行器）", () => {
     await runtime.submit({ type: "JOIN", member: makeMember("bob", "Bob") });
     await runtime.submit({ type: "LEAVE", playerId: "host-1", reason: "USER_LEFT", leftAt: 9000 });
     expect(runtime.current.hostPlayerId).toBe("alice");
+    // 原子离开：单一 leaveRoomMember 调用同时完成 LEFT 标记与 Host 回填
     expect(persistence.calls).toContain("left:host-1");
-    expect(persistence.calls).toContain("host");
   });
 
   it("CLOSED 后业务命令被拒，SET_READY 等不落库", async () => {

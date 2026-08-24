@@ -32,6 +32,14 @@ export interface RoomStatusFields {
 export interface RoomPersistence {
   insertMember(input: InsertMemberInput): Promise<void>;
   markMemberLeft(roomId: string, playerId: string, reason: LeaveReason, leftAt: number): Promise<void>;
+  /** 原子离开：同一事务内标记 LEFT 并回填新 Host（避免半提交）。 */
+  leaveRoomMember(
+    roomId: string,
+    playerId: string,
+    reason: LeaveReason,
+    leftAt: number,
+    newHostPlayerId: string | null,
+  ): Promise<void>;
   updateRoomConfig(roomId: string, config: unknown): Promise<void>;
   setRoomHost(roomId: string, hostPlayerId: string | null): Promise<void>;
   setRoomStatus(roomId: string, status: RoomStatus, fields?: RoomStatusFields): Promise<void>;
@@ -88,6 +96,16 @@ export function createRoomPersistence(deps: {
         playerId,
         DB_LEFT_REASON[reason],
         new Date(leftAt),
+      );
+    },
+
+    async leaveRoomMember(roomId, playerId, reason, leftAt, newHostPlayerId) {
+      await deps.roomRepository.markRoomPlayerLeftAndSetHost(
+        roomId,
+        playerId,
+        DB_LEFT_REASON[reason],
+        new Date(leftAt),
+        newHostPlayerId,
       );
     },
 

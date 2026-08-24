@@ -39,3 +39,20 @@ app.listen({ port, host }, (err, address) => {
   }
   console.log(`game-server listening at ${address}`);
 });
+
+// 优雅关闭：SIGTERM/SIGINT 时先停 Fastify（停止新请求、等待 in-flight 收尾），再释放连接池。
+let shuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.info(`received ${signal}, shutting down`);
+  try {
+    await app.close();
+    await database.end();
+  } finally {
+    process.exit(0);
+  }
+}
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => void shutdown(signal));
+}

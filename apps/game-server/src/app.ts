@@ -4,7 +4,7 @@ import rateLimit from "@fastify/rate-limit";
 import { validateTournamentConfig } from "@texas-holdem/poker-engine";
 import {
   createProtocolError,
-  type ErrorEnvelope,
+  type ProtocolError,
   type TournamentConfig,
 } from "@texas-holdem/protocol";
 import type { AppConfig } from "./config";
@@ -28,8 +28,8 @@ function validateRoomConfig(config: TournamentConfig): TournamentConfig {
   };
 }
 
-/** @fastify/rate-limit 超额时抛出的标记对象（{ statusCode: 429, envelope }）。 */
-function isRateLimitEnvelope(error: unknown): error is { statusCode: number; envelope: ErrorEnvelope } {
+/** @fastify/rate-limit 超额时抛出的标记对象（{ statusCode: 429, envelope: ProtocolError }）。 */
+function isRateLimitEnvelope(error: unknown): error is { statusCode: number; envelope: ProtocolError } {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -68,6 +68,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         reply.status(204).send();
         return;
       }
+    } else if (typeof origin === "string" && request.method === "OPTIONS") {
+      // 非白名单来源的预检：明确拒绝 403（不设置 CORS 头），避免落入 404。
+      reply.status(403).send();
+      return;
     }
     done();
   });
@@ -99,6 +103,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return defaultErrorHandler.call(app, error, request, reply);
   });
 
+  // /health 有意豁免全局限流（在插件 onRoute 生效前注册）：廉价端点，健康检查不应被限流误伤。
   app.get("/health", async () => {
     return { status: "ok" };
   });
