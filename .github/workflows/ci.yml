@@ -88,7 +88,9 @@ jobs:
           pnpm run test:rules
           pnpm run test:integration
           pnpm run test:ws
-          pnpm run test:sim -- --seed 20260821
+          # TEX-16：PR Simulator Smoke（已知失败 seed 回归集 + 提交 SHA 派生 ≥200 场；
+          # Nightly/RC 大规模运行见 simulator.yml 的 schedule / workflow_dispatch）。
+          pnpm run test:sim -- --tier smoke --sha "$GITHUB_SHA"
 
   e2e:
     name: e2e
