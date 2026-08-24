@@ -4,9 +4,12 @@ import { ErrorCodeSchema, ProtocolErrorSchema } from "../errors";
 import {
   ActionIdSchema,
   DecimalSequenceSchema,
+  DisplayNameSchema,
+  InviteCodeSchema,
   OpaqueIdSchema,
   PROTOCOL_VERSION,
   ProtocolVersionSchema,
+  PlayerTokenSchema,
   RequestIdSchema,
   SafeIntegerSchema,
   SeatSchema,
@@ -26,7 +29,7 @@ const AuthenticateCommandSchema = z.strictObject({
   type: z.literal("AUTHENTICATE"),
   protocolVersion: ProtocolVersionSchema,
   requestId: RequestIdSchema,
-  payload: z.strictObject({ roomId: OpaqueIdSchema, playerToken: z.string().min(1).max(1024) }),
+  payload: z.strictObject({ roomId: OpaqueIdSchema, playerToken: PlayerTokenSchema }),
 });
 const SetReadyCommandSchema = z.strictObject({
   type: z.literal("SET_READY"),
@@ -72,8 +75,8 @@ export const ClientCommandSchema = z.discriminatedUnion("type", [
   LeaveRoomCommandSchema,
 ]);
 
-export const CreateRoomRequestSchema = z.strictObject({ displayName: z.string().min(2).max(64), config: TournamentConfigSchema });
-export const JoinRoomRequestSchema = z.strictObject({ inviteCode: z.string().length(6), displayName: z.string().min(2).max(64) });
+export const CreateRoomRequestSchema = z.strictObject({ displayName: DisplayNameSchema, config: TournamentConfigSchema });
+export const JoinRoomRequestSchema = z.strictObject({ inviteCode: InviteCodeSchema, displayName: DisplayNameSchema });
 export const RoomOperationSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("UPDATE_CONFIG"), config: TournamentConfigSchema }),
   z.strictObject({ type: z.literal("KICK_PLAYER"), targetPlayerId: OpaqueIdSchema }),

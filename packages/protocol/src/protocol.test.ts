@@ -4,13 +4,18 @@ import {
   applyPlayerViewPatch,
   createProtocolError,
   CreateRoomResponseSchema,
+  CommandResultPayloadSchema,
+  GameEventSchema,
   GameEventMessageSchema,
   GameSnapshotSchema,
+  JoinRoomRequestSchema,
   projectBotView,
   projectGameEventForViewer,
   projectPlayerView,
   ProtocolErrorSchema,
+  RoomSnapshotSchema,
   ServerMessageSchema,
+  TournamentConfigSchema,
   validateClientCommand,
   validateServerMessage,
 } from "./index";
@@ -19,6 +24,14 @@ const requestId = "123e4567-e89b-42d3-a456-426614174000";
 const actionId = "123e4567-e89b-42d3-a456-426614174001";
 const aliceCard = { rank: "A", suit: "SPADES" } as const;
 const bobCard = { rank: "K", suit: "HEARTS" } as const;
+const tournamentConfig = {
+  maxPlayers: 2, startingStack: 1000, smallBlind: 5, bigBlind: 10, blindMode: "fixed" as const,
+  blindStructure: [{ smallBlind: 5, bigBlind: 10 }], actionTime: 30 as const, timeBank: 60 as const,
+};
+const roomSnapshot = {
+  snapshotVersion: 1 as const, roomId: "room_1", roomRevision: "0", status: "LOBBY" as const, inviteCode: "ABC234", hostPlayerId: "alice",
+  config: tournamentConfig, activeTournamentId: null, players: [],
+};
 
 const source = {
   handId: "hand_1",
@@ -64,16 +77,48 @@ describe("protocol wire contracts", () => {
     expect(error.message).toBe("stale game state");
     expect(ProtocolErrorSchema.safeParse({ ...error, details: { token: "secret" } }).success).toBe(false);
     expect(ProtocolErrorSchema.safeParse({ ...error, details: { currentSequence: 12 } }).success).toBe(false);
+    expect(ProtocolErrorSchema.safeParse({ ...error, code: "STALE_ROOM_STATE", details: { currentRoomRevision: 12 } }).success).toBe(false);
+    expect(ProtocolErrorSchema.safeParse({ ...error, code: "STALE_ROOM_STATE", details: { currentRoomRevision: "12" } }).success).toBe(true);
   });
 
   it("keeps HTTP success and credential responses strict", () => {
-    const roomSnapshot = {
-      snapshotVersion: 1, roomId: "room_1", roomRevision: "0", status: "LOBBY", inviteCode: "ABC234", hostPlayerId: "alice",
-      config: { maxPlayers: 2, startingStack: 1000, smallBlind: 5, bigBlind: 10, blindMode: "fixed", blindStructure: [{ smallBlind: 5, bigBlind: 10 }], actionTime: 30, timeBank: 60 },
-      activeTournamentId: null, players: [],
-    };
     expect(CreateRoomResponseSchema.safeParse({ data: { roomId: "room_1", playerId: "alice", playerToken: "x".repeat(43), roomSnapshot } }).success).toBe(true);
     expect(CreateRoomResponseSchema.safeParse({ data: { roomId: "room_1", playerId: "alice", playerToken: "x".repeat(43), roomSnapshot }, debug: true }).success).toBe(false);
+  });
+
+  it("enforces frozen TournamentConfig cross-field constraints", () => {
+    expect(TournamentConfigSchema.safeParse(tournamentConfig).success).toBe(true);
+    expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, smallBlind: 10, bigBlind: 10, blindStructure: [{ smallBlind: 10, bigBlind: 10 }] }).success).toBe(false);
+    expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, blindStructure: [{ smallBlind: 10, bigBlind: 20 }] }).success).toBe(false);
+    expect(TournamentConfigSchema.safeParse({ ...tournamentConfig, actionTime: "UNLIMITED", timeBank: 60 }).success).toBe(false);
+  });
+
+  it("enforces invitation format, token entropy, and CLOSED room invitation removal", () => {
+    expect(JoinRoomRequestSchema.safeParse({ inviteCode: "ABC234", displayName: "Alice" }).success).toBe(true);
+    expect(JoinRoomRequestSchema.safeParse({ inviteCode: "ABCO01", displayName: "Alice" }).success).toBe(false);
+    expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion: 1, requestId, payload: { roomId: "room_1", playerToken: "short" } }).success).toBe(false);
+    expect(RoomSnapshotSchema.safeParse({ ...roomSnapshot, status: "CLOSED", inviteCode: "ABC234" }).success).toBe(false);
+    expect(RoomSnapshotSchema.safeParse({ ...roomSnapshot, status: "CLOSED", inviteCode: null }).success).toBe(true);
+  });
+
+  it("keeps COMMAND_RESULT status and error fields consistent", () => {
+    const error = createProtocolError("INVALID_ACTION", "trace_1");
+    expect(CommandResultPayloadSchema.safeParse({ requestId, status: "APPLIED", duplicate: false, appliedSequence: "4" }).success).toBe(true);
+    expect(CommandResultPayloadSchema.safeParse({ requestId, status: "APPLIED", duplicate: false, error }).success).toBe(false);
+    expect(CommandResultPayloadSchema.safeParse({ requestId, status: "REJECTED", duplicate: false }).success).toBe(false);
+    expect(CommandResultPayloadSchema.safeParse({ requestId, status: "REJECTED", duplicate: false, error }).success).toBe(true);
+  });
+
+  it("enforces POT_AWARDED chip conservation", () => {
+    const payload = { type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 100, awards: [{ playerId: "alice", amount: 60 }, { playerId: "bob", amount: 40 }], winningHandRank: null } };
+    expect(GameEventSchema.safeParse(payload).success).toBe(true);
+    expect(GameEventSchema.safeParse({ ...payload, payload: { ...payload.payload, awards: [{ playerId: "alice", amount: 99 }] } }).success).toBe(false);
+  });
+
+  it("accepts withdrawal and tournament finish event catalog entries", () => {
+    expect(GameEventSchema.safeParse({ type: "PLAYER_WITHDRAWN", payload: { playerId: "alice", seat: 0, forfeitedChips: 250 } }).success).toBe(true);
+    expect(GameEventSchema.safeParse({ type: "TOURNAMENT_FINISHED", payload: { winnerPlayerId: "alice", rankings: [{ playerId: "alice", finishPosition: 1, tied: false }, { playerId: "bob", finishPosition: 2, tied: false }] } }).success).toBe(true);
+    expect(GameEventSchema.safeParse({ type: "PLAYER_WITHDRAWN", payload: { playerId: "alice", seat: 0 } }).success).toBe(false);
   });
 
   it("projects PlayerView and BotView without other players' hole cards or server-only fields", () => {

@@ -36,6 +36,9 @@ export const ProtocolErrorSchema = z.strictObject({
   if (error.details?.currentSequence !== undefined && !DecimalSequenceSchema.safeParse(error.details.currentSequence).success) {
     context.addIssue({ code: "custom", message: "currentSequence must be a decimal uint64 string" });
   }
+  if (error.details?.currentRoomRevision !== undefined && !DecimalSequenceSchema.safeParse(error.details.currentRoomRevision).success) {
+    context.addIssue({ code: "custom", message: "currentRoomRevision must be a decimal uint64 string" });
+  }
 });
 
 export const ErrorEnvelopeSchema = z.strictObject({ error: ProtocolErrorSchema });
