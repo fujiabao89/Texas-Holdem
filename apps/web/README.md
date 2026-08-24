@@ -2,7 +2,7 @@
 
 玩家 Web 客户端（Next.js 16 + React 19 + Tailwind CSS 4）。采用单一 `src/app` 路由入口；页面组合功能模块，扑克规则以服务端投影和共享协议为准，客户端绝不裁决牌局。
 
-TEX-23 已建立路由壳、类型安全 `zh-CN` 文案、Jotai 纯 UI 状态、HTTP/WS Transport 与 Snapshot/Event 消费边界。创建/加入/Lobby、牌桌下注、动画、音效、赛果和历史仍由 TEX-24+ 实现；当前路由壳不包含这些业务页面。
+TEX-24 已实现 Home、创建/加入表单、邀请码预填/复制和 Lobby 的选座、Ready、房主配置/踢人/开局反馈。页面只消费共享 Schema 验证后的 HTTP/WS `RoomSnapshot`，不根据命令回执模拟状态。牌桌下注、动画、音效、赛果和历史仍由 TEX-25+ 实现。
 
 ## 命令
 
@@ -21,6 +21,7 @@ pnpm --filter @texas-holdem/web typecheck  # tsc --noEmit
 - `src/protocol/` — 严格 Schema 边界的 HTTP/WS 客户端、当前 Tab Token 存储。
 - `src/state/` — Server 投影镜像、重同步状态与纯 UI Jotai atoms。
 - `src/messages/` — 唯一的 P0 中文用户文案与类型安全 key。
+- `src/features/lobby/` — 创建、加入与 Lobby 的客户端流程；不维护平行 Room DTO。
 
 ## 环境变量
 

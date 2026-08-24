@@ -20,6 +20,7 @@ import {
   leaveRoom,
   markTournamentFinished,
   returnToLobby,
+  setConnectionStatus,
   type LeaveReason,
   type RoomMemberSeed,
   type RoomState,
@@ -34,6 +35,7 @@ export type RoomCommand =
   | { type: "JOIN"; member: RoomMemberSeed }
   | { type: "LEAVE"; playerId: string; reason: LeaveReason; leftAt: number }
   | { type: "SET_READY"; playerId: string; ready: boolean }
+  | { type: "SET_CONNECTION_STATUS"; playerId: string; connectionStatus: "CONNECTED" | "DISCONNECTED" }
   | { type: "CHANGE_SEAT"; playerId: string; seat: number | null; expectedRevision?: number }
   | { type: "UPDATE_CONFIG"; actorPlayerId: string; config: TournamentConfig; expectedRevision?: number }
   | { type: "KICK_PLAYER"; actorPlayerId: string; targetPlayerId: string; expectedRevision?: number }
@@ -104,6 +106,8 @@ export class RoomRuntime {
         };
       case "SET_READY":
         return { next: setReady(before, command.playerId, command.ready), persisted: false };
+      case "SET_CONNECTION_STATUS":
+        return { next: setConnectionStatus(before, command.playerId, command.connectionStatus), persisted: false };
       case "CHANGE_SEAT":
         assertRevision(before, command.expectedRevision);
         return { next: changeSeat(before, command.playerId, command.seat), persisted: false };

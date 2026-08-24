@@ -39,6 +39,8 @@ export interface PlayerSession {
   readonly roomSnapshot: RoomSnapshot;
 }
 
+export type RoomSnapshotListener = (snapshot: RoomSnapshot) => void;
+
 export interface RoomManager {
   createRoom(input: {
     readonly displayName: string;
@@ -55,6 +57,7 @@ export interface RoomManager {
   transferHost(roomId: string): Promise<RoomCommandResult>;
   findRoom(roomId: string): RoomRuntime | undefined;
   getSnapshot(roomId: string): RoomSnapshot | undefined;
+  subscribe(listener: RoomSnapshotListener): () => void;
   /** 由 token 摘要反查 playerId（常数时间比较每个候选真人）。 */
   authenticate(roomId: string, token: string): string;
 }
@@ -62,6 +65,11 @@ export interface RoomManager {
 export function createRoomManager(deps: RoomManagerDeps): RoomManager {
   const rooms = new Map<string, RoomRuntime>();
   const inviteByCode = new Map<string, string>();
+  const listeners = new Set<RoomSnapshotListener>();
+
+  function publish(snapshot: RoomSnapshot): void {
+    for (const listener of listeners) listener(snapshot);
+  }
 
   function makeToken(roomId: string, playerId: string): { token: string; digest: Buffer } {
     const token = generatePlayerToken(deps.ids.randomBytes);
@@ -105,7 +113,9 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids });
       rooms.set(roomId, runtime);
       inviteByCode.set(inviteCode, roomId);
-      return { roomId, playerId, playerToken: token, roomSnapshot: projectRoomSnapshot(state) };
+      const roomSnapshot = projectRoomSnapshot(state);
+      publish(roomSnapshot);
+      return { roomId, playerId, playerToken: token, roomSnapshot };
     },
 
     async joinRoom(input) {
@@ -130,11 +140,13 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
           tokenKeyId: deps.tokenKeyId,
         },
       });
+      const roomSnapshot = projectRoomSnapshot(result.state);
+      publish(roomSnapshot);
       return {
         roomId,
         playerId,
         playerToken: token,
-        roomSnapshot: projectRoomSnapshot(result.state),
+        roomSnapshot,
       };
     },
 
@@ -143,7 +155,9 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       if (runtime === undefined) {
         throw new RoomDomainError("ROOM_NOT_FOUND");
       }
-      return runtime.submit(command);
+      const result = await runtime.submit(command);
+      publish(projectRoomSnapshot(result.state));
+      return result;
     },
 
     async transferHost(roomId) {
@@ -161,6 +175,11 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
     getSnapshot(roomId) {
       const runtime = rooms.get(roomId);
       return runtime === undefined ? undefined : projectRoomSnapshot(runtime.current);
+    },
+
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
 
     authenticate(roomId, token) {

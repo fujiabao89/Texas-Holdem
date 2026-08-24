@@ -109,7 +109,7 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 ### 3.3 前端（权威：[05](./05-frontend-spec.md) §16）
 
-> TEX-23 已补充前端基础 Unit 测试：HTTP 成功/错误 Schema 解析、Token 的 sessionStorage 生命周期、WS 认证/幂等/版本及未知字段拒绝、Snapshot 覆盖、连续 Patch、乱序重同步、uint64 序列与投影私密字段拒绝。业务页面 E2E 仍按 TEX-24+ 落地。
+> TEX-23/TEX-24 已补充前端基础与 Lobby Unit/E2E 测试：HTTP 成功/错误 Schema、Fake Clock 驱动 timeout、取消、Token 的同 Tab 恢复/安全清除与 storage 降级、WS 认证/幂等/`appliedSequence` pending 回收、Snapshot 覆盖、连续 Patch、乱序重同步、邀请链接预填和 Home 双入口的 a11y 回归。完整多浏览器多人联调继续由 TEX-28 落地。
 
 | 必测项 | 层次 | 规格来源 |
 | --- | --- | --- |

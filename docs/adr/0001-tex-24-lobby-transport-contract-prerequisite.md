@@ -1,6 +1,6 @@
 # ADR-0001：TEX-24 Lobby 需要完整的 HTTP 响应 Schema 与可用 WS 运行时
 
-> 状态：提议（TEX-24 阻塞）  
+> 状态：已实施（TEX-24）
 > 日期：2026-08-24
 
 ## 背景
@@ -47,5 +47,5 @@ DTO，违反 `docs/05-frontend-spec.md` §5.3 与 TEX-24 的明确边界。因�
 - TEX-24 不改变协议、服务端或运行时语义，也不在前端创建替代 Schema。
 - 前置条件合入后，TEX-24 可将 HTTP 成功响应和 WebSocket 投影直接交给
   `ProjectionStore`，并正确支持刷新、重连和多成员 Lobby 更新。
-- 当前 TEX-24 页面、Transport 可靠性改动与 E2E 不应开始，避免交付只能在单次
-  内存导航中工作的 Lobby。
+- TEX-24 页面可以直接消费已验证 HTTP 响应与 WS 投影；仍不以 `COMMAND_RESULT`
+  模拟房间或牌局状态。

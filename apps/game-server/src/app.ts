@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import websocket from "@fastify/websocket";
 import { randomUUID } from "node:crypto";
 import rateLimit from "@fastify/rate-limit";
 import { validateTournamentConfig } from "@texas-holdem/poker-engine";
@@ -9,6 +10,7 @@ import {
 } from "@texas-holdem/protocol";
 import type { AppConfig } from "./config";
 import { registerRoomRoutes } from "./http/routes/rooms";
+import { registerLobbyGateway } from "./realtime/gateway/lobby-gateway";
 import { IdempotencyStore } from "./http/middleware/idempotency";
 import { createRateLimiter, type RateLimiter } from "./http/middleware/rate-limit";
 import type { RoomManager } from "./rooms/room-manager";
@@ -55,6 +57,8 @@ export interface BuildAppOptions {
  */
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 65_536 });
+  // Must be registered before every route so upgrade interception is reliable.
+  app.register(websocket);
 
   // 显式 CORS Allowlist（含 OPTIONS 预检）。
   app.addHook("onRequest", (request, reply, done) => {
@@ -120,6 +124,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       now: options.now ?? Date.now,
       makeTraceId: () => randomUUID(),
     });
+    registerLobbyGateway(app, options.roomManager, options.now ?? Date.now);
   });
 
   return app;

@@ -34,6 +34,7 @@ export interface PendingCommand {
   readonly serialized: string;
   readonly requestId: string;
   readonly actionId?: string;
+  readonly appliedSequence?: string;
   readonly status: "SENDING" | "APPLIED_AWAITING_STATE" | "REJECTED";
 }
 
@@ -46,19 +47,34 @@ export interface WebSocketTransportOptions {
   readonly onConnectionState?: (state: ConnectionState) => void;
   readonly onCommandResult?: (pending: PendingCommand) => void;
   readonly onProtocolError?: (code: ErrorCode) => void;
+  readonly clock?: WebSocketClock;
+}
+
+export interface WebSocketClock {
+  setTimeout(callback: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
 }
 
 export class WebSocketTransport {
   private socket: WebSocketLike | null = null;
   private roomId: string | null = null;
+  private playerToken: string | null = null;
   private state: ConnectionState = "IDLE";
   private readonly pending = new Map<string, PendingCommand>();
+  private retryTimer: unknown | null = null;
+  private retryAttempt = 0;
 
   constructor(private readonly options: WebSocketTransportOptions) {}
 
   connect(roomId: string, playerToken: string): void {
-    this.disconnect(this.roomId !== roomId);
+    this.cancelRetry();
+    this.disconnect(this.roomId !== roomId, false);
     this.roomId = roomId;
+    this.playerToken = playerToken;
+    this.openConnection(roomId, playerToken);
+  }
+
+  private openConnection(roomId: string, playerToken: string): void {
     this.transition("CONNECTING");
     const socket = this.options.socketFactory(this.options.wsUrl);
     this.socket = socket;
@@ -77,10 +93,12 @@ export class WebSocketTransport {
     socket.onerror = () => this.transition("CLOSED");
   }
 
-  disconnect(clearPending = true): void {
+  disconnect(clearPending = true, preserveSession = false): void {
+    this.cancelRetry();
     const socket = this.socket;
     this.socket = null;
     if (clearPending) this.pending.clear();
+    if (!preserveSession) this.playerToken = null;
     if (socket !== null) {
       socket.onopen = null;
       socket.onmessage = null;
@@ -126,6 +144,7 @@ export class WebSocketTransport {
     switch (message.type) {
       case "RECONNECT_RESULT":
         this.acceptReconnect(message.payload as ReconnectResult);
+        this.recycleAppliedPending();
         this.transition("CONNECTED");
         return;
       case "ROOM_SNAPSHOT":
@@ -133,10 +152,12 @@ export class WebSocketTransport {
         return;
       case "GAME_SNAPSHOT":
         this.options.projectionStore.acceptGameSnapshot(message.payload as GameSnapshot);
+        this.recycleAppliedPending();
         this.transition("CONNECTED");
         return;
       case "GAME_EVENT": {
         const result = this.options.projectionStore.acceptGameEvent(message as GameEventMessage);
+        if (result === "APPLIED") this.recycleAppliedPending();
         if (result === "RESYNC") this.requestSnapshot(this.options.projectionStore.getSnapshot().resyncReason ?? "INVALID_EVENT");
         return;
       }
@@ -165,6 +186,7 @@ export class WebSocketTransport {
     const next: PendingCommand = {
       ...pending,
       status: result.status === "APPLIED" ? "APPLIED_AWAITING_STATE" : "REJECTED",
+      appliedSequence: result.appliedSequence,
     };
     this.pending.set(result.requestId, next);
     this.options.onCommandResult?.(next);
@@ -176,6 +198,17 @@ export class WebSocketTransport {
 
   private acceptReconnect(result: ReconnectResult): void {
     this.options.projectionStore.acceptReconnectResult(result.roomSnapshot, result.gameSnapshot);
+  }
+
+  /** COMMAND_RESULT is feedback only; the matching authoritative sequence releases memory. */
+  private recycleAppliedPending(): void {
+    const sequence = this.options.projectionStore.getSnapshot().lastSequence;
+    if (sequence === null) return;
+    for (const [requestId, pending] of this.pending) {
+      if (pending.status === "APPLIED_AWAITING_STATE" && pending.appliedSequence !== undefined && BigInt(pending.appliedSequence) <= BigInt(sequence)) {
+        this.pending.delete(requestId);
+      }
+    }
   }
 
   private acceptRoom(snapshot: RoomSnapshot): void {
@@ -193,6 +226,7 @@ export class WebSocketTransport {
     this.options.onProtocolError?.(code);
     if ((code === "AUTH_FAILED" || code === "INVITE_EXPIRED") && this.roomId !== null) this.options.tokenStore.clear(this.roomId, code);
     if (code === "AUTH_FAILED" || code === "UNSUPPORTED_PROTOCOL_VERSION" || code === "SESSION_REPLACED") {
+      this.cancelRetry();
       this.transition("STOPPED");
       this.socket?.close(CLOSE_CODES.PROTOCOL_ERROR);
       return;
@@ -228,7 +262,10 @@ export class WebSocketTransport {
   private handleClose(code: number): void {
     if (code === CLOSE_CODES.SESSION_REPLACED) this.handleError("SESSION_REPLACED");
     else if (code === CLOSE_CODES.AUTH_FAILED) this.handleError("AUTH_FAILED");
-    else if (this.state !== "STOPPED") this.transition("CLOSED");
+    else if (this.state !== "STOPPED") {
+      this.transition("CLOSED");
+      this.scheduleReconnect();
+    }
   }
 
   private sendRaw(command: ClientCommand): void {
@@ -239,4 +276,26 @@ export class WebSocketTransport {
     this.state = next;
     this.options.onConnectionState?.(next);
   }
+
+  private scheduleReconnect(): void {
+    if (this.retryTimer !== null || this.roomId === null || this.playerToken === null) return;
+    const delays = [500, 1_000, 2_000, 4_000, 8_000, 10_000] as const;
+    const delay = delays[Math.min(this.retryAttempt, delays.length - 1)]!;
+    this.retryAttempt += 1;
+    this.retryTimer = (this.options.clock ?? browserClock).setTimeout(() => {
+      this.retryTimer = null;
+      if (this.roomId !== null && this.playerToken !== null && this.state !== "STOPPED") this.openConnection(this.roomId, this.playerToken);
+    }, delay);
+  }
+
+  private cancelRetry(): void {
+    if (this.retryTimer !== null) (this.options.clock ?? browserClock).clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.retryAttempt = 0;
+  }
 }
+
+const browserClock: WebSocketClock = {
+  setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};

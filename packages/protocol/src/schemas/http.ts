@@ -16,6 +16,18 @@ const PlayerSessionSchema = z.strictObject({
 export const CreateRoomResponseSchema = HttpDataEnvelopeSchema(PlayerSessionSchema);
 export const JoinRoomResponseSchema = HttpDataEnvelopeSchema(PlayerSessionSchema);
 
+/** Shared success envelopes for the protected Lobby control-plane endpoints. */
+export const UpdateRoomResponseSchema = HttpDataEnvelopeSchema(z.strictObject({
+  roomSnapshot: RoomSnapshotSchema,
+}));
+export const StartTournamentResponseSchema = HttpDataEnvelopeSchema(z.strictObject({
+  tournamentId: OpaqueIdSchema,
+  roomSnapshot: RoomSnapshotSchema,
+}));
+export const LeaveRoomResponseSchema = HttpDataEnvelopeSchema(z.strictObject({
+  roomSnapshot: RoomSnapshotSchema,
+}));
+
 const HandHistoryItemSchema = z.strictObject({
   handId: OpaqueIdSchema,
   handNumber: z.number().int().min(1),
@@ -43,5 +55,8 @@ export const HandHistoryDetailResponseSchema = HttpDataEnvelopeSchema(z.strictOb
 
 export type CreateRoomResponse = z.infer<typeof CreateRoomResponseSchema>;
 export type JoinRoomResponse = z.infer<typeof JoinRoomResponseSchema>;
+export type UpdateRoomResponse = z.infer<typeof UpdateRoomResponseSchema>;
+export type StartTournamentResponse = z.infer<typeof StartTournamentResponseSchema>;
+export type LeaveRoomResponse = z.infer<typeof LeaveRoomResponseSchema>;
 export type HandHistoryListResponse = z.infer<typeof HandHistoryListResponseSchema>;
 export type HandHistoryDetailResponse = z.infer<typeof HandHistoryDetailResponseSchema>;

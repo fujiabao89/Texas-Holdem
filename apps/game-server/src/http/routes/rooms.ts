@@ -22,8 +22,11 @@ import {
   JoinRoomRequestSchema,
   JoinRoomResponseSchema,
   LeaveRoomRequestSchema,
+  LeaveRoomResponseSchema,
   StartTournamentRequestSchema,
+  StartTournamentResponseSchema,
   UpdateRoomRequestSchema,
+  UpdateRoomResponseSchema,
   type TournamentConfig,
 } from "@texas-holdem/protocol";
 import { normalizeDisplayNameKey } from "../../infrastructure/persistence/display-name";
@@ -201,7 +204,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
           // operation 判别联合未来新增类型时，不静默 500，稳定返回 INVALID_MESSAGE。
           throw new RoomDomainError("INVALID_MESSAGE");
       }
-      return { statusCode: 200, body: { data: { roomSnapshot: projectRoomSnapshot(result!.state) } } };
+      return { statusCode: 200, body: UpdateRoomResponseSchema.parse({ data: { roomSnapshot: projectRoomSnapshot(result!.state) } }) };
     });
   });
 
@@ -228,7 +231,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
       });
       return {
         statusCode: 200,
-        body: { data: { tournamentId: result.tournamentId, roomSnapshot: projectRoomSnapshot(result.state) } },
+        body: StartTournamentResponseSchema.parse({ data: { tournamentId: result.tournamentId, roomSnapshot: projectRoomSnapshot(result.state) } }),
       };
     });
   });
@@ -252,7 +255,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
         reason: "USER_LEFT",
         leftAt: deps.now(),
       });
-      return { statusCode: 200, body: { data: { roomSnapshot: projectRoomSnapshot(result.state) } } };
+      return { statusCode: 200, body: LeaveRoomResponseSchema.parse({ data: { roomSnapshot: projectRoomSnapshot(result.state) } }) };
     });
   });
 }
