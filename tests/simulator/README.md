@@ -25,6 +25,13 @@ pnpm test:sim -- --tier rc --sha <hex> --ledger <file>   # RC：累计 ≥50,000
 
 Nightly/RC 等大规模运行不得塞进普通 PR CI；如需 CI 触发，只使用 `schedule` / `workflow_dispatch` 或显式参数。
 
+**运行报告与 Artifact（已裁决 2026-08-24）**：Nightly 经 GitHub Actions 定时任务上传 JSON Artifact（`simulator-nightly-<sha>` / `simulator-<tier>-<sha>`），内含提交 SHA、tier、seed 范围、覆盖统计与失败现场的 `summary.json` / `failure-*.json`；RC 将同类报告绑定候选提交保存。失败 seed 的最小 fixture（场景配置 + seed）可版本化纳入 [known-seeds.ts](./known-seeds.ts) 回归集；普通运行报告只存 Artifact，不提交仓库。
+
+## 场景加权策略（已裁决 2026-08-24）
+
+- 初始加权为**明确冻结值**：玩家数 2/3/10 各权重 3、4–9 各 1；筹码深度 浅/中/深 = 3/2/3；盲注模式 fixed/hands/time = 2/3/2；代理风格 aggressive/balanced/cautious/folding = 3/2/1/1；`folding × 深筹码` 禁止（防数千手盲注磨牌，深筹码覆盖由其余风格承担）。每次运行输出完整覆盖分布（`coverage` 统计）。
+- 调整规则：在**至少连续 3 次 Nightly 数据**后，依据实际覆盖缺口调整权重；调整时在本节记录原因与调整前后数据。首个调整窗口之前的任何权重变化都需重新裁决。
+
 ## 可复现性与失败产物
 
 - 每场的 `randomSeed` 即该场 seed：场景、引擎洗牌/首手 Dealer（`SeededRandomSource`）与代理决策全部由 seed 派生，同 seed 100% 重放（docs/01 §16）。

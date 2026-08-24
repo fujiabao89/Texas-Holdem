@@ -220,6 +220,8 @@ async function main(): Promise<number> {
       writeSummary(args.out, {
         mode: modeLabel,
         result: "FAILED",
+        tier,
+        gitSha: sha,
         category: failure.category,
         seed: failure.seed,
         replayCommand: failure.replayCommand(),
@@ -264,6 +266,8 @@ async function main(): Promise<number> {
       writeSummary(args.out, {
         mode: modeLabel,
         result: "FAILED",
+        tier,
+        gitSha: sha,
         category: "coverage-gap",
         missingCategories: missing,
         completedGames: completed,
@@ -284,6 +288,9 @@ async function main(): Promise<number> {
   const summary = {
     mode: modeLabel,
     result: "OK",
+    // 分层运行报告的追溯字段（docs/06 §12.4：证据绑定同一候选提交）。
+    tier,
+    gitSha: sha,
     tournaments: completed,
     hands: totalHands,
     actions: totalActions,

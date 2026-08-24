@@ -66,6 +66,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: simulator-artifacts
+          # 报告绑定候选提交（docs/06 §12.4）：summary.json 含 tier/gitSha/seedRange/coverage，
+          # 失败时另有 failure-*.json 现场。普通运行报告只存 Artifact，不提交仓库。
+          name: simulator-${{ github.event_name == 'schedule' && 'nightly' || inputs.tier }}-${{ inputs.sha || github.sha }}
           path: tests/simulator/.artifacts
           if-no-files-found: ignore
