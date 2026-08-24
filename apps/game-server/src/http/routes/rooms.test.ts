@@ -107,6 +107,20 @@ describe("POST /api/v1/rooms", () => {
     expect(response.json().error.code).toBe("INVALID_MESSAGE");
   });
 
+  it("并发同 key 创建只产生一个房间（幂等 in-flight 串行，两者返回相同结果）", async () => {
+    const app = makeApp();
+    const idemKey = key();
+    const payload = { displayName: "Host", config: makeConfig() };
+    const [first, second] = await Promise.all([
+      app.inject({ method: "POST", url: "/api/v1/rooms", headers: { "idempotency-key": idemKey }, payload }),
+      app.inject({ method: "POST", url: "/api/v1/rooms", headers: { "idempotency-key": idemKey }, payload }),
+    ]);
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    // 同一 key 只产生一个房间：两次响应（含 roomId）完全一致
+    expect(second.body).toBe(first.body);
+  });
+
   it("相同 Idempotency-Key + 相同 Payload 重试返回原结果；不同 Payload 返回 IDEMPOTENCY_KEY_REUSE", async () => {
     const app = makeApp();
     const idemKey = key();

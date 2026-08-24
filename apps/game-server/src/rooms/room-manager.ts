@@ -86,6 +86,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
         mode: "MULTIPLAYER",
         inviteCode,
         configJson: input.config,
+        initialStatus: "LOBBY",
         host: { playerId, displayName: input.displayName, tokenDigest: digest, tokenKeyId: deps.tokenKeyId },
       });
       const state = createRoomState({

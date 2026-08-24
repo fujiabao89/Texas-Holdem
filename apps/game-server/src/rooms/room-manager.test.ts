@@ -114,5 +114,7 @@ describe("RoomManager", () => {
     expect(roomRepository.createdRooms).toHaveLength(2);
     expect(roomRepository.createdRooms[0]?.inviteCode).toBe(a.roomSnapshot.inviteCode);
     expect(roomRepository.createdRooms[0]?.mode).toBe("MULTIPLAYER");
+    // 创建即持久化为 LOBBY，与内存权威状态一致（不残留 CREATED）
+    expect(roomRepository.createdRooms[0]?.initialStatus).toBe("LOBBY");
   });
 });

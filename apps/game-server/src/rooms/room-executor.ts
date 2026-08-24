@@ -148,13 +148,16 @@ export class RoomRuntime {
         });
         return;
       case "LEAVE":
-        // 原子离开：同一事务内标记 LEFT 并回填新 Host，避免半提交。
+        // 原子离开：同一事务内标记 LEFT、回填新 Host；末位真人离开时同事务关闭房间。
         await p.leaveRoomMember(
           before.roomId,
           command.playerId,
           command.reason,
           command.leftAt,
           next.hostPlayerId,
+          next.status === "CLOSED"
+            ? { reason: next.closedReason ?? "ABANDONED_NO_HUMAN", closedAt: this.deps.ids.now() }
+            : undefined,
         );
         return;
       case "UPDATE_CONFIG":

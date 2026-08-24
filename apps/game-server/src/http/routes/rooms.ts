@@ -10,7 +10,8 @@
  *
  * 全部外部输入先经 `packages/protocol` 的运行时 Schema 校验；成功返回 `{ data }`，
  * 失败返回 `ErrorEnvelope`。受保护接口解析 `Authorization: Bearer <playerToken>`，
- * 所有状态变更 POST/PATCH 强制 `Idempotency-Key`。
+ * 所有状态变更 POST/PATCH 强制 `Idempotency-Key`（并发同 key 经 IdempotencyStore.run
+ * 串行裁决，避免产生重复副作用）。
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -68,33 +69,24 @@ function sendRateLimited(reply: FastifyReply, traceId: string, retryAfterMs: num
   return sendError(reply, new RoomDomainError("RATE_LIMITED", { details: { retryAfterMs } }), traceId);
 }
 
-type IdemOutcome = { kind: "replay"; reply: FastifyReply } | { kind: "proceed"; idemKey: string; bodyHash: string };
-
-function checkIdempotency(
-  request: FastifyRequest,
+/** 幂等执行统一出口：冲突返回 409，其余按结果回放；执行期领域错误映射为 ErrorEnvelope。 */
+async function respondIdempotently(
   reply: FastifyReply,
-  scope: string,
-  endpoint: string,
-  deps: RoomRoutesDeps,
   traceId: string,
-): IdemOutcome {
-  const key = idempotencyKeyOf(request);
-  if (key === undefined) {
-    return { kind: "replay", reply: sendInvalidMessage(reply, traceId) };
-  }
-  const idemKey = `${scope}:${endpoint}:${key}`;
-  const bodyHash = hashPayload(request.body);
-  const cached = deps.idempotency.lookup(idemKey);
-  if (cached !== undefined) {
-    if (cached.payloadHash === bodyHash) {
-      return { kind: "replay", reply: reply.status(cached.statusCode).send(cached.body) };
+  idempotency: IdempotencyStore,
+  idemKey: string,
+  payloadHash: string,
+  execute: () => Promise<{ statusCode: number; body: unknown }>,
+): Promise<FastifyReply> {
+  try {
+    const outcome = await idempotency.run(idemKey, payloadHash, execute);
+    if (outcome.kind === "conflict") {
+      return sendError(reply, new RoomDomainError("IDEMPOTENCY_KEY_REUSE"), traceId);
     }
-    return {
-      kind: "replay",
-      reply: sendError(reply, new RoomDomainError("IDEMPOTENCY_KEY_REUSE"), traceId),
-    };
+    return reply.status(outcome.statusCode).send(outcome.body);
+  } catch (error) {
+    return sendError(reply, error, traceId);
   }
-  return { kind: "proceed", idemKey, bodyHash };
 }
 
 type AuthOutcome = { playerId: string } | { error: FastifyReply };
@@ -122,11 +114,12 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
     const traceId = deps.makeTraceId();
     const rate = deps.rateLimiter.checkCreateRoom(request.ip);
     if (!rate.allowed) return sendRateLimited(reply, traceId, rate.retryAfterMs);
-    const idem = checkIdempotency(request, reply, `ip:${request.ip}`, "create", deps, traceId);
-    if (idem.kind === "replay") return idem.reply;
+    const key = idempotencyKeyOf(request);
+    if (key === undefined) return sendInvalidMessage(reply, traceId);
     const parsed = CreateRoomRequestSchema.safeParse(request.body);
     if (!parsed.success) return sendInvalidMessage(reply, traceId);
-    try {
+    const payloadHash = hashPayload(request.body);
+    return respondIdempotently(reply, traceId, deps.idempotency, `ip:${request.ip}:create:${key}`, payloadHash, async () => {
       const config = deps.validateConfig(parsed.data.config);
       const displayNameKey = normalizeDisplayNameKey(parsed.data.displayName);
       const session = await deps.manager.createRoom({
@@ -134,12 +127,8 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
         displayNameKey,
         config,
       });
-      const response = CreateRoomResponseSchema.parse({ data: session });
-      deps.idempotency.store(idem.idemKey, { payloadHash: idem.bodyHash, statusCode: 200, body: response });
-      return reply.status(200).send(response);
-    } catch (error) {
-      return sendError(reply, error, traceId);
-    }
+      return { statusCode: 200, body: CreateRoomResponseSchema.parse({ data: session }) };
+    });
   });
 
   // POST /api/v1/rooms/join —— 以邀请码加入。
@@ -147,25 +136,22 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
     const traceId = deps.makeTraceId();
     const rate = deps.rateLimiter.checkJoinByIp(request.ip);
     if (!rate.allowed) return sendRateLimited(reply, traceId, rate.retryAfterMs);
-    const idem = checkIdempotency(request, reply, `ip:${request.ip}`, "join", deps, traceId);
-    if (idem.kind === "replay") return idem.reply;
+    const key = idempotencyKeyOf(request);
+    if (key === undefined) return sendInvalidMessage(reply, traceId);
     const parsed = JoinRoomRequestSchema.safeParse(request.body);
     if (!parsed.success) return sendInvalidMessage(reply, traceId);
     const inviteRate = deps.rateLimiter.checkJoinByInviteCode(parsed.data.inviteCode);
     if (!inviteRate.allowed) return sendRateLimited(reply, traceId, inviteRate.retryAfterMs);
-    try {
+    const payloadHash = hashPayload(request.body);
+    return respondIdempotently(reply, traceId, deps.idempotency, `ip:${request.ip}:join:${key}`, payloadHash, async () => {
       const displayNameKey = normalizeDisplayNameKey(parsed.data.displayName);
       const session = await deps.manager.joinRoom({
         inviteCode: parsed.data.inviteCode,
         displayName: parsed.data.displayName,
         displayNameKey,
       });
-      const response = JoinRoomResponseSchema.parse({ data: session });
-      deps.idempotency.store(idem.idemKey, { payloadHash: idem.bodyHash, statusCode: 200, body: response });
-      return reply.status(200).send(response);
-    } catch (error) {
-      return sendError(reply, error, traceId);
-    }
+      return { statusCode: 200, body: JoinRoomResponseSchema.parse({ data: session }) };
+    });
   });
 
   // PATCH /api/v1/rooms/:roomId —— 低频 Lobby 设置（仅 LOBBY；改配置/踢人仅 Host；换座只移动当前身份）。
@@ -175,16 +161,18 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
     if ("error" in auth) return auth.error;
     const rate = deps.rateLimiter.checkProtected(auth.playerId);
     if (!rate.allowed) return sendRateLimited(reply, traceId, rate.retryAfterMs);
-    const idem = checkIdempotency(request, reply, `player:${auth.playerId}`, "patch", deps, traceId);
-    if (idem.kind === "replay") return idem.reply;
+    const key = idempotencyKeyOf(request);
+    if (key === undefined) return sendInvalidMessage(reply, traceId);
     const parsed = UpdateRoomRequestSchema.safeParse(request.body);
     if (!parsed.success) return sendInvalidMessage(reply, traceId);
     const expectedRevision = Number(parsed.data.expectedRoomRevision);
-    try {
+    const payloadHash = hashPayload(request.body);
+    return respondIdempotently(reply, traceId, deps.idempotency, `player:${auth.playerId}:patch:${key}`, payloadHash, async () => {
       let result;
-      switch (parsed.data.operation.type) {
+      const operation = parsed.data.operation;
+      switch (operation.type) {
         case "UPDATE_CONFIG": {
-          const config = deps.validateConfig(parsed.data.operation.config);
+          const config = deps.validateConfig(operation.config);
           result = await deps.manager.submitCommand(request.params.roomId, {
             type: "UPDATE_CONFIG",
             actorPlayerId: auth.playerId,
@@ -197,7 +185,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
           result = await deps.manager.submitCommand(request.params.roomId, {
             type: "KICK_PLAYER",
             actorPlayerId: auth.playerId,
-            targetPlayerId: parsed.data.operation.targetPlayerId,
+            targetPlayerId: operation.targetPlayerId,
             expectedRevision,
           });
           break;
@@ -205,7 +193,7 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
           result = await deps.manager.submitCommand(request.params.roomId, {
             type: "CHANGE_SEAT",
             playerId: auth.playerId,
-            seat: parsed.data.operation.seat,
+            seat: operation.seat,
             expectedRevision,
           });
           break;
@@ -213,12 +201,8 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
           // operation 判别联合未来新增类型时，不静默 500，稳定返回 INVALID_MESSAGE。
           throw new RoomDomainError("INVALID_MESSAGE");
       }
-      const response = { data: { roomSnapshot: projectRoomSnapshot(result!.state) } };
-      deps.idempotency.store(idem.idemKey, { payloadHash: idem.bodyHash, statusCode: 200, body: response });
-      return reply.status(200).send(response);
-    } catch (error) {
-      return sendError(reply, error, traceId);
-    }
+      return { statusCode: 200, body: { data: { roomSnapshot: projectRoomSnapshot(result!.state) } } };
+    });
   });
 
   // POST /api/v1/rooms/:roomId/tournaments —— 开局（仅 Host；LOBBY + 全部入座 + 全部 Ready + revision 精确匹配）。
@@ -228,52 +212,47 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
     if ("error" in auth) return auth.error;
     const rate = deps.rateLimiter.checkProtected(auth.playerId);
     if (!rate.allowed) return sendRateLimited(reply, traceId, rate.retryAfterMs);
-    const idem = checkIdempotency(request, reply, `player:${auth.playerId}`, "start", deps, traceId);
-    if (idem.kind === "replay") return idem.reply;
+    const key = idempotencyKeyOf(request);
+    if (key === undefined) return sendInvalidMessage(reply, traceId);
     const parsed = StartTournamentRequestSchema.safeParse(request.body);
     if (!parsed.success) return sendInvalidMessage(reply, traceId);
     const expectedRevision = Number(parsed.data.expectedRoomRevision);
     const tournamentId = deps.makeTraceId();
-    try {
+    const payloadHash = hashPayload(request.body);
+    return respondIdempotently(reply, traceId, deps.idempotency, `player:${auth.playerId}:start:${key}`, payloadHash, async () => {
       const result = await deps.manager.submitCommand(request.params.roomId, {
         type: "START_TOURNAMENT",
         actorPlayerId: auth.playerId,
         expectedRevision,
         tournamentId,
       });
-      const response = {
-        data: { tournamentId: result.tournamentId, roomSnapshot: projectRoomSnapshot(result.state) },
+      return {
+        statusCode: 200,
+        body: { data: { tournamentId: result.tournamentId, roomSnapshot: projectRoomSnapshot(result.state) } },
       };
-      deps.idempotency.store(idem.idemKey, { payloadHash: idem.bodyHash, statusCode: 200, body: response });
-      return reply.status(200).send(response);
-    } catch (error) {
-      return sendError(reply, error, traceId);
-    }
+    });
   });
 
-  // POST /api/v1/rooms/:roomId/leave —— 主动离开（Host 离开立即转移 Host）。
+  // POST /api/v1/rooms/:roomId/leave —— 主动离开（Host 离开立即转移 Host；末位真人离开关闭房间）。
   app.post<{ Params: RoomParams }>("/api/v1/rooms/:roomId/leave", { config: { rateLimit: deps.rateLimit } }, async (request, reply) => {
     const traceId = deps.makeTraceId();
     const auth = authenticate(request, reply, deps, traceId);
     if ("error" in auth) return auth.error;
     const rate = deps.rateLimiter.checkProtected(auth.playerId);
     if (!rate.allowed) return sendRateLimited(reply, traceId, rate.retryAfterMs);
-    const idem = checkIdempotency(request, reply, `player:${auth.playerId}`, "leave", deps, traceId);
-    if (idem.kind === "replay") return idem.reply;
+    const key = idempotencyKeyOf(request);
+    if (key === undefined) return sendInvalidMessage(reply, traceId);
     const parsed = LeaveRoomRequestSchema.safeParse(request.body);
     if (!parsed.success) return sendInvalidMessage(reply, traceId);
-    try {
+    const payloadHash = hashPayload(request.body);
+    return respondIdempotently(reply, traceId, deps.idempotency, `player:${auth.playerId}:leave:${key}`, payloadHash, async () => {
       const result = await deps.manager.submitCommand(request.params.roomId, {
         type: "LEAVE",
         playerId: auth.playerId,
         reason: "USER_LEFT",
         leftAt: deps.now(),
       });
-      const response = { data: { roomSnapshot: projectRoomSnapshot(result.state) } };
-      deps.idempotency.store(idem.idemKey, { payloadHash: idem.bodyHash, statusCode: 200, body: response });
-      return reply.status(200).send(response);
-    } catch (error) {
-      return sendError(reply, error, traceId);
-    }
+      return { statusCode: 200, body: { data: { roomSnapshot: projectRoomSnapshot(result.state) } } };
+    });
   });
 }

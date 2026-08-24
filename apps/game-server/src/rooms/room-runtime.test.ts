@@ -271,10 +271,13 @@ describe("leaveRoom / transferHost", () => {
     expect(after.hostPlayerId).toBe("alice");
   });
 
-  it("无其他真人时 Host 离开后 hostPlayerId 为 null", () => {
+  it("无其他真人时 Host 离开后房间关闭（CLOSED、邀请码失效）", () => {
     const { state } = baseRoom();
     const after = leaveRoom(state, "host-1", { reason: "USER_LEFT", leftAt: 2000 });
     expect(after.hostPlayerId).toBeNull();
+    expect(after.status).toBe("CLOSED");
+    expect(after.inviteCode).toBeNull();
+    expect(after.closedReason).toBe("ABANDONED_NO_HUMAN");
   });
 
   it("transferHost 是显式可注入入口：把 Host 转给最早加入且在线的真人；无在线真人时保持 null", () => {

@@ -223,16 +223,27 @@ export function kickPlayer(state: RoomState, actorPlayerId: string, targetPlayer
   return advance(state, { members: next });
 }
 
-/** 离开：移除成员；Host 主动离开立即把 Host 转给最早加入且在线的真人。 */
+/** 离开：移除成员；Host 主动离开立即把 Host 转给最早加入且在线的真人；末位真人离开则关闭房间。 */
 export function leaveRoom(state: RoomState, playerId: string, _input: LeaveInput): RoomState {
   requireMember(state, playerId);
-  const next = new Map(state.members);
-  next.delete(playerId);
+  const members = new Map(state.members);
+  members.delete(playerId);
   let hostPlayerId = state.hostPlayerId;
   if (hostPlayerId === playerId) {
-    hostPlayerId = pickNextHost({ ...state, members: next });
+    hostPlayerId = pickNextHost({ ...state, members });
   }
-  return advance(state, { members: next, hostPlayerId });
+  const humansRemaining = [...members.values()].some((member) => member.kind === "HUMAN");
+  if (!humansRemaining) {
+    // 无真人 → CLOSED、邀请码立即失效（docs/04-game-server-architecture.md §6.5）。
+    return advance(state, {
+      members,
+      hostPlayerId: null,
+      status: "CLOSED",
+      inviteCode: null,
+      closedReason: "ABANDONED_NO_HUMAN",
+    });
+  }
+  return advance(state, { members, hostPlayerId });
 }
 
 /**

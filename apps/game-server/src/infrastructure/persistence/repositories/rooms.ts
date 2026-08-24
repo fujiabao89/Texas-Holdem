@@ -29,6 +29,8 @@ export interface CreateRoomWithHostInput {
   /** MULTIPLAYER 必填（6 位大写字母/数字、排除易混淆字符）；SINGLE_PLAYER 必须为 null。 */
   readonly inviteCode: string | null;
   readonly configJson: unknown;
+  /** 初始状态：默认 CREATED（保持既有契约）；TEX-19 创建流程传 "LOBBY" 使持久化与内存一致。 */
+  readonly initialStatus?: "CREATED" | "LOBBY";
   readonly host: {
     readonly playerId: string;
     readonly displayName: string;
@@ -93,13 +95,17 @@ export interface RoomRepository {
   /** 成员离开/被踢：标记 `room_players` 为 LEFT 并记录原因与时间。 */
   markRoomPlayerLeft(roomId: string, playerId: string, reason: LeftReasonDb, leftAt: Date): Promise<void>;
 
-  /** 原子离开：同一事务内标记成员 LEFT 并回填新 Host（避免成员已 LEFT 但 Host 未转移的半提交）。 */
+  /**
+   * 原子离开：同一事务内标记成员 LEFT 并回填新 Host（避免成员已 LEFT 但 Host 未转移的半提交）。
+   * 末位真人离开时传入 `roomClosure`，同一事务把房间置为 CLOSED 并写齐关闭元数据。
+   */
   markRoomPlayerLeftAndSetHost(
     roomId: string,
     playerId: string,
     reason: LeftReasonDb,
     leftAt: Date,
     newHostPlayerId: string | null,
+    roomClosure?: { readonly reason: string; readonly closedAt: Date; readonly retentionExpiresAt: Date },
   ): Promise<void>;
 
   /**
@@ -119,7 +125,7 @@ export function createRoomRepository(database: Database): RoomRepository {
         id: input.roomId,
         mode: input.mode,
         inviteCode: input.inviteCode,
-        status: "CREATED",
+        status: input.initialStatus ?? "CREATED",
         configJson: input.configJson,
         hostPlayerId: null,
       });
@@ -203,6 +209,7 @@ export function createRoomRepository(database: Database): RoomRepository {
     reason: LeftReasonDb,
     leftAt: Date,
     newHostPlayerId: string | null,
+    roomClosure?: { readonly reason: string; readonly closedAt: Date; readonly retentionExpiresAt: Date },
   ): Promise<void> {
     await database.withTransaction(async (tx: GameTransaction) => {
       const left = await tx
@@ -212,6 +219,18 @@ export function createRoomRepository(database: Database): RoomRepository {
       assertOneRow(left.rowCount, `room player ${playerId} not found in room ${roomId} for leave update`);
       const host = await tx.update(rooms).set({ hostPlayerId: newHostPlayerId }).where(eq(rooms.id, roomId));
       assertOneRow(host.rowCount, `room ${roomId} not found for host transfer`);
+      if (roomClosure !== undefined) {
+        const closed = await tx
+          .update(rooms)
+          .set({
+            status: "CLOSED",
+            closedReason: roomClosure.reason,
+            closedAt: roomClosure.closedAt,
+            retentionExpiresAt: roomClosure.retentionExpiresAt,
+          })
+          .where(eq(rooms.id, roomId));
+        assertOneRow(closed.rowCount, `room ${roomId} not found for closure`);
+      }
     });
   }
 
