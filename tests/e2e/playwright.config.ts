@@ -32,7 +32,10 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command: `pnpm --filter @texas-holdem/web dev --port ${port}`,
+    // `@texas-holdem/protocol` publishes its workspace entry point from dist/.
+    // CI installs from a clean checkout, so build this direct Web dependency before
+    // starting Next; local runs are equally deterministic when dist/ is absent.
+    command: `pnpm --filter @texas-holdem/protocol build && pnpm --filter @texas-holdem/web dev --port ${port}`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

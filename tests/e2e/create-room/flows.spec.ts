@@ -32,6 +32,7 @@ test("创建成功后以 HTTP 的权威 RoomSnapshot 进入 Lobby", async ({ pag
   await expect(page.getByRole("button", { name: "创建并进入大厅" })).toBeEnabled();
   await page.getByRole("textbox").fill("玩家甲");
   await page.getByRole("button", { name: "创建并进入大厅" }).click();
-  await expect(page).toHaveURL(/\/room\/room-1$/);
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible();
+  // Clean CI needs to compile the dynamic Lobby route on its first visit.
+  await expect(page).toHaveURL(/\/room\/room-1$/, { timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 20_000 });
 });
