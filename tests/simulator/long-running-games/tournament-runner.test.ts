@@ -74,6 +74,26 @@ describe("runTournament 端到端", () => {
       expect(stats.missingCategories()).toEqual([]);
     },
   );
+
+  it(
+    "Heads-Up 覆盖：2 人手即时结算并淘汰时仍被计入（以手 seats 判定，非结算后 ACTIVE）",
+    { timeout: 60_000 },
+    () => {
+      // 2 人 + 浅筹码（10BB）+ aggressive：高概率出现盲注全下即时结算；
+      // 该手开始时 seats=2，结算后 participants 只剩 1 个 ACTIVE——
+      // 旧实现按结算后 ACTIVE 判定会漏计这类真实 Heads-Up 手。
+      let anyTwoSeatHand = false;
+      for (let i = 0; i < 60; i++) {
+        const result = runTournament(1_100_000 + i);
+        if (result.hands.some((h) => h.playersAtStart === 2)) {
+          anyTwoSeatHand = true;
+          expect(result.headsUpReached).toBe(true);
+        }
+      }
+      // 60 个 seed 中至少一个 2 人锦标赛必然产生 2-seat 手（2p 场景权重 3/16）。
+      expect(anyTwoSeatHand).toBe(true);
+    },
+  );
 });
 
 describe("isShortAllIn 分类（总额语义：allInTo 对 currentBet，docs/01 §5.2/§8.2–8.4）", () => {

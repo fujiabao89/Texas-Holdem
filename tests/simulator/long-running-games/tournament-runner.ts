@@ -126,7 +126,9 @@ export function runTournament(seed: number, options: RunTournamentOptions = {}):
       trackedHandNumber = state.hand.handNumber;
       currentActionCounts = {};
       currentShortAllIns = 0;
-      if (state.participants.filter((p) => p.status === "ACTIVE").length === 2) {
+      // Heads-Up 以**该手的 seats** 判定：即时结算的手淘汰后 participants 已只剩
+      // 1 个 ACTIVE，按结算后参赛者判定会漏计真正发生过的 Heads-Up 手。
+      if (state.hand.seats.length === 2) {
         headsUpReached = true;
       }
     }
