@@ -144,10 +144,14 @@ function buildBlindStructure(
   return { levels, elapsedSecondsPerHand };
 }
 
-/** 从 tournament seed 派生的确定性场景。 */
-export function generateScenario(rng: SeededRandom): SimulatorScenario {
+/**
+ * 从 tournament seed 派生的确定性场景。
+ * `forcedBlindMode` 指定时跳过加权随机、强制使用该模式（Nightly 逐模式下限用，
+ * docs/06 §5）；其余维度仍由 rng 加权随机决定。
+ */
+export function generateScenario(rng: SeededRandom, forcedBlindMode?: BlindMode): SimulatorScenario {
   const playerCount = pickWeighted(rng, PLAYER_COUNT_WEIGHTS);
-  const blindMode = pickWeighted(rng, BLIND_MODE_WEIGHTS);
+  const blindMode = forcedBlindMode ?? pickWeighted(rng, BLIND_MODE_WEIGHTS);
   const agentStyle = pickWeighted(rng, AGENT_STYLE_WEIGHTS);
   // 弃牌偏好 × 深筹码会退化为数千手盲注磨牌（低信号、高耗时）：
   // folding 只配浅筹码，深筹码覆盖由其余风格承担。

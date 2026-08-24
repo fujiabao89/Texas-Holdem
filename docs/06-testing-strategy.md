@@ -272,7 +272,7 @@ CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工�
 
 已落地事实（2026-08-21，TEX-12）：`.github/workflows/ci.yml` 的 `quality` job 在 lint/typecheck/build 后按层独立调用 `pnpm test:unit`、`test:rules`、`test:integration`、`test:ws` 与 Simulator Smoke；独立 `e2e` job 安装 Chromium 后运行 `pnpm test:e2e`（当前为基础设施冒烟与 §9 门禁自测），失败时经 `actions/upload-artifact` 上传失败产物；E2E 禁用重试（§2.1），未处理 console error / pageerror / 5xx 由 observability fixture 强制失败（白名单除外）。完整 Integration、Multiplayer/WS、全量 E2E 与 Nightly/RC 阶段按上表随对应业务任务启用。
 
-Simulator CI 落地事实（2026-08-24，TEX-16）：PR Smoke 由 `ci.yml` 以 `pnpm test:sim -- --tier smoke --sha "$GITHUB_SHA"` 真实运行（已知失败 seed 回归集 + 提交 SHA 派生 ≥200 场，约 20s）；Nightly 经 `.github/workflows/simulator.yml` 的 `schedule`（每日 02:00 北京时间）或 `workflow_dispatch` 运行 ≥10,000 场，并上传绑定提交 SHA 的 JSON Artifact（tier、gitSha、seed 范围、覆盖统计与失败现场；RC 将同类报告绑定候选提交保存，普通运行报告不提交仓库）；RC 需 seed 台账（`--ledger`），在本地/受控环境手动执行，不进入普通 PR CI。Nightly/RC 是合并后/候选发布阶段门禁，不阻塞 PR 创建。
+Simulator CI 落地事实（2026-08-24，TEX-16）：PR Smoke 由 `ci.yml` 以 `pnpm test:sim -- --tier smoke --sha "$GITHUB_SHA"` 真实运行（已知失败 seed 回归集 + 提交 SHA 派生 ≥200 场，约 20s）；Nightly 经 `.github/workflows/simulator.yml` 的 `schedule`（每日 02:00 北京时间）或 `workflow_dispatch` 运行——按**每种 Blind Mode 各**派生 ≥10,000 个强制该模式的 seed（合计 ≥30,000，满足 §5 逐模式下限），并上传绑定提交 SHA 的 JSON Artifact（tier、gitSha、seed 范围、覆盖统计与失败现场；RC 将同类报告绑定候选提交保存，普通运行报告不提交仓库）；RC 需 seed 台账（`--ledger`），在本地/受控环境手动执行，不进入普通 PR CI。Nightly/RC 是合并后/候选发布阶段门禁，不阻塞 PR 创建。
 
 场景加权裁决（2026-08-24）：初始加权为明确冻结值（见 `tests/simulator/README.md`「场景加权策略」）；在至少连续 3 次 Nightly 数据后，依据实际覆盖缺口调整权重，并在该文档记录原因与前后数据。引擎缺陷不在 Simulator 任务分支修复：模拟器确认的 P0/P1 规则缺陷创建独立 Linear 缺陷任务并阻塞验收，P2/P3 记录为后续任务。
 

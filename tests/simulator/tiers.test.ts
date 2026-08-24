@@ -54,12 +54,44 @@ describe("Smoke 档（已知失败 seed + SHA 派生 ≥200）", () => {
   });
 });
 
-describe("Nightly 档（≥10,000 场）", () => {
-  it("默认派生 ≥10,000 个 seed；更小的 --games 被下限保护", () => {
+function countByMode(modes: readonly ("fixed" | "hands" | "time" | undefined)[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const mode of modes) {
+    if (mode === undefined) throw new Error("Nightly 计划不应包含未强制模式的 seed");
+    counts.set(mode, (counts.get(mode) ?? 0) + 1);
+  }
+  return counts;
+}
+
+describe("Nightly 档（每种 Blind Mode ≥10,000 场，docs/06 §5）", () => {
+  it("默认每种模式各派生 10,000 个强制该模式的 seed（合计 30,000）", () => {
     const plan = planNightlySeeds(SHA);
-    expect(plan.seeds.length).toBeGreaterThanOrEqual(NIGHTLY_DEFAULT_GAMES);
-    expect(planNightlySeeds(SHA, 100).seeds.length).toBe(NIGHTLY_DEFAULT_GAMES);
-    expect(planNightlySeeds(SHA, 12_345).seeds.length).toBe(12_345);
+    expect(plan.seeds.length).toBe(3 * NIGHTLY_DEFAULT_GAMES);
+    expect(plan.blindModes?.length).toBe(plan.seeds.length);
+    const counts = countByMode(plan.blindModes ?? []);
+    expect(counts.get("fixed")).toBe(NIGHTLY_DEFAULT_GAMES);
+    expect(counts.get("hands")).toBe(NIGHTLY_DEFAULT_GAMES);
+    expect(counts.get("time")).toBe(NIGHTLY_DEFAULT_GAMES);
+  });
+
+  it("逐模式下限受 --games 下限保护：只能上调", () => {
+    expect(planNightlySeeds(SHA, 100).seeds.length).toBe(3 * NIGHTLY_DEFAULT_GAMES);
+    expect(planNightlySeeds(SHA, 12_345).seeds.length).toBe(3 * 12_345);
+    const counts = countByMode(planNightlySeeds(SHA, 12_345).blindModes ?? []);
+    expect(counts.get("fixed")).toBe(12_345);
+    expect(counts.get("hands")).toBe(12_345);
+    expect(counts.get("time")).toBe(12_345);
+  });
+
+  it("同一 SHA 恒得同一逐模式计划（可复核）", () => {
+    expect(planNightlySeeds(SHA)).toEqual(planNightlySeeds(SHA));
+  });
+
+  it("Smoke/RC 计划不携带强制模式（加权随机选择）", () => {
+    expect(planSmokeSeeds(SHA).blindModes).toBeUndefined();
+    expect(
+      planRcSeeds(SHA, { ranForSha: new Set(), ranEver: new Set(), totalTarget: 10, freshTarget: 5 }).blindModes,
+    ).toBeUndefined();
   });
 });
 

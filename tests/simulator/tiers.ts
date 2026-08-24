@@ -8,6 +8,7 @@
  *
  * 全部派生为 FNV-1a 纯函数：同一 SHA 恒得同一 seed 集，可复核、可重放。
  */
+import type { BlindMode } from "../../packages/poker-engine/src/index";
 import { KNOWN_FAILURE_SEEDS } from "./known-seeds";
 
 export type SimulatorTier = "smoke" | "nightly" | "rc";
@@ -15,12 +16,21 @@ export type SimulatorTier = "smoke" | "nightly" | "rc";
 export interface TierPlan {
   readonly tier: SimulatorTier;
   readonly seeds: number[];
+  /**
+   * 与 `seeds` 等长的强制 Blind Mode（Nightly 逐模式下限用）：
+   * 指定时该 seed 的场景强制使用该模式（docs/06 §5「每个受支持 Blind 模式合计 ≥10,000 场」）；
+   * 缺省（undefined 或整个数组缺省）由场景加权随机选择。
+   */
+  readonly blindModes?: readonly (BlindMode | undefined)[];
   /** 本档种子来源说明（写入运行摘要）。 */
   readonly description: string;
 }
 
 export const SMOKE_MIN_SHA_DERIVED_GAMES = 200;
+/** Nightly 逐 Blind Mode 下限（docs/06 §5：每个受支持 Blind 模式合计 ≥10,000 场）。 */
 export const NIGHTLY_DEFAULT_GAMES = 10_000;
+/** 全部受支持的 Blind Mode（Nightly 逐模式下限的划分维度）。 */
+export const NIGHTLY_BLIND_MODES: readonly BlindMode[] = ["fixed", "hands", "time"];
 export const RC_CUMULATIVE_TARGET = 50_000;
 export const RC_MIN_FRESH_SEEDS = 10_000;
 
@@ -66,13 +76,28 @@ export function planSmokeSeeds(sha: string, games?: number): TierPlan {
   };
 }
 
-/** Nightly：同一提交 SHA 确定性派生 ≥10,000 个 seed。 */
+/**
+ * Nightly：同一提交 SHA 按**每种 Blind Mode 各**确定性派生 ≥10,000 个强制该模式的 seed
+ * （docs/06 §5：每个受支持 Blind 模式合计 ≥10,000 场；合计 ≥3 × 10,000）。
+ * `--games` 只可上调逐模式下限，不可降低。
+ */
 export function planNightlySeeds(sha: string, games?: number): TierPlan {
-  const count = Math.max(NIGHTLY_DEFAULT_GAMES, games ?? NIGHTLY_DEFAULT_GAMES);
+  const perMode = Math.max(NIGHTLY_DEFAULT_GAMES, games ?? NIGHTLY_DEFAULT_GAMES);
+  const seeds: number[] = [];
+  const blindModes: BlindMode[] = [];
+  for (const mode of NIGHTLY_BLIND_MODES) {
+    for (const seed of deriveSeedsFromSha(sha, perMode, `nightly-${mode}`)) {
+      seeds.push(seed);
+      blindModes.push(mode);
+    }
+  }
   return {
     tier: "nightly",
-    seeds: deriveSeedsFromSha(sha, count, "nightly"),
-    description: `SHA 派生 ${count} 个（≥${NIGHTLY_DEFAULT_GAMES}）`,
+    seeds,
+    blindModes,
+    description:
+      `SHA 派生 ${NIGHTLY_BLIND_MODES.length} × ${perMode} 场` +
+      `（每种 Blind Mode ≥${NIGHTLY_DEFAULT_GAMES}，docs/06 §5）`,
   };
 }
 

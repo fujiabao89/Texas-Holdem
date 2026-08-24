@@ -4,7 +4,7 @@
  * 用法：
  *   pnpm test:sim -- --seed <n> [--games <n>]          单 seed 批次（默认 32 场；seed 即第 1 场）
  *   pnpm test:sim -- --tier smoke --sha <hex>          PR Smoke：已知失败 seed + SHA 派生 ≥200 场
- *   pnpm test:sim -- --tier nightly --sha <hex>        Nightly：SHA 派生 ≥10,000 场
+ *   pnpm test:sim -- --tier nightly --sha <hex>        Nightly：每种 Blind Mode 各派生 ≥10,000 场
  *   pnpm test:sim -- --tier rc --sha <hex> --ledger <file>   RC：累计 ≥50,000、fresh ≥10,000
  * 可选：--games <n>（覆盖档位场次下限）、--out <dir>（产物目录，默认 tests/simulator/.artifacts）。
  * SHA 也可经环境变量 TEX_SIM_SHA / GITHUB_SHA 提供。
@@ -28,6 +28,7 @@ import { parseArgs, USAGE } from "./cli-args";
 import type { CliArgs } from "./cli-args";
 import { planNightlySeeds, planRcSeeds, planSmokeSeeds, RC_CUMULATIVE_TARGET } from "./tiers";
 import type { SimulatorTier, TierPlan } from "./tiers";
+import type { BlindMode } from "../../packages/poker-engine/src/index";
 
 interface LedgerFile {
   readonly version: 1;
@@ -112,6 +113,7 @@ async function main(): Promise<number> {
   const stats = new CoverageStats();
 
   let seeds: number[];
+  let blindModes: readonly (BlindMode | undefined)[] | undefined;
   let modeLabel: string;
   let tier: SimulatorTier | null = null;
   let sha: string | null = null;
@@ -125,6 +127,7 @@ async function main(): Promise<number> {
     ledger = resolved.ledger;
     ledgerPath = resolved.ledgerPath;
     seeds = resolved.plan.seeds;
+    blindModes = resolved.plan.blindModes;
     modeLabel = `tier=${tier} sha=${sha}`;
     console.info(`[tex-sim] ${modeLabel}：${resolved.plan.description}`);
   } else {
@@ -141,10 +144,21 @@ async function main(): Promise<number> {
   let totalHands = 0;
   let totalActions = 0;
 
-  for (const seed of seeds) {
+  for (let i = 0; i < seeds.length; i++) {
+    const seed = seeds[i]!;
+    const forcedBlindMode = blindModes?.[i];
     let result;
     try {
-      result = runTournament(seed, { statsSummary: () => stats.summary() });
+      result = runTournament(seed, {
+        statsSummary: () => stats.summary(),
+        ...(forcedBlindMode !== undefined ? { blindMode: forcedBlindMode } : {}),
+      });
+      // 运行时防线：强制模式的 seed 实际场景必须使用该模式（规划器/场景生成回归即失败）。
+      if (forcedBlindMode !== undefined && result.scenario.blindMode !== forcedBlindMode) {
+        throw new Error(
+          `seed ${seed} 强制 Blind Mode ${forcedBlindMode} 未生效（实际 ${result.scenario.blindMode}）`,
+        );
+      }
     } catch (error) {
       const failure =
         error instanceof SimulationFailure

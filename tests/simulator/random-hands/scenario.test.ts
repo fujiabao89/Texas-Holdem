@@ -39,6 +39,29 @@ describe("generateScenario 确定性与合法性", () => {
   });
 });
 
+describe("generateScenario 强制 Blind Mode（Nightly 逐模式下限）", () => {
+  it("forcedBlindMode 覆盖加权随机且配置仍通过引擎校验", () => {
+    for (const mode of ["fixed", "hands", "time"] as const) {
+      const s = generateScenario(createSeededRandom(999), mode);
+      expect(s.blindMode).toBe(mode);
+      expect(() =>
+        validateTournamentConfig({
+          maxPlayers: s.playerCount,
+          startingStack: s.startingStack,
+          smallBlind: s.smallBlind,
+          bigBlind: s.bigBlind,
+          blindMode: s.blindMode,
+          blindStructure: s.blindStructure,
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  it("不指定强制模式时行为与既有派生一致（加权随机）", () => {
+    expect(scenarioOf(20260821)).toEqual(generateScenario(createSeededRandom(deriveSeed(20260821, "scenario"))));
+  });
+});
+
 describe("generateScenario 加权覆盖（docs/06 §5）", () => {
   const SCENARIO_SEEDS = Array.from({ length: 400 }, (_, i) => 10_000 + i);
 

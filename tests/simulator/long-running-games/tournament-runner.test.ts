@@ -1,4 +1,4 @@
-﻿import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -72,6 +72,26 @@ describe("runTournament 端到端", () => {
       expect(stats.missingCategories()).toEqual([]);
     },
   );
+});
+
+describe("强制 Blind Mode（Nightly 逐模式下限，docs/06 §5）", () => {
+  it(
+    "runTournament 以指定模式生成场景并完整跑完",
+    { timeout: 60_000 },
+    () => {
+      for (const mode of ["fixed", "hands", "time"] as const) {
+        const result = runTournament(606_060 + mode.length, { blindMode: mode });
+        expect(result.scenario.blindMode).toBe(mode);
+        expect(result.champion).not.toBeNull();
+      }
+    },
+  );
+
+  it("同 seed + 同强制模式结果完全一致（可重放）", () => {
+    const a = runTournament(707_070, { blindMode: "time" });
+    const b = runTournament(707_070, { blindMode: "time" });
+    expect(replayable(b)).toEqual(replayable(a));
+  });
 });
 
 describe("seed 重放（docs/06 §5：同一 seed 100% 重放）", () => {

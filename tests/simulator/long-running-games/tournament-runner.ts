@@ -19,6 +19,7 @@ import type {
   GameState,
   PlayerAction,
   ActionType,
+  BlindMode,
   PokerEvent,
   Street,
   TournamentState,
@@ -48,16 +49,18 @@ export interface RunTournamentOptions {
   readonly now?: () => number;
   /** 失败时提取统计摘要（批量运行时由调用方提供）。 */
   readonly statsSummary?: () => Record<string, number>;
+  /** 强制场景 Blind Mode（Nightly 逐模式下限，docs/06 §5）；缺省由加权随机选择。 */
+  readonly blindMode?: BlindMode;
 }
 
 /** 由 seed 派生单场锦标赛的确定性场景。 */
-export function scenarioForSeed(seed: number): SimulatorScenario {
-  return generateScenario(createSeededRandom(deriveSeed(seed, "scenario")));
+export function scenarioForSeed(seed: number, forcedBlindMode?: BlindMode): SimulatorScenario {
+  return generateScenario(createSeededRandom(deriveSeed(seed, "scenario")), forcedBlindMode);
 }
 
 export function runTournament(seed: number, options: RunTournamentOptions = {}): TournamentRunResult {
   const now = options.now ?? (() => performance.now());
-  const scenario = scenarioForSeed(seed);
+  const scenario = scenarioForSeed(seed, options.blindMode);
   const engineRng = new SeededRandomSource(deriveSeed(seed, "engine"));
   const agentRng = createSeededRandom(deriveSeed(seed, "agent"));
   const participants = Array.from({ length: scenario.playerCount }, (_, i) => ({

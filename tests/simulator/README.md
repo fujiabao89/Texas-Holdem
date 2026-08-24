@@ -8,7 +8,7 @@
 pnpm test:sim -- --seed 20260821              # 单 seed 批次（默认 32 场；seed 即第 1 场）
 pnpm test:sim -- --seed 20260821 --games 100  # 指定批次数
 pnpm test:sim -- --tier smoke --sha <hex>     # PR Smoke：已知失败 seed + SHA 派生 ≥200 场
-pnpm test:sim -- --tier nightly --sha <hex>   # Nightly：SHA 派生 ≥10,000 场
+pnpm test:sim -- --tier nightly --sha <hex>   # Nightly：每种 Blind Mode 各派生 ≥10,000 场
 pnpm test:sim -- --tier rc --sha <hex> --ledger <file>   # RC：累计 ≥50,000、fresh ≥10,000
 ```
 
@@ -20,7 +20,7 @@ pnpm test:sim -- --tier rc --sha <hex> --ledger <file>   # RC：累计 ≥50,000
 | 档位 | 场次 | 运行位置 |
 | --- | --- | --- |
 | Smoke | 已知失败 seed 回归集（[known-seeds.ts](./known-seeds.ts)，当前为空）+ 从提交 SHA 确定性派生 ≥200 个新 seed | PR CI（`.github/workflows/ci.yml` 的 quality job） |
-| Nightly | 同一提交 SHA 确定性派生 ≥10,000 场 | `schedule`（每日 02:00 北京时间）或 `workflow_dispatch`（`.github/workflows/simulator.yml`），不进普通 PR CI |
+| Nightly | 同一提交 SHA 按**每种 Blind Mode 各**确定性派生 ≥10,000 场（合计 ≥30,000；docs/06 §5 逐模式下限） | `schedule`（每日 02:00 北京时间）或 `workflow_dispatch`（`.github/workflows/simulator.yml`），不进普通 PR CI |
 | RC | 累计 ≥50,000 场，其中 ≥10,000 个此前未运行 seed；依赖 `--ledger` 台账（JSON，记录各 SHA 已运行 seed） | 本地/受控环境手动运行；台账证明 fresh 配额 |
 
 Nightly/RC 等大规模运行不得塞进普通 PR CI；如需 CI 触发，只使用 `schedule` / `workflow_dispatch` 或显式参数。
