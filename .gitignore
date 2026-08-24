@@ -20,6 +20,9 @@ tests/e2e/.artifacts/
 playwright-report/
 test-results/
 
+# ===== 测试产物（Simulator 聚合统计与失败现场）=====
+tests/simulator/.artifacts/
+
 # ===== 环境变量 =====
 .env
 .env.*

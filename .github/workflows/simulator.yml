@@ -1,0 +1,76 @@
+name: Simulator
+
+# TEX-16：Nightly / 手动大规模模拟。Nightly/RC 不进入普通 PR CI
+# （docs/06-testing-strategy.md §5/§11：PR 只跑 Smoke，由 ci.yml 的 quality job 执行）。
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "模拟档位（smoke / nightly；RC 需本地台账，见 tests/simulator/README.md）"
+        required: true
+        default: nightly
+        type: choice
+        options:
+          - smoke
+          - nightly
+      games:
+        description: "覆盖档位默认场次（仅可上调，下限受保护）"
+        required: false
+        type: number
+      sha:
+        description: "派生 seed 的提交 SHA（缺省使用触发提交）"
+        required: false
+        type: string
+  schedule:
+    # 每日 02:00（北京时间，UTC 18:00）在默认分支最新提交上运行 Nightly。
+    - cron: "0 18 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simulator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  simulate:
+    name: simulate (${{ github.event_name == 'schedule' && 'nightly' || inputs.tier }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # schedule 事件取默认分支最新提交；workflow_dispatch 支持指定 ref。
+          ref: ${{ inputs.sha || github.ref }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Run simulator
+        shell: bash
+        env:
+          # dispatch 输入经环境变量传入并以数据引用（不内插进 shell 源码），
+          # 校验仍由模拟器 CLI 完成。
+          TEX_SIM_SHA: ${{ inputs.sha || github.sha }}
+          TEX_SIM_TIER: ${{ github.event_name == 'schedule' && 'nightly' || inputs.tier }}
+          TEX_SIM_GAMES: ${{ inputs.games }}
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          games_args=()
+          if [[ -n "$TEX_SIM_GAMES" ]]; then
+            games_args=(--games "$TEX_SIM_GAMES")
+          fi
+          pnpm run test:sim -- --tier "$TEX_SIM_TIER" "${games_args[@]}"
+
+      - name: Upload simulator artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # 报告绑定候选提交（docs/06 §12.4）：summary.json 含 tier/gitSha/seedRange/coverage，
+          # 失败时另有 failure-*.json 现场。普通运行报告只存 Artifact，不提交仓库。
+          name: simulator-${{ github.event_name == 'schedule' && 'nightly' || inputs.tier }}-${{ inputs.sha || github.sha }}
+          path: tests/simulator/.artifacts
+          if-no-files-found: ignore

@@ -24,7 +24,7 @@ pnpm build        # 构建（Next 生产构建 + game-server 编译）
 pnpm test         # 全部 Vitest 层（unit + rules + integration + ws）
 pnpm test:unit | test:rules | test:integration | test:ws   # 分层独立调用
 pnpm test:e2e     # Playwright E2E（自动启动 web dev server）
-pnpm test:sim -- --seed 20260821   # Headless Simulator（引擎落地前受控跳过）
+pnpm test:sim -- --seed 20260821   # Headless Simulator（单 seed 批次；--tier smoke|nightly|rc 见 tests/simulator/README.md）
 ```
 
 环境变量样例见 `apps/web/.env.example` 与 `apps/game-server/.env.example`；敏感值只由部署平台注入，绝不提交。
