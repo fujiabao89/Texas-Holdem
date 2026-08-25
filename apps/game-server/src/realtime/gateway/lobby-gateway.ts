@@ -17,6 +17,7 @@ import type { IdSource } from "../../rooms/id-source";
 import { RoomDomainError } from "../../rooms/room-errors";
 import type { RoomManager } from "../../rooms/room-manager";
 import { projectPlayerView } from "../../projection/state-projector";
+import { TournamentDomainError } from "../../tournaments/tournament-errors";
 import type { TournamentManager } from "../../tournaments/tournament-manager";
 import { createConnectionEpochRegistry, type ConnectionEpochRegistry } from "../connection-epochs";
 import type { TournamentEventBus } from "../tournament-event-bus";
@@ -47,6 +48,7 @@ interface ActiveConnection {
   readonly roomId: string;
   readonly playerId: string;
   readonly epoch: number;
+  isOpen(): boolean;
   replace(): void;
   sendServerMessage(message: ServerMessage): void;
 }
@@ -104,6 +106,7 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
     let connectionId: string | null = null;
     let connectionKey: string | null = null;
     let connectionEpoch: number | null = null;
+    let previousConnection: ActiveConnection | undefined;
     let unsubscribe: (() => void) | null = null;
     let heartbeat: unknown | null = null;
     let lastActivityAt = options.now();
@@ -114,19 +117,25 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
       if (!authenticated) socket.close(CLOSE_CODES.AUTH_FAILED, "authenticate within five seconds");
     }, 5_000);
 
-    const isCurrentConnection = (): boolean =>
-      connectionKey !== null &&
-      connectionId !== null &&
-      connectionEpoch !== null &&
-      activeConnections.get(connectionKey)?.connectionId === connectionId &&
-      epochs.isCurrent(roomId as string, playerId as string, connectionEpoch);
+    const currentConnection = (): ActiveConnection | undefined =>
+      connectionKey === null || connectionId === null
+        ? undefined
+        : activeConnections.get(connectionKey)?.connectionId === connectionId
+          ? activeConnections.get(connectionKey)
+          : undefined;
+    const isCurrentConnection = (): boolean => {
+      const current = currentConnection();
+      return current !== undefined && roomId !== null && playerId !== null && epochs.isCurrent(roomId, playerId, current.epoch);
+    };
     const send = (type: "ERROR" | "RECONNECT_RESULT" | "ROOM_SNAPSHOT" | "COMMAND_RESULT" | "SESSION_REPLACED", payload: unknown): void => {
       if (socket.readyState !== socket.OPEN) return;
       const message = ServerMessageSchema.parse({ type, protocolVersion: PROTOCOL_VERSION, serverTime: options.now(), payload });
       socket.send(JSON.stringify(message));
     };
     const sendServerMessage = (message: ServerMessage): void => {
-      if (socket.readyState !== socket.OPEN) return;
+      // Ownership is reserved before async authentication side effects finish;
+      // retain the reconnect snapshot as the first realtime state barrier.
+      if (!authenticated || socket.readyState !== socket.OPEN) return;
       socket.send(JSON.stringify(ServerMessageSchema.parse(message)));
     };
     const sendError = (code: ErrorCode): void => {
@@ -145,6 +154,24 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
       clearHeartbeat();
       send("SESSION_REPLACED", {});
       socket.close(CLOSE_CODES.SESSION_REPLACED, "replaced by a newer connection");
+    };
+    const rollbackReservation = (): void => {
+      if (previousConnection === undefined || connectionKey === null || connectionId === null || roomId === null || playerId === null) return;
+      const current = activeConnections.get(connectionKey);
+      // A later authentication has already claimed this player; never restore a
+      // superseded socket over it.
+      if (current !== undefined && current.connectionId !== connectionId) return;
+      // The replaced socket can also have closed while the reservation was
+      // pending. It is not a connection to restore after auth rollback.
+      if (!previousConnection.isOpen()) return;
+
+      const restoredEpoch = epochs.takeOver(roomId, playerId);
+      activeConnections.set(connectionKey, { ...previousConnection, epoch: restoredEpoch });
+      void manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "CONNECTED" }).catch(() => undefined);
+      const activeTournamentId = manager.getSnapshot(roomId)?.activeTournamentId;
+      if (activeTournamentId !== null && activeTournamentId !== undefined) {
+        void options.tournaments?.setConnection(activeTournamentId, playerId, true).catch(() => undefined);
+      }
     };
     const gameSnapshot = (tournamentId: string, reason: GameSnapshot["reason"]): GameSnapshot | null => {
       const runtime = options.tournaments?.getView(tournamentId);
@@ -196,9 +223,11 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
       clock.clearTimeout(authTimer);
       clearSubscription();
       clearHeartbeat();
-      if (isCurrentConnection() && connectionKey !== null && roomId !== null && playerId !== null && connectionEpoch !== null) {
+      const current = currentConnection();
+      if (isCurrentConnection() && current !== undefined && connectionKey !== null && roomId !== null && playerId !== null) {
         activeConnections.delete(connectionKey);
-        epochs.release(roomId, playerId, connectionEpoch);
+        epochs.release(roomId, playerId, current.epoch);
+        if (authenticated) authenticatedPlayers.delete(connectionKey);
         void manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "DISCONNECTED" }).catch(() => undefined);
         const activeTournamentId = manager.getSnapshot(roomId)?.activeTournamentId;
         if (activeTournamentId !== null && activeTournamentId !== undefined) {
@@ -266,36 +295,40 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
           pendingConnectionKey = `${roomId}:${playerId}`;
           authenticationAttempt = ++nextAuthenticationAttempt;
           authenticationAttempts.set(pendingConnectionKey, authenticationAttempt);
+          // Reserve ownership before either awaited authority update. If the old
+          // socket closes during this window, its close handler is already stale
+          // and cannot queue DISCONNECTED behind this connection's CONNECTED.
+          connectionId = options.ids.uuid();
+          connectionKey = pendingConnectionKey;
+          connectionEpoch = epochs.takeOver(roomId, playerId);
+          previousConnection = activeConnections.get(connectionKey);
+          activeConnections.set(connectionKey, {
+            connectionId,
+            roomId,
+            playerId,
+            epoch: connectionEpoch,
+            isOpen: () => socket.readyState === socket.OPEN,
+            replace,
+            sendServerMessage,
+          });
+
           await manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "CONNECTED" });
           const activeTournamentForConnection = manager.getSnapshot(roomId)?.activeTournamentId;
           if (activeTournamentForConnection !== null && activeTournamentForConnection !== undefined) {
             await options.tournaments?.setConnection(activeTournamentForConnection, playerId, true);
           }
           // The authentication timeout can close this socket while the room queue is busy.
-          if (socket.readyState !== socket.OPEN) {
-            if (authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt && !activeConnections.has(pendingConnectionKey)) {
-              await manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "DISCONNECTED" });
-            }
+          // Its close handler releases the reservation and reports DISCONNECTED.
+          if (socket.readyState !== socket.OPEN || !isCurrentConnection()) {
+            rollbackReservation();
             if (authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt) authenticationAttempts.delete(pendingConnectionKey);
             return;
           }
           const roomSnapshot = manager.getSnapshot(roomId);
           if (roomSnapshot === undefined) throw new RoomDomainError("ROOM_NOT_FOUND");
 
-          connectionId = options.ids.uuid();
-          connectionKey = pendingConnectionKey;
-          connectionEpoch = epochs.takeOver(roomId, playerId);
-          const previous = activeConnections.get(connectionKey);
           const resumed = authenticatedPlayers.has(connectionKey);
           authenticatedPlayers.add(connectionKey);
-          activeConnections.set(connectionKey, {
-            connectionId,
-            roomId,
-            playerId,
-            epoch: connectionEpoch,
-            replace,
-            sendServerMessage,
-          });
           if (authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt) authenticationAttempts.delete(pendingConnectionKey);
           authenticated = true;
           clock.clearTimeout(authTimer);
@@ -306,21 +339,19 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
               return;
             }
             send("ROOM_SNAPSHOT", snapshot);
-            if (snapshot.activeTournamentId !== null) {
-              sendGameSnapshot(snapshot.activeTournamentId, "INITIAL");
-            }
           });
           const activeTournamentId = roomSnapshot.activeTournamentId;
           send("RECONNECT_RESULT", {
             connectionId,
             resumed,
-            tookOver: previous !== undefined,
+            tookOver: previousConnection !== undefined,
             roomSnapshot,
             gameSnapshot: activeTournamentId === null || activeTournamentId === undefined ? null : gameSnapshot(activeTournamentId, resumed ? "RECONNECT" : "INITIAL"),
           });
-          previous?.replace();
+          previousConnection?.replace();
           startHeartbeat();
         } catch (error) {
+          rollbackReservation();
           if (pendingConnectionKey !== null && authenticationAttempt !== null && authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt) {
             authenticationAttempts.delete(pendingConnectionKey);
           }
@@ -345,7 +376,8 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
           return;
         case "SUBMIT_ACTION": {
           const currentRoom = manager.getSnapshot(roomId as string);
-          if (currentRoom?.activeTournamentId !== command.payload.tournamentId || options.tournaments === undefined || connectionEpoch === null) {
+          const epoch = currentConnection()?.epoch;
+          if (currentRoom?.activeTournamentId !== command.payload.tournamentId || options.tournaments === undefined || epoch === undefined) {
             send("COMMAND_RESULT", rejectedResult(command.requestId, "TOURNAMENT_NOT_ACTIVE", options.ids.uuid(), command.payload.actionId));
             return;
           }
@@ -359,17 +391,18 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
               action: command.payload.action,
               receivedAt: options.now(),
               ingressOrdinal: ++nextIngressOrdinal,
-              connectionEpoch,
+              connectionEpoch: epoch,
             });
             if (result !== null) send("COMMAND_RESULT", result);
           } catch (error) {
-            send("COMMAND_RESULT", rejectedResult(command.requestId, error instanceof RoomDomainError ? error.code : "INTERNAL_ERROR", options.ids.uuid(), command.payload.actionId));
+            send("COMMAND_RESULT", rejectedResult(command.requestId, domainErrorCode(error), options.ids.uuid(), command.payload.actionId));
           }
           return;
         }
         case "USE_TIME_BANK": {
           const currentRoom = manager.getSnapshot(roomId as string);
-          if (currentRoom?.activeTournamentId !== command.payload.tournamentId || options.tournaments === undefined || connectionEpoch === null) {
+          const epoch = currentConnection()?.epoch;
+          if (currentRoom?.activeTournamentId !== command.payload.tournamentId || options.tournaments === undefined || epoch === undefined) {
             send("COMMAND_RESULT", rejectedResult(command.requestId, "TOURNAMENT_NOT_ACTIVE", options.ids.uuid()));
             return;
           }
@@ -380,11 +413,11 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
               playerId: playerId as string,
               expectedSequence: command.payload.expectedSequence,
               receivedAt: options.now(),
-              connectionEpoch,
+              connectionEpoch: epoch,
             });
             if (result !== null) send("COMMAND_RESULT", result);
-          } catch {
-            send("COMMAND_RESULT", rejectedResult(command.requestId, "INTERNAL_ERROR", options.ids.uuid()));
+          } catch (error) {
+            send("COMMAND_RESULT", rejectedResult(command.requestId, domainErrorCode(error), options.ids.uuid()));
           }
           return;
         }
@@ -414,4 +447,10 @@ function rejectedResult(requestId: string, code: ErrorCode, traceId: string, act
     duplicate: false,
     error: createProtocolError(code, traceId, { retryable: code === "GAME_UNAVAILABLE" }),
   };
+}
+
+function domainErrorCode(error: unknown): ErrorCode {
+  return error instanceof RoomDomainError || error instanceof TournamentDomainError
+    ? error.code
+    : "INTERNAL_ERROR";
 }

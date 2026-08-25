@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SeededRandomSource } from "@texas-holdem/poker-engine";
-import type { GameEventMessage, SubmitAction, TournamentConfig } from "@texas-holdem/protocol";
+import type { ClockUpdatedPayload, GameEventMessage, SubmitAction, TournamentConfig } from "@texas-holdem/protocol";
 import type { HandCommitBundle } from "../infrastructure/persistence/repositories/hand-commit";
 import type { RoomCommand } from "../rooms/room-executor";
 import type { IdSource } from "../rooms/id-source";
@@ -8,7 +8,6 @@ import { createFakeClock, type FakeClock } from "../../../../tests/support/fake-
 import { createTournamentRuntimeState, type PlayerSeed, type TournamentRuntimeState } from "./tournament-runtime";
 import {
   TournamentExecutor,
-  type ClockUpdatedPayload,
   type TournamentOutputSink,
 } from "./tournament-executor";
 import type { TournamentCommand } from "./tournament-commands";
@@ -86,7 +85,11 @@ function recordingSink(): RecordingSink {
   };
 }
 
-function makeHarness(overrides: { config?: Partial<TournamentConfig>; seats?: number } = {}): Harness {
+function makeHarness(overrides: {
+  config?: Partial<TournamentConfig>;
+  seats?: number;
+  isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
+} = {}): Harness {
   const clock = createFakeClock({ now: 1000 });
   const config = makeConfig(overrides.config);
   const players = makePlayers(overrides.seats ?? 2);
@@ -102,7 +105,7 @@ function makeHarness(overrides: { config?: Partial<TournamentConfig>; seats?: nu
     },
     { clock: () => clock.now(), ids: fakeIds(clock), scheduler: clock },
   );
-  const executor = new TournamentExecutor(runtime, { output });
+  const executor = new TournamentExecutor(runtime, { output, isConnectionCurrent: overrides.isConnectionCurrent });
   return { executor, clock, output, runtime };
 }
 
@@ -355,6 +358,38 @@ describe("断线 / 离开 / 宽限 / 无真人关房", () => {
 });
 
 describe("重复 / 非法 / 过期命令不污染权威状态", () => {
+  it("接管后拒绝旧 Socket 已排队的 Action 与 Time Bank（epoch 权威校验）", async () => {
+    const harness = makeHarness({ isConnectionCurrent: () => false });
+    await start(harness);
+    const actor = currentActor(harness)!;
+    const sequence = String(harness.executor.getView().lastWireSequence);
+
+    const action = await harness.executor.submit({
+      type: "SUBMIT_ACTION",
+      requestId: "stale-action-request",
+      actionId: "stale-action-id",
+      playerId: actor,
+      expectedSequence: sequence,
+      action: call(),
+      receivedAt: harness.clock.now(),
+      ingressOrdinal: 1,
+      connectionEpoch: 1,
+    }) as { status: string; error?: { code: string } };
+    const timeBank = await harness.executor.submit({
+      type: "USE_TIME_BANK",
+      requestId: "stale-time-bank-request",
+      playerId: actor,
+      expectedSequence: sequence,
+      receivedAt: harness.clock.now(),
+      connectionEpoch: 1,
+    }) as { status: string; error?: { code: string } };
+
+    expect(action).toMatchObject({ status: "REJECTED", error: { code: "SESSION_REPLACED" } });
+    expect(timeBank).toMatchObject({ status: "REJECTED", error: { code: "SESSION_REPLACED" } });
+    expect(harness.executor.getView().lastWireSequence).toBe(Number(sequence));
+    expect(harness.output.clockUpdates).toHaveLength(0);
+  });
+
   it("重复 actionId 相同 Payload → duplicate 复用原结果，不二次执行", async () => {
     const harness = makeHarness();
     await start(harness);

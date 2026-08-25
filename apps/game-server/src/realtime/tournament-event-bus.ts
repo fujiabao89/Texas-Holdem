@@ -1,6 +1,4 @@
-import type { GameEventMessage } from "@texas-holdem/protocol";
-
-import type { ClockUpdatedPayload } from "../tournaments/tournament-executor";
+import type { ClockUpdatedPayload, GameEventMessage } from "@texas-holdem/protocol";
 
 /** Internal fan-out seam between TEX-20 runtime output and the single WS gateway. */
 export interface TournamentEventBus {

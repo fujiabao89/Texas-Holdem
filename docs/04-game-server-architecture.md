@@ -357,7 +357,7 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 ### 9.2 单活跃连接与多设备接管
 
-- 同一 `playerToken` 同时只允许**一个活跃控制连接**。认证成功并建立 Snapshot 屏障后，Connection Manager 原子递增该玩家的 `connectionEpoch`，把新连接绑定到新 epoch，并立即把旧连接标为 `REPLACED`（[02](./02-protocol-spec.md) §10）。
+- 同一 `playerToken` 同时只允许**一个活跃控制连接**。Gateway 会先保留新 `connectionEpoch` 与活跃映射，再异步提交 `CONNECTED`/Runtime 重连；因此旧 Socket 在这两个提交之间关闭时已不是 current，不得把陈旧 `DISCONNECTED` 排到新连接之后。认证超时或失败会撤销该保留；若被替换 Socket 仍打开则恢复其映射并重新上报 `CONNECTED`，否则保持断线。只有认证完成并发送 Snapshot 屏障后才将旧连接标为 `REPLACED`（[02](./02-protocol-spec.md) §10）。
 - 每条 HUMAN_SOCKET 命令在入口携带内部的 `connectionId + connectionEpoch`（不是 wire 字段）；在 Tournament 提交状态转移前再次校验。接管完成后，所有尚未提交的旧 epoch 命令均拒绝，不得因早已排队而在新设备取得控制权后生效。
 - 服务端尽力向旧连接发送 `SESSION_REPLACED`，随后以 WS Close Code `4001` 关闭。即使通知或 Close 帧丢失，epoch 校验仍保证旧连接不能控制 Seat；新连接只在 epoch 提升与 Snapshot 屏障完成后接收成功结果。
 
@@ -369,7 +369,7 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 ### 9.4 重连
 
-走 [02](./02-protocol-spec.md) §6/§10 流程：Snapshot 首帧 + 后续带 `sequence` 事件；断线期间旧动画不重放；漏序/积压/过期直接重取 Snapshot（《总规划》§5.2/§7.2）。运行期重连从内存投影，不读 DB（[03](./03-data-model.md) §4.3）。
+走 [02](./02-protocol-spec.md) §6/§10 流程：认证成功的 `RECONNECT_RESULT` 携带 Room 与按接收者投影的 Game Snapshot；其后 Room 变更只推 `ROOM_SNAPSHOT`，Game Snapshot 只由重连或 `REQUEST_SNAPSHOT` 重同步产生，避免用 Lobby 变化重置牌局投影。后续带 `sequence` 事件；断线期间旧动画不重放；漏序/积压/过期直接重取 Snapshot（《总规划》§5.2/§7.2）。运行期重连从内存投影，不读 DB（[03](./03-data-model.md) §4.3）。
 
 ### 9.5 事件积压与 Fast Forward
 

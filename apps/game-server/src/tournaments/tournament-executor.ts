@@ -17,6 +17,7 @@
  */
 
 import type {
+  ClockUpdatedPayload,
   CommandResultPayload,
   ErrorCode,
   GameEventMessage,
@@ -57,15 +58,6 @@ export const DISCONNECT_GRACE_MS = 10 * 60 * 1000;
 export const TIME_BANK_STEP_MS = 30_000;
 /** 终态 Tournament 保留期：180 天（03 §5.10）。 */
 const RETENTION_MS = 180 * 24 * 3600 * 1000;
-
-/** CLOCK_UPDATED wire 载荷（02 §8.2）。 */
-export interface ClockUpdatedPayload {
-  readonly tournamentId: string;
-  readonly handId: string | null;
-  readonly currentActorPlayerId: string | null;
-  readonly actionDeadline: number | null;
-  readonly timeBankRemainingMs: number;
-}
 
 /** 执行器输出汇：TEX-21 连接层 / TEX-22 Writer / Room 队列订阅。 */
 export interface TournamentOutputSink {
