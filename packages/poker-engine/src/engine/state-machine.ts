@@ -69,6 +69,8 @@ function freezeSeats(seats: readonly MutableSeat[]): readonly PlayerState[] {
 export interface HandResult {
   readonly state: GameState;
   readonly events: readonly PokerEvent[];
+  /** 与 `events` 一一对应的每个事件产生后的状态快照（逐事件投影，§14；供 game-server 生成逐事件 patch）。 */
+  readonly states: readonly GameState[];
 }
 
 /** 校验开局配置边界（§16 确定性 / §12 约束）：≥2 名持筹码玩家、座位号唯一、dealer 在参与集合、注入牌堆足够且唯一、SB < BB。 */
@@ -241,13 +243,22 @@ export function createInitialState(config: HandConfig): HandResult {
   });
 
   // 全员全下（含 HU 短盲）：无可行动者 → 立即 Runout + 比牌结算（§6 提前结算 2）。
+  const states: GameState[] = [];
+  const dealState = state; // 发牌完成态（结算前）；开局类事件（HAND_STARTED/BLIND/DEAL）以其投影
   if (currentActor === null) {
-    state = runToSettlement(state, emit);
+    state = runToSettlement(state, emit, states);
     // 回写自动推进（BURN/deal/showdown/award 等）产生的最终 sequence 游标，避免事件序号复用（§14/§16）。
     state = Object.freeze({ ...state, nextSequence: seq.value });
   }
 
-  return { state, events: Object.freeze(events) };
+  // 结算前的发牌类事件以 dealState 为状态；结算类事件以各自逐事件状态。
+  const dealEventCount = events.length - states.length;
+  const dealStates = Array.from({ length: Math.max(0, dealEventCount) }, () => dealState);
+  return {
+    state,
+    events: Object.freeze(events),
+    states: Object.freeze([...dealStates, ...states]),
+  };
 }
 
 /** 校验并应用一个动作；非法则抛错（不产生新 state）。 */
@@ -257,6 +268,7 @@ export function reduceHand(state: GameState, action: PlayerAction): HandResult {
 
   const seq = { value: state.nextSequence };
   const events: PokerEvent[] = [];
+  const states: GameState[] = [];
   const emit = <T extends Omit<PokerEvent, "sequence">>(e: T) => {
     events.push(Object.freeze({ ...e, sequence: seq.value++ }) as unknown as PokerEvent);
   };
@@ -360,9 +372,15 @@ export function reduceHand(state: GameState, action: PlayerAction): HandResult {
     nextSequence: seq.value,
   });
 
-  const result = advanceAfterAction(next, emit);
+  // 动作本身事件（switch 内恰发射 1 条）的状态 = next（动作已应用、自动发牌未发生）。
+  states.push(next);
+  const result = advanceAfterAction(next, emit, states);
   // 回写自动推进（BURN/deal/showdown/award 等）产生的最终 sequence 游标，保证事件序号唯一且单调（§14/§16）。
-  return { state: Object.freeze({ ...result, nextSequence: seq.value }), events: Object.freeze(events) };
+  return {
+    state: Object.freeze({ ...result, nextSequence: seq.value }),
+    events: Object.freeze(events),
+    states: Object.freeze(states),
+  };
 }
 
 /**
@@ -384,6 +402,7 @@ export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandRe
 
   const seq = { value: state.nextSequence };
   const events: PokerEvent[] = [];
+  const states: GameState[] = [];
   const emit = <T extends Omit<PokerEvent, "sequence">>(e: T) => {
     events.push(Object.freeze({ ...e, sequence: seq.value++ }) as unknown as PokerEvent);
   };
@@ -399,7 +418,8 @@ export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandRe
     seats: freezeSeats(seats),
     nextSequence: seq.value,
   });
-  const result = advanceAfterAction(next, emit);
+  states.push(next); // 撤回折叠事件的状态 = next（折叠已应用）
+  const result = advanceAfterAction(next, emit, states);
   const previousActor = state.currentActor;
   const actorStillPending =
     previousActor !== seatIndex &&
@@ -414,6 +434,7 @@ export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandRe
       nextSequence: seq.value,
     }),
     events: Object.freeze(events),
+    states: Object.freeze(states),
   };
 }
 
@@ -421,16 +442,17 @@ export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandRe
 function advanceAfterAction(
   state: GameState,
   emit: <T extends Omit<PokerEvent, "sequence">>(e: T) => void,
+  states: GameState[],
 ): GameState {
   const remaining = state.seats.filter((s) => !s.folded);
 
   // ① 仅剩一名未 Fold → 直接结算。
   if (remaining.length <= 1) {
-    return settle(state, false, emit);
+    return settle(state, false, emit, states);
   }
   // ② 所有剩余玩家均已 All-in → 自动补足剩余公共牌并结算。
   if (remaining.every((s) => s.isAllIn)) {
-    return runToSettlement(state, emit);
+    return runToSettlement(state, emit, states);
   }
   // ③ 仍有人待行动 → 同街推进到下一行动者。
   if (anyPending(state.seats, state.currentBet)) {
@@ -447,15 +469,16 @@ function advanceAfterAction(
   // ④ 本街结束：river 之后进入比牌，否则推进下一街。
   const nextStreetValue = nextStreet(state.street);
   if (nextStreetValue === null) {
-    return settle(state, true, emit);
+    return settle(state, true, emit, states);
   }
-  return dealNextStreetIfPossible(state, emit);
+  return dealNextStreetIfPossible(state, emit, states);
 }
 
 /** 推进到下一街（烧 1 张 + 发公共牌），重置下注基准与行动者。 */
 function dealNextStreetIfPossible(
   state: GameState,
   emit: <T extends Omit<PokerEvent, "sequence">>(e: T) => void,
+  states: GameState[],
 ): GameState {
   const nextStreetValue = nextStreet(state.street)!;
   const { burn, cards, remaining } = burnAndDeal([...state.remainingDeck], nextStreetValue);
@@ -478,11 +501,16 @@ function dealNextStreetIfPossible(
     lastDecisionBet: 0,
     lastDecisionRaiseSize: state.bigBlind,
   }));
+  // 烧牌后、公共牌尚未亮出前的状态（communityCards 不含新发牌；nextSequence 对投影无意义，沿用原值）。
+  const afterBurn: GameState = Object.freeze({
+    ...state,
+    seats: freezeSeats(seats),
+    burnCards: Object.freeze(burnCards),
+    remainingDeck: Object.freeze(deck),
+  });
   emit({ type: "BURN_CARD", street: nextStreetValue });
-  if (nextStreetValue === "flop") emit({ type: "FLOP_DEALT", cards: Object.freeze([...cards]) });
-  else if (nextStreetValue === "turn") emit({ type: "TURN_DEALT", card: cards[0]! });
-  else emit({ type: "RIVER_DEALT", card: cards[0]! });
-  return Object.freeze({
+  states.push(afterBurn);
+  const nextStreetState: GameState = Object.freeze({
     ...state,
     phase: nextStreetValue,
     street: nextStreetValue,
@@ -495,18 +523,24 @@ function dealNextStreetIfPossible(
     lastFullRaiseSize: state.bigBlind,
     hasFullBetOrRaise: false,
   });
+  if (nextStreetValue === "flop") emit({ type: "FLOP_DEALT", cards: Object.freeze([...cards]) });
+  else if (nextStreetValue === "turn") emit({ type: "TURN_DEALT", card: cards[0]! });
+  else emit({ type: "RIVER_DEALT", card: cards[0]! });
+  states.push(nextStreetState);
+  return nextStreetState;
 }
 
 /** 全员 All-in：自动补足剩余公共牌至 river 并比牌结算（§6 提前结算 2 / §8.5）。 */
 function runToSettlement(
   state: GameState,
   emit: <T extends Omit<PokerEvent, "sequence">>(e: T) => void,
+  states: GameState[],
 ): GameState {
   let s = state;
   while (s.communityCards.length < 5) {
-    s = dealNextStreetIfPossible(s, emit);
+    s = dealNextStreetIfPossible(s, emit, states);
   }
-  return settle(s, true, emit);
+  return settle(s, true, emit, states);
 }
 
 /** 比牌 / 提前结算，产出 POT_AWARDED / UNCALLED_BET_RETURNED / SHOWDOWN / REVEALED。 */
@@ -514,25 +548,15 @@ function settle(
   state: GameState,
   showdown: boolean,
   emit: <T extends Omit<PokerEvent, "sequence">>(e: T) => void,
+  states: GameState[],
 ): GameState {
   const remaining = state.seats.filter((s) => !s.folded);
   const board = state.communityCards;
-
-  if (showdown) {
-    emit({ type: "SHOWDOWN_STARTED", communityCards: Object.freeze([...board]), remainingPlayers: Object.freeze(remaining.map((s) => s.seatIndex)) });
-    // 仅比牌才揭示底牌；弃牌胜出（showdown=false）不翻牌（§14）。
-    for (const p of remaining) {
-      emit({ type: "PLAYER_REVEALED", seatIndex: p.seatIndex, cards: Object.freeze([...p.holeCards]) });
-    }
-  }
 
   // 构造底池 + 未跟注返还。
   const { pots, uncalledReturns } = buildPots(
     state.seats.map((s) => ({ seatIndex: s.seatIndex, contribution: s.handContribution, folded: s.folded })),
   );
-  for (const ret of uncalledReturns) {
-    emit({ type: "UNCALLED_BET_RETURNED", seatIndex: ret.seatIndex, amount: ret.amount });
-  }
   const seats = toMutableSeats(state.seats);
   for (const ret of uncalledReturns) {
     const p = seats.find((s) => s.seatIndex === ret.seatIndex)!;
@@ -541,40 +565,63 @@ function settle(
   }
 
   // 提前结算：仅剩一名未 Fold。
+  let awards: PotAward[];
   if (remaining.length <= 1) {
     const winner = remaining[0] ?? null;
-    const awards: PotAward[] = [];
+    awards = [];
     if (winner) {
       for (const pot of pots) {
-        const award: PotAward = {
+        awards.push({
           potIndex: pot.index,
           totalAmount: pot.amount,
           winners: Object.freeze([winner.seatIndex]),
           prizeBySeat: Object.freeze({ [winner.seatIndex]: pot.amount }),
           eligiblePlayers: Object.freeze([...pot.eligiblePlayers]),
-        };
-        awards.push(award);
-        emit({ type: "POT_AWARDED", potIndex: pot.index, amount: pot.amount, winners: award.winners, prizeBySeat: award.prizeBySeat, eligiblePlayers: award.eligiblePlayers });
+        });
         const pw = seats.find((s) => s.seatIndex === winner.seatIndex)!;
         pw.chips += pot.amount;
       }
     }
-    const outcome = makeOutcome(state, board, pots, awards, uncalledReturns, winner ? [winner.seatIndex] : [], false);
-    return Object.freeze({ ...state, seats: Object.freeze(seats.map((s) => Object.freeze({ ...s }))), currentActor: null, phase: "hand_end", outcome, pots: Object.freeze(pots) });
-  }
-
-  // 比牌：每 Pot 独立（Showdown 已发到 5 张公共牌）。
-  const awards = settlePots(pots, seats, board, state.dealerSeat);
-  for (const award of awards) {
-    for (const [seatStr, prize] of Object.entries(award.prizeBySeat)) {
-      const p = seats.find((s) => s.seatIndex === Number(seatStr))!;
-      p.chips += prize;
+  } else {
+    // 比牌：每 Pot 独立（Showdown 已发到 5 张公共牌）。
+    awards = settlePots(pots, seats, board, state.dealerSeat);
+    for (const award of awards) {
+      for (const [seatStr, prize] of Object.entries(award.prizeBySeat)) {
+        const p = seats.find((s) => s.seatIndex === Number(seatStr))!;
+        p.chips += prize;
+      }
     }
-    emit({ type: "POT_AWARDED", potIndex: award.potIndex, amount: award.totalAmount, winners: award.winners, prizeBySeat: award.prizeBySeat, eligiblePlayers: award.eligiblePlayers });
   }
   const winners = awards.flatMap((a) => a.winners);
-  const outcome = makeOutcome(state, board, pots, awards, uncalledReturns, winners, true);
-  return Object.freeze({ ...state, seats: Object.freeze(seats.map((s) => Object.freeze({ ...s }))), currentActor: null, phase: "hand_end", outcome, pots: Object.freeze(pots) });
+  const outcome = makeOutcome(state, board, pots, awards, uncalledReturns, winners, showdown);
+  const finalState = Object.freeze({
+    ...state,
+    seats: Object.freeze(seats.map((s) => Object.freeze({ ...s }))),
+    currentActor: null,
+    phase: "hand_end",
+    outcome,
+    pots: Object.freeze(pots),
+  });
+
+  // 按原事件顺序发射结算事件；结算为原子转移，全部以终态投影（逐事件 patch 与 reveal/award 同屏展示）。
+  if (showdown) {
+    emit({ type: "SHOWDOWN_STARTED", communityCards: Object.freeze([...board]), remainingPlayers: Object.freeze(remaining.map((s) => s.seatIndex)) });
+    states.push(finalState);
+    // 仅比牌才揭示底牌；弃牌胜出（showdown=false）不翻牌（§14）。
+    for (const p of remaining) {
+      emit({ type: "PLAYER_REVEALED", seatIndex: p.seatIndex, cards: Object.freeze([...p.holeCards]) });
+      states.push(finalState);
+    }
+  }
+  for (const ret of uncalledReturns) {
+    emit({ type: "UNCALLED_BET_RETURNED", seatIndex: ret.seatIndex, amount: ret.amount });
+    states.push(finalState);
+  }
+  for (const award of awards) {
+    emit({ type: "POT_AWARDED", potIndex: award.potIndex, amount: award.totalAmount, winners: award.winners, prizeBySeat: award.prizeBySeat, eligiblePlayers: award.eligiblePlayers });
+    states.push(finalState);
+  }
+  return finalState;
 }
 
 function makeOutcome(

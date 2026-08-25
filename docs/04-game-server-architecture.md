@@ -14,7 +14,7 @@
 > **【实现核对 · TEX-20，2026-08-24】** §6 Tournament 运行时、§7 单桌串行执行器（真队列 + 截止点 look-ahead、receivedAt 仲裁、幂等/sequence、Engine 驱动循环）、§8 Scheduler 与 Timer（行动超时/Time Bank/断线宽限/定时升盲）、§11 状态投影执行、§12 手末 Commit Bundle 构造入口已由 `apps/game-server/src/{tournaments,scheduler,projection}/**` 落地并经 unit 测试核对（见各目录 README）。实现边界与未覆盖项：
 > - **Room 集成**：`createRuntimeTournamentStarter` 在 Room 队列确认开局后创建 Tournament 运行时并注册（§5.7）；终局/无真人经 `TournamentOutputSink.submitRoomCommand` 单向投递 `TOURNAMENT_FINISHED`/`CLOSE_ROOM`（§5.7 单投递规则）。
 > - **计时**：行动超时/Time Bank/断线宽限/定时升盲均以可注入 Clock/`TimerScheduler` 为权威（§8.4）；生产注入单调且近似 epoch 的时钟（`createMonotonicEpochClock`，§7.2 单调裁决）；Timer 携带 generation，执行前复核、过期 no-op（§8.2）。Time Bank 机会标记仅在手/街/座位构成的决策点变化时复位（§8.4「每个行动机会最多一次」）。
-> - **投影**：`PlayerView`/wire `GameEvent`/`PlayerViewPatch` 由 `projection/state-projector.ts` 纯函数生成（字段级隔离，红线 2）；Patch 采用全字段新视图（正确性优先，最小 diff 为后续优化）。
+> - **投影**：`PlayerView`/wire `GameEvent`/`PlayerViewPatch` 由 `projection/state-projector.ts` 纯函数生成（字段级隔离，红线 2）；Patch 为**逐事件**全字段新视图——Engine 新增 `getEventStates()`（与事件流平行的每事件后状态快照，§14 逐事件投影），使 `PLAYER_CHECKED` 的 patch 不携带后续 `FLOP_DEALT` 才产生的 board/phase，满足 02 §6.3「得到该事件后的权威视图」。
 > - **持久化入口**：执行器在整手结算后构造 `HandCommitBundle` 交 `TournamentOutputSink.enqueueCommitBundles`；**DB Writer（异步队列/退避/watermark）属 TEX-22**，`main.ts` 暂为空实现。
 > - **手间事件边界**：两手之间的 `PLAYER_WITHDRAWN` 作为下一手 bundle 的前导事件落入同一原子提交（其 sequence 仍在手 N 之后、手 N+1 之前，快照边界「Withdraw 均已应用、下一手 HAND_STARTED 尚未发生」成立）；TEX-22 Writer 需据此验证。
 > - **未覆盖**：连接管理（§9）、事件积压/Fast Forward（§9.5）、心跳（§9.6）、优雅关停完整流程（§13.1，仅实现 `SHUTDOWN` 队列命令）、崩溃恢复（§13，恢复读取路径属 TEX-22）、P1 AI 接入（§14）。`main.ts` 的 `TournamentOutputSink` 事件输出为空实现（TEX-21 连接层订阅）。

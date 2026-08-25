@@ -492,6 +492,28 @@ describe("事件 sequence 与 Commit Bundle", () => {
     }
   });
 
+  it("逐事件 patch：PLAYER_CHECKED 不携带后续 FLOP 的 board/phase（GP-P1a）", async () => {
+    const harness = makeHarness();
+    await start(harness);
+    const sb = currentActor(harness)!; // p0（SB）
+    await submitAction(harness, { playerId: sb, action: call() });
+    const bb = currentActor(harness)!; // p1（BB）
+    const before = harness.output.events.length;
+    // BB check → 一次转移产生 PLAYER_CHECKED + BURN_CARD + FLOP_DEALT
+    await submitAction(harness, { playerId: bb, action: check() });
+    const newEvents = harness.output.events.slice(before);
+    const checked = newEvents.find((m) => m.payload.event.type === "PLAYER_CHECKED");
+    const flop = newEvents.find((m) => m.payload.event.type === "FLOP_DEALT");
+    expect(checked).toBeDefined();
+    expect(flop).toBeDefined();
+    // PLAYER_CHECKED 的 patch 必须反映该事件后的状态：PREFLOP、空 board（FLOP 尚未发出）
+    expect(checked!.payload.patch.handPhase).toBe("PREFLOP");
+    expect(checked!.payload.patch.board).toEqual([]);
+    // FLOP_DEALT 的 patch 反映 FLOP 阶段与 3 张公共牌
+    expect(flop!.payload.patch.handPhase).toBe("FLOP");
+    expect(flop!.payload.patch.board).toHaveLength(3);
+  });
+
   it("非授权 Payload 不含其他玩家底牌（字段级隔离）", async () => {
     const harness = makeHarness();
     await start(harness);

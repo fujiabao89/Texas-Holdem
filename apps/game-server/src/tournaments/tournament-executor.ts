@@ -25,6 +25,7 @@ import type {
 import {
   consumeTimeBank,
   resetTimeBankOpportunity,
+  type GameState,
   type LegalActions,
   type PlayerAction,
   type TournamentState,
@@ -624,14 +625,17 @@ export class TournamentExecutor {
   private emitNewEvents(): void {
     if (this.state.status === "FROZEN") return; // 冻结后不再发射（状态已污染）
     const engineEvents = this.state.engine.getEvents();
+    const eventStates = this.state.engine.getEventStates();
     const emittedCount = this.state.lastWireSequence;
     const newEvents = engineEvents.slice(emittedCount);
     if (newEvents.length === 0) return;
-    const engineState = this.state.engine.getState();
-    const board = engineState.hand?.communityCards ?? [];
-    const blindLevelIndex = engineState.blindLevel;
+    const blindLevelIndex = this.state.engine.getState().blindLevel;
     const messages: GameEventMessage[] = [];
-    for (const event of newEvents) {
+    for (let idx = 0; idx < newEvents.length; idx++) {
+      const event = newEvents[idx]!;
+      // 逐事件状态快照：patch 反映该事件后的权威视图（PLAYER_CHECKED 不再携带后续 FLOP board/phase）。
+      const perEventState = eventStates[emittedCount + idx] ?? null;
+      const board = perEventState?.communityCards ?? [];
       const wireSeq = event.sequence + 1;
       if (wireSeq !== this.state.lastWireSequence + 1) {
         throw new TournamentDomainError("INTERNAL_ERROR", { message: "Engine 事件 sequence 不连续" });
@@ -644,7 +648,7 @@ export class TournamentExecutor {
           blindLevelIndex,
           board,
         });
-        const patch = projectViewPatch(this.projectionInputFor(viewerPlayerId));
+        const patch = projectViewPatch(this.projectionInputFor(viewerPlayerId, perEventState));
         messages.push({
           type: "GAME_EVENT",
           protocolVersion: 1,
@@ -662,16 +666,22 @@ export class TournamentExecutor {
     this.deps.output.emitEvents(messages);
   }
 
-  private projectionInputFor(viewerPlayerId: string): ProjectionInput {
+  private projectionInputFor(viewerPlayerId: string, perEventHandState?: GameState | null): ProjectionInput {
     const timeBankRemainingMs = new Map<string, number>();
     for (const [playerId, record] of this.state.players) {
       timeBankRemainingMs.set(playerId, record.timeBank.secondsRemaining * 1000);
     }
+    // 逐事件 patch：用该事件后的手状态快照覆盖权威态的手字段（锦标赛级字段不变）。
+    const engineState = this.state.engine.getState();
+    const effectiveEngineState =
+      perEventHandState !== undefined && perEventHandState !== null
+        ? { ...engineState, hand: perEventHandState }
+        : engineState;
     return {
       tournamentId: this.state.tournamentId,
       handId: this.state.currentHandId,
       sequence: this.state.lastWireSequence,
-      engineState: this.state.engine.getState(),
+      engineState: effectiveEngineState,
       seatToPlayer: this.state.seatToPlayer,
       actionDeadline: this.state.actionDeadline,
       currentLegalActions: this.state.currentLegalActions,

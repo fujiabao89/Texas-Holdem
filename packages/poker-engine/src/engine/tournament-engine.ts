@@ -21,7 +21,7 @@ import {
 } from "../rules/tournament";
 import { PokerHandEngine } from "./hand-engine";
 import { assertTournamentInvariants } from "./tournament-invariants";
-import type { HandConfig, SeatConfig } from "../model/hand";
+import type { GameState, HandConfig, SeatConfig } from "../model/hand";
 import type { LegalActions } from "../model/legal";
 import type { PlayerAction } from "../model/action";
 import type { ParticipantKind } from "../model/type";
@@ -78,6 +78,7 @@ export class TournamentEngine {
   private pokerHand: PokerHandEngine | null = null;
   private handEventsAbsorbed = 0;
   private readonly events: PokerEvent[] = [];
+  private readonly eventStates: (GameState | null)[] = [];
   private nextSequence = 0;
   private handStartChips = new Map<number, number>();
 
@@ -268,6 +269,11 @@ export class TournamentEngine {
     return Object.freeze([...this.events]);
   }
 
+  /** 与 `getEvents()` 一一对应的逐事件状态快照：手事件为手状态快照，锦标赛级事件为 null（以当前权威态为准）。 */
+  getEventStates(): readonly (GameState | null)[] {
+    return Object.freeze([...this.eventStates]);
+  }
+
   /** 上报累计经过秒数（time 模式；game-server 在 Hand 间调用，等级在下一手启动时生效）。 */
   recordElapsedTime(seconds: number): void {
     if (!Number.isInteger(seconds) || seconds < 0) {
@@ -386,15 +392,19 @@ export class TournamentEngine {
   private absorbHandEvents(): void {
     if (!this.pokerHand) return;
     const all = this.pokerHand.getEvents();
+    const allStates = this.pokerHand.getEventStates();
     for (let i = this.handEventsAbsorbed; i < all.length; i++) {
       const e = all[i]!;
       this.events.push(Object.freeze({ ...e, sequence: this.nextSequence++ }) as unknown as PokerEvent);
+      // 逐事件手状态快照（§14）；与 events 一一对应，供 game-server 生成逐事件 patch。
+      this.eventStates.push(allStates[i] ?? null);
     }
     this.handEventsAbsorbed = all.length;
   }
 
   private emit<T extends Omit<PokerEvent, "sequence">>(event: T): void {
     this.events.push(deepFreeze({ ...event, sequence: this.nextSequence++ }) as unknown as PokerEvent);
+    this.eventStates.push(null); // 锦标赛级事件：状态以当前权威态为准（无独立手快照）
   }
 
   private assertInvariants(): void {
