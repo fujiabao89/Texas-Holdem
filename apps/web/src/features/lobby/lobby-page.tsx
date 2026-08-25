@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent, type ReactNode } from "react";
 import type { RoomSnapshot, TournamentConfig } from "@texas-holdem/protocol";
 
@@ -10,7 +9,6 @@ import { primaryButton } from "./room-flows";
 import { useLobbyConnection, useRoomClient, useRoomSnapshot } from "./room-client";
 
 export function LobbyPage({ roomId }: { readonly roomId: string }) {
-  const router = useRouter();
   const { http, projection, tokens, websocket, connectionState } = useRoomClient();
   const room = useRoomSnapshot();
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -42,7 +40,6 @@ export function LobbyPage({ roomId }: { readonly roomId: string }) {
     setPending(false);
     if (!result.ok) { setFeedback(errorMessage(result.error.code)); return; }
     projection.acceptRoomSnapshot(result.data.data.roomSnapshot);
-    router.push(`/room/${roomId}/table`);
   };
   const copy = async (value: string) => {
     try { await navigator.clipboard.writeText(value); setFeedback(message("room.copied")); } catch { setFeedback(message("room.copyFailed")); }

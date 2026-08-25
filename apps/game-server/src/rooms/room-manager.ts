@@ -165,7 +165,9 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       if (runtime === undefined) {
         throw new RoomDomainError("ROOM_NOT_FOUND");
       }
-      return runtime.submit({ type: "TRANSFER_HOST" });
+      const result = await runtime.submit({ type: "TRANSFER_HOST" });
+      publish(projectRoomSnapshot(result.state));
+      return result;
     },
 
     findRoom(roomId) {

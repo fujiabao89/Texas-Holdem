@@ -26,7 +26,7 @@ const ids = [
   "123e4567-e89b-42d3-a456-426614174003",
 ];
 
-function setup() {
+function setup(clock?: ReturnType<typeof createFakeClock>) {
   const socket = new FakeWebSocket();
   const store = new ProjectionStore();
   const states: string[] = [];
@@ -37,6 +37,7 @@ function setup() {
     createUuid: () => ids.shift() ?? "123e4567-e89b-42d3-a456-426614174099",
     projectionStore: store,
     tokenStore: new PlayerTokenStore(),
+    clock,
     onConnectionState: (state) => states.push(state),
     onCommandResult: (pending) => commandResults.push(pending.requestId),
   });
@@ -142,5 +143,24 @@ describe("WebSocketTransport", () => {
     transport.send(pending);
 
     expect(socket.sent.slice(-1)).toEqual([pending.serialized]);
+  });
+
+  it("resets reconnect backoff after receiving a new snapshot barrier", () => {
+    const clock = createFakeClock();
+    const { socket, transport } = setup(clock);
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+
+    socket.close();
+    clock.advance(500);
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+
+    socket.close();
+    clock.advance(499);
+    expect(clock.pendingTimers()).toBe(1);
+    clock.advance(1);
+    expect(clock.pendingTimers()).toBe(0);
   });
 });

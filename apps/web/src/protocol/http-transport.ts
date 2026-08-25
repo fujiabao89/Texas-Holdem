@@ -108,15 +108,17 @@ export class HttpTransport {
 
     const url = new URL(path, this.options.apiBaseUrl).toString();
     let response: Response;
+    let payload: unknown;
     try {
-      response = await fetchWithControls(this.fetchFn, url, { method, headers, body }, options, this.options.clock ?? browserClock, this.options.defaultTimeoutMs ?? 10_000);
+      const controlled = await fetchWithControls(this.fetchFn, url, { method, headers, body }, options, this.options.clock ?? browserClock, this.options.defaultTimeoutMs ?? 10_000);
+      response = controlled.response;
+      payload = controlled.payload;
     } catch (error) {
       const reason = error instanceof HttpControlError ? error.reason : failureReason(options);
       this.diagnostic({ method, path });
       return { ok: false, error: { code: "GAME_UNAVAILABLE", retryable: true, traceId: "network", reason }, idempotencyKey };
     }
 
-    const payload: unknown = await response.json().catch(() => undefined);
     if (response.ok) {
       const parsed = responseSchema.safeParse(payload);
       if (parsed.success) {
@@ -143,7 +145,15 @@ export class HttpTransport {
 
 const browserClock: HttpClock = { setTimeout: (callback, delayMs) => setTimeout(callback, delayMs), clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>) };
 
-async function fetchWithControls(fetchFn: typeof fetch, url: string, init: RequestInit, options: HttpRequestOptions, clock: HttpClock, defaultTimeoutMs: number): Promise<Response> {
+async function fetchWithControls(
+  fetchFn: typeof fetch,
+  url: string,
+  init: RequestInit,
+  options: HttpRequestOptions,
+  clock: HttpClock,
+  defaultTimeoutMs: number,
+): Promise<{ response: Response; payload: unknown }> {
+  if (options.signal?.aborted) throw new HttpControlError("CANCELLED");
   const controller = new AbortController();
   let failure: "TIMEOUT" | "CANCELLED" | undefined;
   const timeout = clock.setTimeout(() => { failure = "TIMEOUT"; controller.abort(); }, options.timeoutMs ?? defaultTimeoutMs);
@@ -151,7 +161,11 @@ async function fetchWithControls(fetchFn: typeof fetch, url: string, init: Reque
   options.signal?.addEventListener("abort", onAbort, { once: true });
   try {
     const response = await fetchFn(url, { ...init, signal: controller.signal });
-    return response;
+    const payload = await response.json().catch(() => {
+      if (controller.signal.aborted) throw new HttpControlError(failure ?? "CANCELLED");
+      return undefined;
+    });
+    return { response, payload };
   } catch (error) {
     if (failure !== undefined) throw new HttpControlError(failure);
     throw error;

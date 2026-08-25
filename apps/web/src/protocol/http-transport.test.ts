@@ -56,4 +56,50 @@ describe("HttpTransport", () => {
     await expect(request).resolves.toMatchObject({ ok: false, error: { code: "GAME_UNAVAILABLE", reason: "TIMEOUT" } });
     expect(clock.pendingTimers()).toBe(0);
   });
+
+  it("does not dispatch a request whose caller signal was already cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let called = false;
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore: new PlayerTokenStore(),
+      createUuid: () => UUID,
+      fetchFn: async () => {
+        called = true;
+        return new Response("{}");
+      },
+    });
+
+    await expect(transport.createRoom({ displayName: "玩家甲", config: testConfig }, { signal: controller.signal }))
+      .resolves.toMatchObject({ ok: false, error: { reason: "CANCELLED" } });
+    expect(called).toBe(false);
+  });
+
+  it("keeps external cancellation active until a hanging response body is consumed", async () => {
+    const controller = new AbortController();
+    let resolveBodyStarted!: () => void;
+    const bodyStarted = new Promise<void>((resolve) => { resolveBodyStarted = resolve; });
+    let rejectBody!: (error: Error) => void;
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore: new PlayerTokenStore(),
+      createUuid: () => UUID,
+      fetchFn: async (_input, init) => ({
+        ok: true,
+        status: 200,
+        json: () => new Promise<unknown>((_resolve, reject) => {
+          rejectBody = reject;
+          init?.signal?.addEventListener("abort", () => rejectBody(new Error("aborted")), { once: true });
+          resolveBodyStarted();
+        }),
+      }) as Response,
+    });
+
+    const request = transport.createRoom({ displayName: "玩家甲", config: testConfig }, { signal: controller.signal });
+    await bodyStarted;
+    controller.abort();
+
+    await expect(request).resolves.toMatchObject({ ok: false, error: { reason: "CANCELLED" } });
+  });
 });

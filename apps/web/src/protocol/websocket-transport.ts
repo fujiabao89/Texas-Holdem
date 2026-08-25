@@ -145,6 +145,7 @@ export class WebSocketTransport {
       case "RECONNECT_RESULT":
         this.acceptReconnect(message.payload as ReconnectResult);
         this.recycleAppliedPending();
+        this.retryAttempt = 0;
         this.transition("CONNECTED");
         return;
       case "ROOM_SNAPSHOT":
@@ -153,6 +154,7 @@ export class WebSocketTransport {
       case "GAME_SNAPSHOT":
         this.options.projectionStore.acceptGameSnapshot(message.payload as GameSnapshot);
         this.recycleAppliedPending();
+        this.retryAttempt = 0;
         this.transition("CONNECTED");
         return;
       case "GAME_EVENT": {

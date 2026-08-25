@@ -117,4 +117,17 @@ describe("RoomManager", () => {
     // 创建即持久化为 LOBBY，与内存权威状态一致（不残留 CREATED）
     expect(roomRepository.createdRooms[0]?.initialStatus).toBe("LOBBY");
   });
+
+  it("Host Grace 转让会立即广播新的权威 hostPlayerId", async () => {
+    const { manager } = makeManager();
+    const host = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config: makeConfig() });
+    const joined = await manager.joinRoom({ inviteCode: host.roomSnapshot.inviteCode!, displayName: "Alice", displayNameKey: "alice" });
+    const snapshots: string[] = [];
+    const unsubscribe = manager.subscribe((snapshot) => snapshots.push(snapshot.hostPlayerId ?? ""));
+
+    await manager.transferHost(host.roomId);
+
+    unsubscribe();
+    expect(snapshots).toEqual([joined.playerId]);
+  });
 });

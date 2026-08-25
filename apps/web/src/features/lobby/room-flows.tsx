@@ -4,21 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent, type ReactNode } from "react";
 
-import type { TournamentConfig } from "@texas-holdem/protocol";
+import type { CreateRoomRequest, JoinRoomRequest } from "@texas-holdem/protocol";
 
 import { errorMessage, message } from "../../messages/zh-CN";
 import { useRoomClient } from "./room-client";
-
-const standardConfig: TournamentConfig = {
-  maxPlayers: 6,
-  startingStack: 10_000,
-  smallBlind: 50,
-  bigBlind: 100,
-  blindMode: "time",
-  blindStructure: [{ smallBlind: 50, bigBlind: 100, durationSeconds: 300 }],
-  actionTime: 30,
-  timeBank: 60,
-};
+import { standardConfig } from "./room-presets";
 
 export function CreateRoomFlow() {
   const router = useRouter();
@@ -27,12 +17,26 @@ export function CreateRoomFlow() {
   const [config, setConfig] = useState(standardConfig);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [retry, setRetry] = useState<{ readonly request: CreateRoomRequest; readonly idempotencyKey: string } | null>(null);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setPending(true); setFeedback(null);
-    const result = await http.createRoom({ displayName, config });
-    setPending(false);
-    if (!result.ok) { setFeedback(result.error.reason === "TIMEOUT" ? message("room.errorTimeout") : result.error.reason === "CANCELLED" ? message("room.errorCancelled") : errorMessage(result.error.code)); return; }
+    const request = { displayName, config };
+    let result;
+    try {
+      result = await http.createRoom(request, { idempotencyKey: retry !== null && samePayload(retry.request, request) ? retry.idempotencyKey : undefined });
+    } catch {
+      setFeedback(errorMessage("INVALID_MESSAGE"));
+      return;
+    } finally {
+      setPending(false);
+    }
+    if (!result.ok) {
+      setRetry(result.error.retryable && result.idempotencyKey !== undefined ? { request, idempotencyKey: result.idempotencyKey } : null);
+      setFeedback(result.error.reason === "TIMEOUT" ? message("room.errorTimeout") : result.error.reason === "CANCELLED" ? message("room.errorCancelled") : errorMessage(result.error.code));
+      return;
+    }
+    setRetry(null);
     projection.acceptRoomSnapshot(result.data.data.roomSnapshot);
     router.push(`/room/${result.data.data.roomId}`);
   };
@@ -55,11 +59,25 @@ export function JoinRoomFlow({ initialInviteCode }: { readonly initialInviteCode
   const [displayName, setDisplayName] = useState("");
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [retry, setRetry] = useState<{ readonly request: JoinRoomRequest; readonly idempotencyKey: string } | null>(null);
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setPending(true); setFeedback(null);
-    const result = await http.joinRoom({ inviteCode: inviteCode.toUpperCase(), displayName });
-    setPending(false);
-    if (!result.ok) { setFeedback(result.error.reason === "TIMEOUT" ? message("room.errorTimeout") : result.error.reason === "CANCELLED" ? message("room.errorCancelled") : errorMessage(result.error.code)); return; }
+    const request = { inviteCode: inviteCode.toUpperCase(), displayName };
+    let result;
+    try {
+      result = await http.joinRoom(request, { idempotencyKey: retry !== null && samePayload(retry.request, request) ? retry.idempotencyKey : undefined });
+    } catch {
+      setFeedback(errorMessage("INVALID_MESSAGE"));
+      return;
+    } finally {
+      setPending(false);
+    }
+    if (!result.ok) {
+      setRetry(result.error.retryable && result.idempotencyKey !== undefined ? { request, idempotencyKey: result.idempotencyKey } : null);
+      setFeedback(result.error.reason === "TIMEOUT" ? message("room.errorTimeout") : result.error.reason === "CANCELLED" ? message("room.errorCancelled") : errorMessage(result.error.code));
+      return;
+    }
+    setRetry(null);
     projection.acceptRoomSnapshot(result.data.data.roomSnapshot);
     router.push(`/room/${result.data.data.roomId}`);
   };
@@ -87,6 +105,10 @@ function NumberField({ label, value, min, max, onChange }: { readonly label: str
 }
 function SelectField({ label, value, options, onChange }: { readonly label: string; readonly value: string; readonly options: readonly string[]; readonly onChange: (value: string) => void }) {
   return <label className="grid gap-1 text-sm font-medium">{label}<select className={inputClass} value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+}
+
+function samePayload<T>(previous: T | undefined, current: T): boolean {
+  return previous !== undefined && JSON.stringify(previous) === JSON.stringify(current);
 }
 const inputClass = "rounded-md border border-neutral-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2";
 export const primaryButton = "rounded-md bg-neutral-900 px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2";
