@@ -16,11 +16,13 @@ import { assertInvariants } from "./invariants";
 export class PokerHandEngine {
   private state: GameState;
   private events: PokerEvent[];
+  private eventStates: GameState[];
 
   constructor(config: HandConfig) {
     const result = createInitialState(config);
     this.state = result.state;
     this.events = [...result.events];
+    this.eventStates = [...result.states];
     assertInvariants(this.state); // 构造后自动断言（§17 / §16 运行时检测）
   }
 
@@ -40,6 +42,7 @@ export class PokerHandEngine {
     const result = reduceHand(this.state, action);
     this.state = result.state;
     this.events.push(...result.events);
+    this.eventStates.push(...result.states);
     assertInvariants(this.state); // 每次合法动作后自动断言（§17）
     if (this.state.phase === "hand_end" || this.state.currentActor === null) {
       return null;
@@ -56,6 +59,7 @@ export class PokerHandEngine {
     const result = foldSeatForWithdraw(this.state, seatIndex);
     this.state = result.state;
     this.events.push(...result.events);
+    this.eventStates.push(...result.states);
     assertInvariants(this.state);
     if (this.state.phase === "hand_end" || this.state.currentActor === null) {
       return null;
@@ -71,6 +75,11 @@ export class PokerHandEngine {
   /** 累计事件序列（内部权威流）。 */
   getEvents(): readonly PokerEvent[] {
     return Object.freeze([...this.events]);
+  }
+
+  /** 与 `getEvents()` 一一对应的逐事件手状态快照（逐事件投影，§14）。 */
+  getEventStates(): readonly GameState[] {
+    return Object.freeze([...this.eventStates]);
   }
 
   isComplete(): boolean {

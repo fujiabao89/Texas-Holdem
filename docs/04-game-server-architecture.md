@@ -11,6 +11,15 @@
 
 > **【实现核对 · TEX-19，2026-08-24】** §4 模块布局、§5 Room/Lobby 生命周期（状态机、邀请码、开局条件、配置、Host 转移、Lobby 成员、§5.7 串行执行）、§10 HTTP 入口（校验链、幂等、限流、昵称、日志）已由 `apps/game-server/src/{http,rooms}/**` 落地并经 unit/integration 测试核对。`RoomRepository` 在既有事务边界上扩展了 Lobby 写方法（加入/状态/配置/Host/离开/开局），不新建表或迁移；`TournamentStarter` port 已定义，默认实现仅落库，Hand/Tournament 运行时属 TEX-20。§6–§9、§11–§15（Tournament 运行时、连接管理、Scheduler、投影执行、持久化编排、恢复）仍为设计意图。
 
+> **【实现核对 · TEX-20，2026-08-24】** §6 Tournament 运行时、§7 单桌串行执行器（真队列 + 截止点 look-ahead、receivedAt 仲裁、幂等/sequence、Engine 驱动循环）、§8 Scheduler 与 Timer（行动超时/Time Bank/断线宽限/定时升盲）、§11 状态投影执行、§12 手末 Commit Bundle 构造入口已由 `apps/game-server/src/{tournaments,scheduler,projection}/**` 落地并经 unit 测试核对（见各目录 README）。实现边界与未覆盖项：
+> - **Room 集成**：`createRuntimeTournamentStarter` 在 Room 队列确认开局后创建 Tournament 运行时并注册（§5.7）；终局/无真人经 `TournamentOutputSink.submitRoomCommand` 单向投递 `TOURNAMENT_FINISHED`/`CLOSE_ROOM`（§5.7 单投递规则）。
+> - **计时**：行动超时/Time Bank/断线宽限/定时升盲均以可注入 Clock/`TimerScheduler` 为权威（§8.4）；生产注入单调且近似 epoch 的时钟（`createMonotonicEpochClock`，§7.2 单调裁决）；Timer 携带 generation，执行前复核、过期 no-op（§8.2）。Time Bank 机会标记仅在手/街/座位构成的决策点变化时复位（§8.4「每个行动机会最多一次」）。
+> - **投影**：`PlayerView`/wire `GameEvent`/`PlayerViewPatch` 由 `projection/state-projector.ts` 纯函数生成（字段级隔离，红线 2）；Patch 为**逐事件**全字段新视图——Engine 新增 `getEventStates()`（与事件流平行的每事件后状态快照，§14 逐事件投影），使 `PLAYER_CHECKED` 的 patch 不携带后续 `FLOP_DEALT` 才产生的 board/phase，满足 02 §6.3「得到该事件后的权威视图」。
+> - **持久化入口**：执行器在整手结算后构造 `HandCommitBundle` 交 `TournamentOutputSink.enqueueCommitBundles`；**DB Writer（异步队列/退避/watermark）属 TEX-22**，`main.ts` 暂为空实现。
+> - **手间事件边界**：两手之间的 `PLAYER_WITHDRAWN` 作为下一手 bundle 的前导事件落入同一原子提交（其 sequence 仍在手 N 之后、手 N+1 之前，快照边界「Withdraw 均已应用、下一手 HAND_STARTED 尚未发生」成立）；TEX-22 Writer 需据此验证。
+> - **未覆盖**：连接管理（§9）、事件积压/Fast Forward（§9.5）、心跳（§9.6）、优雅关停完整流程（§13.1，仅实现 `SHUTDOWN` 队列命令）、崩溃恢复（§13，恢复读取路径属 TEX-22）、P1 AI 接入（§14）。`main.ts` 的 `TournamentOutputSink` 事件输出为空实现（TEX-21 连接层订阅）。
+> - **Engine 序列映射**：Engine 内部 sequence 为 0 基；wire/持久化 sequence 由执行器分配为 1 基跨手全局递增（`engineSeq + 1`，02 §7.1），与 03 §7.3 水位线咬合。
+
 ## 1. Purpose
 
 Game Server 是唯一真实状态的宿主（《总规划》§6："规则属于 Engine；唯一真实状态属于 Game Server；客户端只能展示和提交请求"）。它把三份已确认契约组装成可部署的实时服务：
