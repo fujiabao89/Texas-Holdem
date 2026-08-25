@@ -89,9 +89,18 @@ export class WebSocketTransport {
         payload: { roomId, playerToken },
       });
     };
-    socket.onmessage = (event) => this.handleMessage(event.data);
-    socket.onclose = (event) => this.handleClose(event.code);
-    socket.onerror = () => this.transition("CLOSED");
+    socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
+      this.handleMessage(event.data);
+    };
+    socket.onclose = (event) => {
+      if (this.socket !== socket) return;
+      this.handleClose(event.code);
+    };
+    socket.onerror = () => {
+      if (this.socket !== socket) return;
+      this.transition("CLOSED");
+    };
   }
 
   disconnect(clearPending = true, preserveSession = false): void {
