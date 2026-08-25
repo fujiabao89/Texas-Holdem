@@ -125,7 +125,7 @@ describe("LobbyGateway", () => {
     expect(manager.getSnapshot(session.roomId)?.players[0]?.ready).toBe(false);
   });
 
-  it("does not let an authentication timeout take over after a queued connection update", async () => {
+  it("does not let a timed-out authentication take over or leave a phantom connection", async () => {
     const clock = createFakeClock();
     const ids = fakeIds(clock);
     const manager = createRoomManager({
@@ -167,6 +167,21 @@ describe("LobbyGateway", () => {
     expect(timedOut.pings).toBe(0);
     expect(active.readyState).toBe(active.OPEN);
     expect(active.sent.some((message) => (message as { type: string }).type === "SESSION_REPLACED")).toBe(false);
+
+    active.close();
+    await flush();
+    expect(manager.getSnapshot(session.roomId)?.players[0]?.connectionStatus).toBe("DISCONNECTED");
+
+    const orphaned = new FakeSocket();
+    handler(orphaned);
+    authenticate(orphaned, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000006");
+    await flush();
+    clock.advance(5_000);
+    releaseConnectionUpdate();
+    await flush();
+
+    expect(orphaned.closeCodes).toContain(4003);
+    expect(manager.getSnapshot(session.roomId)?.players[0]?.connectionStatus).toBe("DISCONNECTED");
   });
 
   it("uses requestId plus the complete payload to replay a Lobby mutation", async () => {
