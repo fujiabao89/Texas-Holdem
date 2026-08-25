@@ -271,7 +271,6 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
                 reason: "USER_LEFT",
                 leftAt: options.now(),
                 afterTournamentWithdrawal: true,
-                connectionEpoch: epoch,
               });
             } else {
               await manager.submitCommand(roomId as string, { type: "LEAVE", playerId: playerId as string, reason: "USER_LEFT", leftAt: options.now(), connectionEpoch: epoch });

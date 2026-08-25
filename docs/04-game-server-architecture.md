@@ -358,7 +358,7 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 ### 9.2 单活跃连接与多设备接管
 
 - 同一 `playerToken` 同时只允许**一个活跃控制连接**。Gateway 会先保留新 `connectionEpoch` 与活跃映射，再异步提交 `CONNECTED`/Runtime 重连；因此旧 Socket 在这两个提交之间关闭时已不是 current，不得把陈旧 `DISCONNECTED` 排到新连接之后。认证超时或失败会撤销该保留；若被替换 Socket 仍打开则恢复其映射并重新上报 `CONNECTED`，否则保持断线。只有认证完成并发送 Snapshot 屏障后才将旧连接标为 `REPLACED`（[02](./02-protocol-spec.md) §10）。
-- 每条 HUMAN_SOCKET 命令在入口携带内部的 `connectionId + connectionEpoch`（不是 wire 字段）；在 Room 与 Tournament 队列真正取得执行权时再次校验。接管完成后，所有尚未提交的旧 epoch Ready、离开、Action 与 Time Bank 均拒绝，不得因早已排队而在新设备取得控制权后生效。
+- 每条 HUMAN_SOCKET 命令在入口携带内部的 `connectionId + connectionEpoch`（不是 wire 字段）；在 Room 与 Tournament 队列真正取得执行权时再次校验。比赛中离开先在 Tournament 队列校验并确认撤回，随后不带 epoch 的 Room 收尾只完成该已确认撤回的成员/Token 清理。接管完成后，所有尚未提交的旧 epoch Ready、离开、Action 与 Time Bank 均拒绝，不得因早已排队而在新设备取得控制权后生效。
 - 服务端尽力向旧连接发送 `SESSION_REPLACED`，随后以 WS Close Code `4001` 关闭。即使通知或 Close 帧丢失，epoch 校验仍保证旧连接不能控制 Seat；新连接只在 epoch 提升与 Snapshot 屏障完成后接收成功结果。
 
 ### 9.3 断线
