@@ -190,8 +190,13 @@ export class TournamentExecutor {
         this.state.stopAfterCurrentHand = true;
         return null;
       case "PAUSE_AFTER_HAND":
-        // 背压暂停：当前手结束后停在手间边界；恢复则继续（docs/04 §12.2）。
-        this.state.stopAfterCurrentHand = command.paused;
+        // 背压暂停：当前手结束后停在手间边界（docs/04 §12.2）。恢复（paused=false）时仅
+        // 在已停在边界（无进行中手）时推进下一手——mid-hand 不打断当前行动；与
+        // stopAfterCurrentHand（优雅关停/完整性隔离）互不影响，恢复不解除 SHUTDOWN。
+        this.state.backpressurePaused = command.paused;
+        if (!command.paused && !this.state.engine.getState().handInProgress) {
+          this.afterEngineTransition();
+        }
         return null;
     }
   }
@@ -228,7 +233,8 @@ export class TournamentExecutor {
       if (engineState.handNumber > this.state.committedThroughHand) {
         this.commitCurrentHand(engineState);
       }
-      if (this.state.stopAfterCurrentHand) return;
+      // stopAfterCurrentHand（优雅关停/完整性隔离，不可恢复）或 backpressurePaused（背压，可恢复）都停在此边界。
+      if (this.state.stopAfterCurrentHand || this.state.backpressurePaused) return;
       this.state.currentHandId = this.state.ids.uuid();
       this.state.currentHandStartedAt = this.state.clock();
       try {

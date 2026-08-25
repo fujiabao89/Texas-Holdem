@@ -74,6 +74,7 @@ describeTestDatabase("recovery repository: 读取与向前退回", (context) => 
     handNumber: number;
     firstSequence: bigint;
     eventCount: number;
+    playerUpdates?: HandCommitBundle["playerUpdates"];
   }): HandCommitBundle {
     const events = Array.from({ length: input.eventCount }, (_, i) => ({
       sequence: input.firstSequence + BigInt(i),
@@ -110,7 +111,7 @@ describeTestDatabase("recovery repository: 读取与向前退回", (context) => 
         stateChecksum: sha256Checksum({ handNumber: input.handNumber }),
         commitChecksum: sha256Checksum({ handId: input.handId, snapshotSequence }),
       },
-      playerUpdates: [],
+      playerUpdates: input.playerUpdates ?? [],
     };
   }
 
@@ -235,6 +236,67 @@ describeTestDatabase("recovery repository: 读取与向前退回", (context) => 
       .where(eq(tournamentPlayers.id, fixture.participantId));
     expect(player!.pokerStatus).toBe("ACTIVE");
     expect(player!.finalStack).toBe(900n);
+    expect(player!.rank).toBeNull();
+  });
+
+  it("回退区域含淘汰：先清 tournament_players 引用再删手，不违反 eliminated_hand FK（P1-1）", async () => {
+    const fixture = await createTournamentFixture("RecD");
+    const commit = createHandCommitRepository(testDb!.database);
+    const repo = createRecoveryRepository(testDb!.database);
+    const hand1Id = randomUUID();
+    const hand2Id = randomUUID();
+    await commit.commitHandBundle(
+      buildBundle({
+        tournamentId: fixture.tournamentId,
+        handId: hand1Id,
+        handNumber: 1,
+        firstSequence: 1n,
+        eventCount: 3,
+      }),
+    );
+    // 手 2 造成淘汰：participant 的 eliminated_hand_id 指向手 2（回退区域内的待删手）。
+    await commit.commitHandBundle(
+      buildBundle({
+        tournamentId: fixture.tournamentId,
+        handId: hand2Id,
+        handNumber: 2,
+        firstSequence: 4n,
+        eventCount: 2,
+        playerUpdates: [
+          {
+            tournamentPlayerId: fixture.participantId,
+            pokerStatus: "ELIMINATED",
+            finalStack: 0n,
+            forfeitedChips: 0n,
+            rank: 2,
+            eliminatedHandId: hand2Id,
+          },
+        ],
+      }),
+    );
+
+    // 回退到手 1 末：参与者恢复到 ACTIVE/满筹码。
+    await expect(
+      repo.rollbackToSnapshot(fixture.tournamentId, 3n, [
+        { seatIndex: 0, status: "ACTIVE", chips: 1000, rank: null },
+      ]),
+    ).resolves.toBeUndefined(); // 不得因 FK 违例整体回滚
+
+    const remainingHands = await testDb!.database.db
+      .select({ id: hands.id })
+      .from(hands)
+      .where(eq(hands.tournamentId, fixture.tournamentId));
+    expect(remainingHands.map((h) => h.id)).toEqual([hand1Id]); // 手 2 已删除
+    const [player] = await testDb!.database.db
+      .select({
+        pokerStatus: tournamentPlayers.pokerStatus,
+        eliminatedHandId: tournamentPlayers.eliminatedHandId,
+        rank: tournamentPlayers.rank,
+      })
+      .from(tournamentPlayers)
+      .where(eq(tournamentPlayers.id, fixture.participantId));
+    expect(player!.pokerStatus).toBe("ACTIVE");
+    expect(player!.eliminatedHandId).toBeNull(); // 引用已清空
     expect(player!.rank).toBeNull();
   });
 });

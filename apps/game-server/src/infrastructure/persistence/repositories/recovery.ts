@@ -1,5 +1,5 @@
 import { and, count, desc, eq, gte, inArray, lte } from "drizzle-orm";
-import type { Database } from "../database";
+import type { Database, GameTransaction } from "../database";
 import { gameSnapshots, handEvents, hands, tournaments, tournamentPlayers } from "../schema";
 import { PersistenceError } from "./errors";
 
@@ -160,7 +160,16 @@ export function createRecoveryRepository(database: Database): RecoveryRepository
     tournamentId: string,
     toSequence: bigint,
   ): Promise<Map<number, bigint>> {
-    const rows = await database.db
+    return queryWithdrawnForfeited(database.db, tournamentId, toSequence);
+  }
+
+  /** 查询保留区域内 PLAYER_WITHDRAWN 的 forfeitedChips（可传事务连接，读取在回退事务快照内）。 */
+  async function queryWithdrawnForfeited(
+    q: Pick<GameTransaction, "select">,
+    tournamentId: string,
+    toSequence: bigint,
+  ): Promise<Map<number, bigint>> {
+    const rows = await q
       .select({ payload: handEvents.payload })
       .from(handEvents)
       .where(
@@ -195,27 +204,11 @@ export function createRecoveryRepository(database: Database): RecoveryRepository
         );
       const handIds = doomedHands.map((r) => r.handId);
 
-      await tx
-        .delete(gameSnapshots)
-        .where(
-          and(
-            eq(gameSnapshots.tournamentId, tournamentId),
-            gte(gameSnapshots.sequence, toSequence + 1n),
-          ),
-        );
-      await tx
-        .delete(handEvents)
-        .where(
-          and(eq(handEvents.tournamentId, tournamentId), gte(handEvents.sequence, toSequence + 1n)),
-        );
-      if (handIds.length > 0) {
-        await tx
-          .delete(hands)
-          .where(and(eq(hands.tournamentId, tournamentId), inArray(hands.id, handIds)));
-      }
-
-      // 按快照引擎参与者重置 tournament_players（id + tournament_id 精确匹配，跨赛不可达）。
-      const forfeitedBySeat = await listWithdrawnForfeited(tournamentId, toSequence);
+      // 按快照引擎参与者重置 tournament_players（pokerStatus/finalStack/rank/forfeitedChips；
+      // eliminatedHandId 清空）——**必须先于 DELETE hands**：`tournament_players_eliminated_hand_fk`
+      // 为 ON DELETE RESTRICT（0000_init.sql），回退区域内被淘汰玩家的行仍指向待删手，
+      // 若先删手会立即违反外键并整体回滚（P1-1）。
+      const forfeitedBySeat = await queryWithdrawnForfeited(tx, tournamentId, toSequence);
       for (const participant of participants) {
         const withdrawnForfeited = forfeitedBySeat.get(participant.seatIndex) ?? 0n;
         const updated = await tx
@@ -240,6 +233,37 @@ export function createRecoveryRepository(database: Database): RecoveryRepository
             `recovery rollback: tournament_players row not found for seat ${participant.seatIndex} in ${tournamentId}`,
           );
         }
+      }
+      // 防御性兜底：快照参与者之外的任何行若仍引用待删手，一并清空引用（防孤立 FK）。
+      if (handIds.length > 0) {
+        await tx
+          .update(tournamentPlayers)
+          .set({ eliminatedHandId: null, updatedAt: new Date() })
+          .where(
+            and(
+              eq(tournamentPlayers.tournamentId, tournamentId),
+              inArray(tournamentPlayers.eliminatedHandId, handIds),
+            ),
+          );
+      }
+
+      await tx
+        .delete(gameSnapshots)
+        .where(
+          and(
+            eq(gameSnapshots.tournamentId, tournamentId),
+            gte(gameSnapshots.sequence, toSequence + 1n),
+          ),
+        );
+      await tx
+        .delete(handEvents)
+        .where(
+          and(eq(handEvents.tournamentId, tournamentId), gte(handEvents.sequence, toSequence + 1n)),
+        );
+      if (handIds.length > 0) {
+        await tx
+          .delete(hands)
+          .where(and(eq(hands.tournamentId, tournamentId), inArray(hands.id, handIds)));
       }
 
       await tx

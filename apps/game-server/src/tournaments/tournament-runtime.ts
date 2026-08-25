@@ -74,7 +74,10 @@ export interface TournamentRuntimeState {
    */
   engineEventBase: number;
   currentLegalActions: LegalActions | null;
+  /** 优雅关停 / 完整性隔离：当前手结束后停止，不再恢复（§13.1；§13 隔离）。 */
   stopAfterCurrentHand: boolean;
+  /** 背压暂停（hard watermark，§12.2）：当前手结束后停在手间边界；回落 soft/ok 可恢复推进。 */
+  backpressurePaused: boolean;
   /** Engine Critical Error 诊断（§7.4 冻结）；非冻结为 null。 */
   criticalDiagnostic: string | null;
   /** 幂等账本：`playerId:request:requestId` / `playerId:action:actionId` → Payload 摘要 + 结果（§7.3）。 */
@@ -216,6 +219,7 @@ function buildRuntimeState(
     engineEventBase: wire.engineEventBase,
     currentLegalActions: null,
     stopAfterCurrentHand: false,
+    backpressurePaused: false,
     criticalDiagnostic: null,
     idempotency: new Map(),
   };

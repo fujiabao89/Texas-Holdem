@@ -629,3 +629,49 @@ async function playHandToCompletion(harness: Harness): Promise<void> {
     if (result.status === "REJECTED") return; // 动作非法 → 停止推进（不应发生）
   }
 }
+
+describe("PAUSE_AFTER_HAND 背压暂停/恢复（§12.2）", () => {
+  it("hard 暂停：当前手结算并停在手间边界，不自动推进下一手", async () => {
+    const h = makeHarness();
+    await start(h);
+    await h.executor.submit({ type: "PAUSE_AFTER_HAND", paused: true });
+    await playHandToCompletion(h);
+    expect(h.output.bundles).toHaveLength(1); // 当前手已提交
+    expect(h.executor.getView().engineState.handNumber).toBe(1); // 停在手间边界
+    expect(h.executor.getView().engineState.handInProgress).toBe(false);
+  });
+
+  it("回落 ok 恢复：PAUSE_AFTER_HAND(false) 推进执行器开始下一手", async () => {
+    const h = makeHarness();
+    await start(h);
+    await h.executor.submit({ type: "PAUSE_AFTER_HAND", paused: true });
+    await playHandToCompletion(h);
+    expect(h.executor.getView().engineState.handNumber).toBe(1);
+
+    await h.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false });
+    expect(h.executor.getView().engineState.handNumber).toBe(2); // 恢复推进
+    expect(h.executor.getView().engineState.handInProgress).toBe(true);
+  });
+
+  it("PAUSE_AFTER_HAND(false) 不解除 SHUTDOWN 隔离（stopAfterCurrentHand 独立）", async () => {
+    const h = makeHarness();
+    await start(h);
+    await h.executor.submit({ type: "SHUTDOWN" });
+    await h.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false });
+    await playHandToCompletion(h);
+    expect(h.output.bundles).toHaveLength(1);
+    // SHUTDOWN 隔离仍在：当前手结算后停住，不被背压恢复解除。
+    expect(h.executor.getView().engineState.handNumber).toBe(1);
+    expect(h.executor.getView().engineState.handInProgress).toBe(false);
+  });
+
+  it("mid-hand 恢复不打断当前行动（不重置行动截止线）", async () => {
+    const h = makeHarness();
+    await start(h);
+    const deadlineBefore = h.executor.getView().actionDeadline;
+    // 手进行中收到恢复命令：不应清掉行动 timer / 改变截止线。
+    await h.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false });
+    expect(h.executor.getView().actionDeadline).toBe(deadlineBefore);
+    expect(h.executor.getView().engineState.handInProgress).toBe(true);
+  });
+});

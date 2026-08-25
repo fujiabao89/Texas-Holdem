@@ -177,6 +177,11 @@ async function shutdown(signal: string): Promise<void> {
     await tournamentManager.pauseAll(true); // 所有 Tournament 停当前手后
     await waitForHandDrain(90_000); // §13.1 step 3：当前手最多 90 秒
     await writer.flush(30_000); // §13.1 step 4：Writer 最多 Flush 30 秒
+    // §13.1 step 4「记录未提交 Bundle 数量后退出」：flush 超时后剩余为未提交。
+    const uncommitted = writer.pendingCount();
+    if (uncommitted > 0) {
+      console.error(`shutdown: ${uncommitted} commit bundle(s) not flushed; they are not recovery roots`);
+    }
     await app.close();
     await database.end();
   } finally {
