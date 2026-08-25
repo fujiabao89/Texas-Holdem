@@ -18,3 +18,12 @@ export const standardConfig: TournamentConfig = {
   actionTime: 30,
   timeBank: 60,
 };
+
+/** 保留标准盲注表其余级别，仅同步 UI 可编辑的首级盲注。 */
+export function updateInitialBlind(config: TournamentConfig, blind: Partial<Pick<TournamentConfig, "smallBlind" | "bigBlind">>): TournamentConfig {
+  return {
+    ...config,
+    ...blind,
+    blindStructure: config.blindStructure.map((level, index) => index === 0 ? { ...level, ...blind } : level),
+  };
+}

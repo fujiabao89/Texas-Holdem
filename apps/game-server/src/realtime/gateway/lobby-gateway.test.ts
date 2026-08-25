@@ -4,7 +4,7 @@ import type { TournamentConfig } from "@texas-holdem/protocol";
 
 import { IdempotencyStore } from "../../http/middleware/idempotency";
 import type { IdSource } from "../../rooms/id-source";
-import { createRoomManager } from "../../rooms/room-manager";
+import { createRoomManager, type RoomManager } from "../../rooms/room-manager";
 import { fakePersistence, fakeRoomRepository } from "../../rooms/test-support";
 import { createFakeClock } from "../../../../../tests/support/fake-clock";
 import { registerLobbyGateway } from "./lobby-gateway";
@@ -123,6 +123,50 @@ describe("LobbyGateway", () => {
     first.receive({ type: "SET_READY", requestId: "00000000-0000-4000-8000-000000000003", payload: { ready: true } });
     await flush();
     expect(manager.getSnapshot(session.roomId)?.players[0]?.ready).toBe(false);
+  });
+
+  it("does not let an authentication timeout take over after a queued connection update", async () => {
+    const clock = createFakeClock();
+    const ids = fakeIds(clock);
+    const manager = createRoomManager({
+      persistence: fakePersistence(), roomRepository: fakeRoomRepository(), ids, tokenSecret: "test-secret", tokenKeyId: "k1",
+    });
+    let blockConnectionUpdate = false;
+    let releaseConnectionUpdate!: () => void;
+    const delayedManager: RoomManager = {
+      ...manager,
+      submitCommand(roomId, command) {
+        if (blockConnectionUpdate && command.type === "SET_CONNECTION_STATUS" && command.connectionStatus === "CONNECTED") {
+          return new Promise((resolve, reject) => {
+            releaseConnectionUpdate = () => { void manager.submitCommand(roomId, command).then(resolve, reject); };
+          });
+        }
+        return manager.submitCommand(roomId, command);
+      },
+    };
+    let handler!: (socket: FakeSocket) => void;
+    const app = { get(_path: string, _options: unknown, route: unknown) { handler = route as (socket: FakeSocket) => void; } } as unknown as FastifyInstance;
+    registerLobbyGateway(app, delayedManager, { now: clock.now, ids, idempotency: new IdempotencyStore(), clock });
+    const session = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config });
+    const active = new FakeSocket();
+    handler(active);
+    authenticate(active, session.roomId, session.playerToken);
+    await flush();
+
+    blockConnectionUpdate = true;
+    const timedOut = new FakeSocket();
+    handler(timedOut);
+    authenticate(timedOut, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000005");
+    await flush();
+    clock.advance(5_000);
+    releaseConnectionUpdate();
+    await flush();
+    clock.advance(15_000);
+
+    expect(timedOut.closeCodes).toContain(4003);
+    expect(timedOut.pings).toBe(0);
+    expect(active.readyState).toBe(active.OPEN);
+    expect(active.sent.some((message) => (message as { type: string }).type === "SESSION_REPLACED")).toBe(false);
   });
 
   it("uses requestId plus the complete payload to replay a Lobby mutation", async () => {

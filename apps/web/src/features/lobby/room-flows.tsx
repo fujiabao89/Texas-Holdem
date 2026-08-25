@@ -8,7 +8,7 @@ import type { CreateRoomRequest, JoinRoomRequest } from "@texas-holdem/protocol"
 
 import { errorMessage, message } from "../../messages/zh-CN";
 import { useRoomClient } from "./room-client";
-import { standardConfig } from "./room-presets";
+import { standardConfig, updateInitialBlind } from "./room-presets";
 
 export function CreateRoomFlow() {
   const router = useRouter();
@@ -44,8 +44,8 @@ export function CreateRoomFlow() {
     <TextField label={message("room.displayName")} value={displayName} onChange={setDisplayName} autoFocus />
     <NumberField label={message("room.maxPlayers")} value={config.maxPlayers} min={2} max={10} onChange={(maxPlayers) => setConfig((current) => ({ ...current, maxPlayers }))} />
     <NumberField label={message("room.startingStack")} value={config.startingStack} min={1} onChange={(startingStack) => setConfig((current) => ({ ...current, startingStack }))} />
-    <NumberField label={message("room.smallBlind")} value={config.smallBlind} min={1} onChange={(smallBlind) => setConfig((current) => ({ ...current, smallBlind, blindStructure: [{ ...current.blindStructure[0]!, smallBlind }] }))} />
-    <NumberField label={message("room.bigBlind")} value={config.bigBlind} min={2} onChange={(bigBlind) => setConfig((current) => ({ ...current, bigBlind, blindStructure: [{ ...current.blindStructure[0]!, bigBlind }] }))} />
+    <NumberField label={message("room.smallBlind")} value={config.smallBlind} min={1} onChange={(smallBlind) => setConfig((current) => updateInitialBlind(current, { smallBlind }))} />
+    <NumberField label={message("room.bigBlind")} value={config.bigBlind} min={2} onChange={(bigBlind) => setConfig((current) => updateInitialBlind(current, { bigBlind }))} />
     <SelectField label={message("room.actionTime")} value={String(config.actionTime)} onChange={(value) => setConfig((current) => ({ ...current, actionTime: value === "UNLIMITED" ? "UNLIMITED" : Number(value) as 15 | 20 | 30 | 45 | 60, timeBank: value === "UNLIMITED" ? 0 : current.timeBank }))} options={["15", "20", "30", "45", "60", "UNLIMITED"]} />
     {config.actionTime !== "UNLIMITED" && <SelectField label={message("room.timeBank")} value={String(config.timeBank)} onChange={(value) => setConfig((current) => ({ ...current, timeBank: Number(value) as 0 | 30 | 60 | 120 }))} options={["0", "30", "60", "120"]} />}
     <button className={primaryButton} disabled={pending} type="submit">{pending ? message("room.operationPending") : message("room.submitCreate")}</button>

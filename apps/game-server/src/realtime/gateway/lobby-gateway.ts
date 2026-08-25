@@ -175,6 +175,8 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
           roomId = command.payload.roomId;
           playerId = manager.authenticate(roomId, command.payload.playerToken);
           await manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "CONNECTED" });
+          // The authentication timeout can close this socket while the room queue is busy.
+          if (socket.readyState !== socket.OPEN) return;
           const roomSnapshot = manager.getSnapshot(roomId);
           if (roomSnapshot === undefined) throw new RoomDomainError("ROOM_NOT_FOUND");
 

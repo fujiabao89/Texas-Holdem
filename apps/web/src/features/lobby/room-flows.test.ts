@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { standardConfig } from "./room-presets";
+import { standardConfig, updateInitialBlind } from "./room-presets";
 
 describe("standard lobby preset", () => {
   it("uses the documented 5-minute blind schedule instead of a single permanent level", () => {
@@ -13,5 +13,13 @@ describe("standard lobby preset", () => {
       [10_000, 20_000], [15_000, 30_000],
     ]);
     expect(standardConfig.blindStructure.every((level) => level.durationSeconds === 300)).toBe(true);
+  });
+
+  it("keeps later blind levels when the first-level blinds are edited", () => {
+    const edited = updateInitialBlind(standardConfig, { smallBlind: 75, bigBlind: 150 });
+
+    expect(edited.blindStructure).toHaveLength(17);
+    expect(edited.blindStructure[0]).toMatchObject({ smallBlind: 75, bigBlind: 150, durationSeconds: 300 });
+    expect(edited.blindStructure.slice(1)).toEqual(standardConfig.blindStructure.slice(1));
   });
 });

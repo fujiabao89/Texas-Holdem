@@ -7,6 +7,7 @@ import type { RoomSnapshot, TournamentConfig } from "@texas-holdem/protocol";
 import { errorMessage, message } from "../../messages/zh-CN";
 import { primaryButton } from "./room-flows";
 import { useLobbyConnection, useRoomClient, useRoomSnapshot } from "./room-client";
+import { updateInitialBlind } from "./room-presets";
 
 export function LobbyPage({ roomId }: { readonly roomId: string }) {
   const { http, projection, tokens, websocket, connectionState } = useRoomClient();
@@ -66,8 +67,8 @@ function HostConfigEditor({ room, onSave, disabled }: { readonly room: RoomSnaps
   return <form className="grid grid-cols-2 gap-2" onSubmit={submit}>
     <label className="grid gap-1 text-sm">{message("room.maxPlayers")}<input className="rounded border px-2 py-1" type="number" min={2} max={10} value={config.maxPlayers} onChange={(event) => setConfig((value) => ({ ...value, maxPlayers: Number(event.target.value) }))} /></label>
     <label className="grid gap-1 text-sm">{message("room.startingStack")}<input className="rounded border px-2 py-1" type="number" min={1} value={config.startingStack} onChange={(event) => setConfig((value) => ({ ...value, startingStack: Number(event.target.value) }))} /></label>
-    <label className="grid gap-1 text-sm">{message("room.smallBlind")}<input className="rounded border px-2 py-1" type="number" min={1} value={config.smallBlind} onChange={(event) => setConfig((value) => ({ ...value, smallBlind: Number(event.target.value), blindStructure: [{ ...value.blindStructure[0]!, smallBlind: Number(event.target.value) }] }))} /></label>
-    <label className="grid gap-1 text-sm">{message("room.bigBlind")}<input className="rounded border px-2 py-1" type="number" min={2} value={config.bigBlind} onChange={(event) => setConfig((value) => ({ ...value, bigBlind: Number(event.target.value), blindStructure: [{ ...value.blindStructure[0]!, bigBlind: Number(event.target.value) }] }))} /></label>
+    <label className="grid gap-1 text-sm">{message("room.smallBlind")}<input className="rounded border px-2 py-1" type="number" min={1} value={config.smallBlind} onChange={(event) => setConfig((value) => updateInitialBlind(value, { smallBlind: Number(event.target.value) }))} /></label>
+    <label className="grid gap-1 text-sm">{message("room.bigBlind")}<input className="rounded border px-2 py-1" type="number" min={2} value={config.bigBlind} onChange={(event) => setConfig((value) => updateInitialBlind(value, { bigBlind: Number(event.target.value) }))} /></label>
     <button className="col-span-2 rounded border px-3 py-2" disabled={disabled} type="submit">{message("room.saveConfig")}</button>
   </form>;
 }
