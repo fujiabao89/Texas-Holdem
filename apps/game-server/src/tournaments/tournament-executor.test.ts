@@ -514,6 +514,25 @@ describe("事件 sequence 与 Commit Bundle", () => {
     expect(flop!.payload.patch.board).toHaveLength(3);
   });
 
+  it("同街动作：PLAYER_CALLED 的 patch 指向下一位行动者并给其 legalActions（P1 回归）", async () => {
+    const harness = makeHarness();
+    await start(harness);
+    const sb = currentActor(harness)!; // p0（SB）
+    const before = harness.output.events.length;
+    // SB CALL → 同街推进到 BB（不换街、无后续发牌事件）
+    await submitAction(harness, { playerId: sb, action: call() });
+    const bb = currentActor(harness)!; // 下一位行动者
+    expect(bb).not.toBe(sb);
+    const newEvents = harness.output.events.slice(before);
+    const calledMsg = newEvents.find(
+      (m) => m.payload.event.type === "PLAYER_CALLED" && m.payload.patch.viewer?.playerId === bb,
+    );
+    expect(calledMsg).toBeDefined();
+    // patch 的 currentActorPlayerId 指向下一位行动者，且其 legalActions 非空
+    expect(calledMsg!.payload.patch.currentActorPlayerId).toBe(bb);
+    expect(calledMsg!.payload.patch.viewer?.legalActions).not.toBeNull();
+  });
+
   it("非授权 Payload 不含其他玩家底牌（字段级隔离）", async () => {
     const harness = makeHarness();
     await start(harness);

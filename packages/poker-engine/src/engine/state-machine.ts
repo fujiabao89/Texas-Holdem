@@ -372,9 +372,14 @@ export function reduceHand(state: GameState, action: PlayerAction): HandResult {
     nextSequence: seq.value,
   });
 
-  // 动作本身事件（switch 内恰发射 1 条）的状态 = next（动作已应用、自动发牌未发生）。
+  // 动作本身事件（switch 内恰发射 1 条）的状态占位 = next（动作已应用、自动发牌未发生）。
   states.push(next);
   const result = advanceAfterAction(next, emit, states);
+  // 若未产生后续事件（同街推进到下一行动者），把动作事件快照更新为「动作已应用且下一行动者已确定」的状态，
+  // 使 patch 的 currentActorPlayerId / legalActions 指向真正的下一位行动者（02 §6.3 逐事件权威视图）。
+  if (states.length === 1) {
+    states[0] = Object.freeze({ ...result, nextSequence: seq.value });
+  }
   // 回写自动推进（BURN/deal/showdown/award 等）产生的最终 sequence 游标，保证事件序号唯一且单调（§14/§16）。
   return {
     state: Object.freeze({ ...result, nextSequence: seq.value }),
@@ -418,8 +423,12 @@ export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandRe
     seats: freezeSeats(seats),
     nextSequence: seq.value,
   });
-  states.push(next); // 撤回折叠事件的状态 = next（折叠已应用）
+  states.push(next); // 撤回折叠事件的状态占位 = next（折叠已应用）
   const result = advanceAfterAction(next, emit, states);
+  // 同街推进到下一行动者时，把折叠事件快照更新为「下一行动者已确定」的状态。
+  if (states.length === 1) {
+    states[0] = Object.freeze({ ...result, nextSequence: seq.value });
+  }
   const previousActor = state.currentActor;
   const actorStillPending =
     previousActor !== seatIndex &&
