@@ -1,9 +1,11 @@
 # 工程文档总索引
 
 > 状态：草稿
-> 更新：2026-08-24
+> 更新：2026-08-25
 
 本目录是工程文档的唯一入口。规范：**一个事实只有一个权威来源**，其他文档链接引用而不是重写；产品层文档（规划书）留在仓库根目录，在本索引链接并标注"产品意图，非实现事实"。
+
+> **2026-08-25 增量核对（TEX-21）**：既有 WebSocket Gateway/Transport 已接入 v1 首帧认证、Room/Game 权威 Snapshot、Tournament Runtime 事件扇出、15/45 心跳、同玩家接管 epoch、Token 恢复与客户端有序重同步。牌桌 UI/动画/音效/赛果/历史仍待 TEX-25+；Writer 与崩溃恢复读取仍待 TEX-22。下方 2026-08-24 段落为历史核对记录，其“Tournament 运行时未实现”的表述已由 TEX-20/TEX-21 更新。
 
 > 项目现状（2026-08-24 核对）：TEX-11 已建立 pnpm monorepo 工程地基——`apps/web` 与 `apps/game-server` 可安装、可 lint / typecheck / build / test（见 [docs/03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md)）；TEX-13 已实现扑克规则中的 `cards/` 子域（标准 52 张牌堆、随机源、七选五 Hand Evaluator，见 [01-engine-spec.md](./01-engine-spec.md) §7/§10/§15/§17）；TEX-14 已实现下注 / Pot / 手状态机；TEX-15 已实现 Tournament（淘汰 / 排名 / 冠军 / 撤回）、锦标赛级 Game Events 与 timer/；TEX-17 已实现协议包的严格 Schema、推导类型、消息/错误信封及纯投影；TEX-18 已实现持久化层（Drizzle Schema、版本化迁移、最小权限与控制面/手末 Commit Bundle 仓储，含真实 PostgreSQL 集成测试，见 [03-data-model.md](./03-data-model.md) §5/§15 与 `apps/game-server/src/infrastructure/persistence/`）；TEX-23 已实现 Web 路由壳、中文文案、客户端投影状态和 HTTP/WS Transport 基础（不含业务页面）；TEX-16 已落地 Headless Simulator 长跑（加权场景、不变量断言、Watchdog、Smoke/Nightly/RC 三档与失败产物，见 [06-testing-strategy.md](./06-testing-strategy.md) §5 与 `tests/simulator/`）。服务端 Room/Lobby 低频 HTTP 运行时（TEX-19：Room/Lobby 状态机、串行执行器与 HTTP 入口）已实现；Tournament 运行时与前端业务逻辑仍未实现。本文档体系内的工程规格（01–06）中，01 的 `cards/`、下注 / Pot / 状态机、Tournament、Game Events 与 timer，02 的 Schema/投影契约，03 的表结构与仓储部分，05 的 §4/§5、§14.1、§15 与 §17 中与 TEX-23 基础边界对应的部分，以及 06 的 Simulator（§5 与 §11 Simulator CI）已实现；04 的 §4/§5/§10 已实现（TEX-19）；其余章节仍为**设计意图**。
 

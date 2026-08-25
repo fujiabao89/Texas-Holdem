@@ -123,6 +123,10 @@ describe("LobbyGateway", () => {
     first.receive({ type: "SET_READY", requestId: "00000000-0000-4000-8000-000000000003", payload: { ready: true } });
     await flush();
     expect(manager.getSnapshot(session.roomId)?.players[0]?.ready).toBe(false);
+
+    first.receive({ type: "LEAVE_ROOM", requestId: "00000000-0000-4000-8000-000000000009", payload: {} });
+    await flush();
+    expect(manager.getSnapshot(session.roomId)?.players).toHaveLength(1);
   });
 
   it("does not let a timed-out authentication take over or leave a phantom connection", async () => {
@@ -260,5 +264,29 @@ describe("LobbyGateway", () => {
 
     expect(socket.terminated).toBe(true);
     expect(manager.getSnapshot(session.roomId)?.players[0]?.connectionStatus).toBe("DISCONNECTED");
+  });
+
+  it("rejects protocol/version/token failures and enforces the first-frame deadline", async () => {
+    const { clock, manager, handler } = setup();
+    const session = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config });
+
+    const timedOut = new FakeSocket();
+    handler(timedOut);
+    clock.advance(5_000);
+    expect(timedOut.closeCodes).toContain(4003);
+
+    const incompatible = new FakeSocket();
+    handler(incompatible);
+    incompatible.receive({ type: "AUTHENTICATE", protocolVersion: 2, requestId: "00000000-0000-4000-8000-000000000010", payload: { roomId: session.roomId, playerToken: session.playerToken } });
+    await flush();
+    expect(incompatible.sent).toContainEqual(expect.objectContaining({ type: "ERROR", payload: expect.objectContaining({ code: "UNSUPPORTED_PROTOCOL_VERSION" }) }));
+    expect(incompatible.closeCodes).toContain(4000);
+
+    const invalidToken = new FakeSocket();
+    handler(invalidToken);
+    authenticate(invalidToken, session.roomId, "z".repeat(43), "00000000-0000-4000-8000-000000000011");
+    await flush();
+    expect(invalidToken.sent).toContainEqual(expect.objectContaining({ type: "ERROR", payload: expect.objectContaining({ code: "AUTH_FAILED" }) }));
+    expect(invalidToken.closeCodes).toContain(4003);
   });
 });

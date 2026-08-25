@@ -78,6 +78,8 @@ export interface TournamentOutputSink {
 
 export interface TournamentExecutorDeps {
   readonly output: TournamentOutputSink;
+  /** Optional transport authority check. Internal timers and tests do not need it. */
+  readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
 }
 
 interface QueueItem {
@@ -249,6 +251,13 @@ export class TournamentExecutor {
   private processAction(
     command: Extract<TournamentCommand, { type: "SUBMIT_ACTION" }>,
   ): CommandResultPayload | null {
+    if (
+      command.connectionEpoch !== undefined &&
+      this.deps.isConnectionCurrent !== undefined &&
+      !this.deps.isConnectionCurrent(this.state.roomId, command.playerId, command.connectionEpoch)
+    ) {
+      return this.rejected("SESSION_REPLACED", command.requestId, command.actionId);
+    }
     // 幂等摘要覆盖对应键的完整 wire 业务 Payload（02 §7.3）：同键不同 Payload 必须 IDEMPOTENCY_KEY_REUSE。
     const requestPayloadHash = stableStringify({
       type: "SUBMIT_ACTION",
@@ -323,6 +332,13 @@ export class TournamentExecutor {
     command: Extract<TournamentCommand, { type: "USE_TIME_BANK" }>,
   ): CommandResultPayload | null {
     const requestId = command.requestId;
+    if (
+      command.connectionEpoch !== undefined &&
+      this.deps.isConnectionCurrent !== undefined &&
+      !this.deps.isConnectionCurrent(this.state.roomId, command.playerId, command.connectionEpoch)
+    ) {
+      return this.rejected("SESSION_REPLACED", requestId);
+    }
     // requestId 幂等（02 §7.3）：同 requestId 同 Payload 复用原结果，不同 Payload 拒绝。
     const requestKey = `${command.playerId}:request:${requestId}`;
     const payloadHash = stableStringify({ type: "USE_TIME_BANK", expectedSequence: command.expectedSequence });

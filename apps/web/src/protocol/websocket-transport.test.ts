@@ -163,4 +163,19 @@ describe("WebSocketTransport", () => {
     clock.advance(1);
     expect(clock.pendingTimers()).toBe(0);
   });
+
+  it("retries an unresolved command byte-for-byte after reconnecting", () => {
+    const clock = createFakeClock();
+    const { socket, transport } = setup(clock);
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+    socket.close();
+    clock.advance(500);
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    expect(socket.sent.at(-1)).toBe(pending.serialized);
+  });
 });

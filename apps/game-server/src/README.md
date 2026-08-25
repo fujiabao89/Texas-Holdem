@@ -11,5 +11,6 @@
 | `tournaments/` | Tournament 运行时、单桌串行执行器、集合管理、手末 Commit Bundle 构造（TEX-20） | docs/04 §6/§7；docs/02 §7；docs/03 §7 |
 | `scheduler/` | 可注入 Timer Scheduler（行动超时/断线宽限/定时升盲，TEX-20） | docs/04 §8 |
 | `projection/` | `PlayerView`/wire `GameEvent`/Patch 投影（TEX-20；字段级安全） | docs/02 §9；docs/04 §11 |
+| `realtime/` | 单一 WebSocket Gateway：认证、接管 epoch、心跳、Room/Game Snapshot 与 Runtime 事件扇出（TEX-21） | docs/02 §4/§6/§10；docs/04 §9 |
 | `infrastructure/persistence/` | Supabase PostgreSQL 持久化（Schema/迁移/连接/仓储，TEX-18） | docs/03 |
 | `app.ts` / `main.ts` / `config.ts` | Fastify 装配、进程入口、运行时配置 | docs/04 §4.1 |

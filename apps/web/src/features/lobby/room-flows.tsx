@@ -12,7 +12,7 @@ import { standardConfig, updateInitialBlind } from "./room-presets";
 
 export function CreateRoomFlow() {
   const router = useRouter();
-  const { http, projection } = useRoomClient();
+  const { http, projection, tokens } = useRoomClient();
   const [displayName, setDisplayName] = useState("");
   const [config, setConfig] = useState(standardConfig);
   const [pending, setPending] = useState(false);
@@ -38,6 +38,7 @@ export function CreateRoomFlow() {
     }
     setRetry(null);
     projection.acceptRoomSnapshot(result.data.data.roomSnapshot);
+    tokens.save(result.data.data.roomId, result.data.data.playerToken, result.data.data.playerId);
     router.push(`/room/${result.data.data.roomId}`);
   };
   return <RoomForm title={message("room.createTitle")} onSubmit={submit} pending={pending} feedback={feedback}>
@@ -54,7 +55,7 @@ export function CreateRoomFlow() {
 
 export function JoinRoomFlow({ initialInviteCode }: { readonly initialInviteCode: string }) {
   const router = useRouter();
-  const { http, projection } = useRoomClient();
+  const { http, projection, tokens } = useRoomClient();
   const [inviteCode, setInviteCode] = useState(initialInviteCode);
   const [displayName, setDisplayName] = useState("");
   const [pending, setPending] = useState(false);
@@ -79,6 +80,7 @@ export function JoinRoomFlow({ initialInviteCode }: { readonly initialInviteCode
     }
     setRetry(null);
     projection.acceptRoomSnapshot(result.data.data.roomSnapshot);
+    tokens.save(result.data.data.roomId, result.data.data.playerToken, result.data.data.playerId);
     router.push(`/room/${result.data.data.roomId}`);
   };
   return <RoomForm title={message("room.joinTitle")} onSubmit={submit} pending={pending} feedback={feedback}>

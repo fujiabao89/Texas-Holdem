@@ -25,6 +25,8 @@ export interface SubmitActionCommandInput {
   readonly receivedAt: number;
   /** 进程内严格递增入口序号（同截止点多个 Action 的先后依据）。 */
   readonly ingressOrdinal: number;
+  /** Transport-private epoch; checked at execution time after a device takeover. */
+  readonly connectionEpoch?: number;
 }
 
 /** Time Bank：Tournament 队列中的 Server 控制命令，不进入 Engine Action 联合类型（§8.1）。 */
@@ -34,6 +36,8 @@ export interface UseTimeBankCommandInput {
   readonly playerId: string;
   readonly expectedSequence: string;
   readonly receivedAt: number;
+  /** Transport-private epoch; checked at execution time after a device takeover. */
+  readonly connectionEpoch?: number;
 }
 
 /** 行动超时 Timer 回调（SYSTEM_TIMER 源自动动作）。deadline/generation 固化，执行前复核。 */

@@ -3,6 +3,7 @@ import {
   GameSnapshotSchema,
   type GameEventMessage,
   type GameSnapshot,
+  type ClockUpdatedPayload,
   type PlayerView,
   type RoomSnapshot,
 } from "@texas-holdem/protocol";
@@ -15,6 +16,17 @@ export interface ProjectionState {
   readonly lastSequence: string | null;
   readonly actionsDisabled: boolean;
   readonly resyncReason: ResyncReason | null;
+  /** Display-only clock data, never a source of game authority. */
+  readonly clock: ClockProjection | null;
+}
+
+export interface ClockProjection {
+  readonly tournamentId: string;
+  readonly handId: string | null;
+  readonly currentActorPlayerId: string | null;
+  readonly actionDeadline: number | null;
+  readonly timeBankRemainingMs: number;
+  readonly serverTime: number;
 }
 
 type Listener = () => void;
@@ -25,6 +37,7 @@ const initialState: ProjectionState = {
   lastSequence: null,
   actionsDisabled: false,
   resyncReason: null,
+  clock: null,
 };
 
 /**
@@ -49,7 +62,7 @@ export class ProjectionStore {
   }
 
   /** A reconnect result is a fresh server-authoritative barrier for both projections. */
-  acceptReconnectResult(room: RoomSnapshot, game: GameSnapshot | null): void {
+  acceptReconnectResult(room: RoomSnapshot, game: GameSnapshot | null, serverTime = 0): void {
     if (game !== null) GameSnapshotSchema.parse(game);
     this.replace({
       room,
@@ -57,10 +70,11 @@ export class ProjectionStore {
       lastSequence: game?.sequence ?? null,
       actionsDisabled: false,
       resyncReason: null,
+      clock: game === null ? null : clockFromSnapshot(game, serverTime),
     });
   }
 
-  acceptGameSnapshot(snapshot: GameSnapshot): void {
+  acceptGameSnapshot(snapshot: GameSnapshot, serverTime = 0): void {
     GameSnapshotSchema.parse(snapshot);
     this.replace({
       ...this.state,
@@ -68,6 +82,7 @@ export class ProjectionStore {
       lastSequence: snapshot.sequence,
       actionsDisabled: false,
       resyncReason: null,
+      clock: clockFromSnapshot(snapshot, serverTime),
     });
   }
 
@@ -90,7 +105,7 @@ export class ProjectionStore {
         tournamentId: game.tournamentId,
         sequence: message.payload.sequence,
       });
-      this.replace({ ...this.state, game: next, lastSequence: next.sequence });
+      this.replace({ ...this.state, game: next, lastSequence: next.sequence, clock: clockFromSnapshot(next, message.serverTime) });
       return "APPLIED";
     } catch {
       return this.requestResync("INVALID_EVENT");
@@ -102,10 +117,35 @@ export class ProjectionStore {
     return "RESYNC";
   }
 
+  /** CLOCK_UPDATED must match the current game action and never alters game data. */
+  acceptClockUpdated(payload: ClockUpdatedPayload, serverTime: number): void {
+    const game = this.state.game;
+    const previous = this.state.clock;
+    if (
+      game === null ||
+      payload.tournamentId !== game.tournamentId ||
+      payload.handId !== game.handId ||
+      payload.currentActorPlayerId !== game.currentActorPlayerId ||
+      (previous !== null && serverTime < previous.serverTime)
+    ) return;
+    this.replace({ ...this.state, clock: { ...payload, serverTime } });
+  }
+
   private replace(next: ProjectionState): void {
     this.state = next;
     for (const listener of this.listeners) listener();
   }
+}
+
+function clockFromSnapshot(snapshot: GameSnapshot, serverTime: number): ClockProjection {
+  return {
+    tournamentId: snapshot.tournamentId,
+    handId: snapshot.handId,
+    currentActorPlayerId: snapshot.currentActorPlayerId,
+    actionDeadline: snapshot.actionDeadline,
+    timeBankRemainingMs: snapshot.viewer.timeBankRemainingMs,
+    serverTime,
+  };
 }
 
 function asPlayerView(snapshot: GameSnapshot): PlayerView {

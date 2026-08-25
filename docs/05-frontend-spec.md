@@ -1,13 +1,13 @@
 # 05 · Web 前端工程规格（`apps/web`）
 
-> 状态：设计定稿（TEX-23 前端基础与 TEX-24 Home/Create/Join/Lobby 已核对；牌桌等后续业务页面待实现）
+> 状态：设计定稿（TEX-23 前端基础、TEX-24 Lobby、TEX-21 WebSocket 认证/同步/重连已核对；牌桌等后续业务页面待实现）
 > 实现核对：2026-08-24（TEX-23、TEX-24）——`apps/web` 已实现 App Router 路由、类型安全 `zh-CN` 文案、Jotai 纯 UI 状态、HTTP/WS Transport、创建/加入表单、邀请码预填/复制与基于 `RoomSnapshot` 的 Lobby；牌桌、动画、音效、赛果和历史仍为**设计意图**
 > 权威范围：本文是 Web 前端（`apps/web`）工程设计的唯一权威来源——页面与路由、客户端状态与投影消费（Snapshot + Event Stream）、横向 Seat 牌桌与响应式布局、下注交互（快捷下注 / Slider / ± 调整 / 精确输入 / All-in 两步 / Time Bank）、AnimationQueue 与事件动画、音效、计时与连接状态展示、重连 UX、错误码展示、Lobby 与房间流、淘汰观战 / 赛果 / Hand History UI、可访问性与验收标准。范围之外的事实见 [工程文档总索引](./README.md)：Engine 规则语义属 [01](./01-engine-spec.md)，wire 契约与 `PlayerView` 投影属 [02](./02-protocol-spec.md)，服务端执行与计时属 [04](./04-game-server-architecture.md)，持久化属 [03](./03-data-model.md)，AI 推理属 P1 `server/ai`。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§3.1/§5/§6/§7/§9/§10）；《德州扑克项目规划_区块1-5_v0.1.docx》§1.5/§2.8–2.10/§4/§5（仅在《总规划》未覆盖处补充）；《德州扑克项目规划_区块6-10_v0.2.docx》§6.6/§7.10/§8.2/§8.13/§9.16–9.18/§10.3/§10.11（仅在《总规划》未覆盖处补充）；规则语义与事件目录见 [01](./01-engine-spec.md)，wire 契约见 [02](./02-protocol-spec.md)，服务端执行见 [04](./04-game-server-architecture.md)
 > 对应代码：`apps/web/`（TEX-23 已建立 `src/app` 路由壳、`messages/`、`protocol/` 与 `state/`；《总规划》§6 的 Next.js 16 + React 19 + TypeScript + Tailwind CSS 4、Jotai、Radix UI、Framer Motion 依赖已配置。Seat Layout、AnimationQueue 与业务 UI 待 TEX-24+）
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【部分已实现】** TEX-23 已落地路由壳、投影与命令状态边界；TEX-24 已落地 §6.1–§6.4 的 Home/Create/Join/Lobby、授权 HTTP 控制面与 Lobby WS 投影消费。HTTP 超时/取消、受限 sessionStorage 降级和按 `appliedSequence` 回收 pending 已测试。牌桌、动画、音效、赛果和历史仍待后续任务逐项回填。
+> **【部分已实现】** TEX-23 已落地路由壳、投影与命令状态边界；TEX-24 已落地 §6.1–§6.4 的 Home/Create/Join/Lobby、授权 HTTP 控制面与 Lobby WS 投影消费；TEX-21 在同一 Transport 上落地 Token 恢复、认证、断线退避、权威 Room/Game 快照屏障、连续 Event/Clock 消费和旧会话停止。HTTP 超时/取消、受限 sessionStorage 降级和按 `appliedSequence` 回收 pending 已测试。牌桌、动画、音效、赛果和历史仍待后续任务逐项回填。
 
 ## 1. Purpose
 
