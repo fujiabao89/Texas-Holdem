@@ -364,6 +364,15 @@ export function projectRoomSnapshot(state: RoomState): RoomSnapshot {
   };
 }
 
+/** WebSocket lifecycle only changes presence; it never changes permissions or poker state. */
+export function setConnectionStatus(
+  state: RoomState,
+  playerId: string,
+  connectionStatus: RoomMember["connectionStatus"],
+): RoomState {
+  return withMember(state, playerId, { connectionStatus });
+}
+
 /** 更新单个成员（构造新成员对象，保持不可变）。 */
 function withMember(state: RoomState, playerId: string, patch: Partial<RoomMember>): RoomState {
   const current = requireMember(state, playerId);

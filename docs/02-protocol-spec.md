@@ -86,6 +86,7 @@
 - 受保护 HTTP 接口使用 `Authorization: Bearer <playerToken>`；不得把 `playerToken` 放在 URL、查询参数或日志中。
 - 所有会改变状态的 HTTP `POST/PATCH` 都必须携带 `Idempotency-Key: <uuid>`。同一身份、端点和 Key 的同 Payload 重试返回原结果；Key 相同而 Payload 不同返回 `IDEMPOTENCY_KEY_REUSE`。
 - HTTP 成功响应为 `{ "data": ... }`；失败响应为 §11 的 `ErrorEnvelope`，HTTP 状态码只表达传输类别，调用方必须以稳定 `error.code` 分支。
+- `packages/protocol` 必须导出每个 HTTP 成功响应的运行时 Schema；创建/加入使用 `CreateRoomResponseSchema` / `JoinRoomResponseSchema`，Lobby 控制面使用 `UpdateRoomResponseSchema`、`StartTournamentResponseSchema` 与 `LeaveRoomResponseSchema`。客户端不得在本地重新拼装这些响应 DTO。
 - `LEAVE_ROOM` 以 HTTP 为权威入口；WS 的 `LEAVE_ROOM` 命令保留给已连接客户端，二者必须进入同一服务端命令处理路径并具有相同行为。
 
 HTTP 请求最小结构：创建房间为 `{ displayName, config: TournamentConfig }`；加入为 `{ inviteCode, displayName }`；`PATCH /rooms/{roomId}` 为 `{ expectedRoomRevision, operation }`，其中 `operation` 是 `{ type: "UPDATE_CONFIG", config } | { type: "KICK_PLAYER", targetPlayerId } | { type: "CHANGE_SEAT", seat }`，`seat` 为合法座位号或 `null`（离座）。前两种仅房主可用，`CHANGE_SEAT` 只移动当前身份。`POST /rooms/{roomId}/tournaments` 为 `{ expectedRoomRevision }`，仅房主且满足开局条件时创建新 Tournament。

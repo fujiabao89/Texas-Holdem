@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { roomSnapshot, testConfig } from "../testing-fixtures";
 import { encodeSafeJson, HttpTransport } from "./http-transport";
 import { PlayerTokenStore } from "./token-store";
+import { createFakeClock } from "../../../../tests/support/fake-clock";
 
 const UUID = "123e4567-e89b-42d3-a456-426614174000";
 
@@ -36,5 +37,69 @@ describe("HttpTransport", () => {
 
   it("rejects oversized request JSON before network dispatch", () => {
     expect(() => encodeSafeJson({ value: "x".repeat(64 * 1024) })).toThrow(/64 KiB/);
+  });
+
+  it("uses an injected Fake Clock to abort a timed-out create request", async () => {
+    const clock = createFakeClock();
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore: new PlayerTokenStore(),
+      createUuid: () => UUID,
+      clock,
+      defaultTimeoutMs: 100,
+      fetchFn: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      }),
+    });
+    const request = transport.createRoom({ displayName: "玩家甲", config: testConfig });
+    clock.advance(100);
+    await expect(request).resolves.toMatchObject({ ok: false, error: { code: "GAME_UNAVAILABLE", reason: "TIMEOUT" } });
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("does not dispatch a request whose caller signal was already cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let called = false;
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore: new PlayerTokenStore(),
+      createUuid: () => UUID,
+      fetchFn: async () => {
+        called = true;
+        return new Response("{}");
+      },
+    });
+
+    await expect(transport.createRoom({ displayName: "玩家甲", config: testConfig }, { signal: controller.signal }))
+      .resolves.toMatchObject({ ok: false, error: { reason: "CANCELLED" } });
+    expect(called).toBe(false);
+  });
+
+  it("keeps external cancellation active until a hanging response body is consumed", async () => {
+    const controller = new AbortController();
+    let resolveBodyStarted!: () => void;
+    const bodyStarted = new Promise<void>((resolve) => { resolveBodyStarted = resolve; });
+    let rejectBody!: (error: Error) => void;
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore: new PlayerTokenStore(),
+      createUuid: () => UUID,
+      fetchFn: async (_input, init) => ({
+        ok: true,
+        status: 200,
+        json: () => new Promise<unknown>((_resolve, reject) => {
+          rejectBody = reject;
+          init?.signal?.addEventListener("abort", () => rejectBody(new Error("aborted")), { once: true });
+          resolveBodyStarted();
+        }),
+      }) as Response,
+    });
+
+    const request = transport.createRoom({ displayName: "玩家甲", config: testConfig }, { signal: controller.signal });
+    await bodyStarted;
+    controller.abort();
+
+    await expect(request).resolves.toMatchObject({ ok: false, error: { reason: "CANCELLED" } });
   });
 });

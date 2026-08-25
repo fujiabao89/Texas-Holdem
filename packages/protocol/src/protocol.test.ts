@@ -4,6 +4,9 @@ import {
   applyPlayerViewPatch,
   createProtocolError,
   CreateRoomResponseSchema,
+  LeaveRoomResponseSchema,
+  StartTournamentResponseSchema,
+  UpdateRoomResponseSchema,
   CommandResultPayloadSchema,
   DisplayNameSchema,
   GameEventSchema,
@@ -86,6 +89,9 @@ describe("protocol wire contracts", () => {
   it("keeps HTTP success and credential responses strict", () => {
     expect(CreateRoomResponseSchema.safeParse({ data: { roomId: "room_1", playerId: "alice", playerToken: "x".repeat(43), roomSnapshot } }).success).toBe(true);
     expect(CreateRoomResponseSchema.safeParse({ data: { roomId: "room_1", playerId: "alice", playerToken: "x".repeat(43), roomSnapshot }, debug: true }).success).toBe(false);
+    expect(UpdateRoomResponseSchema.safeParse({ data: { roomSnapshot } }).success).toBe(true);
+    expect(StartTournamentResponseSchema.safeParse({ data: { tournamentId: "tournament_1", roomSnapshot } }).success).toBe(true);
+    expect(LeaveRoomResponseSchema.safeParse({ data: { roomSnapshot, extra: true } }).success).toBe(false);
   });
 
   it("enforces frozen TournamentConfig cross-field constraints", () => {

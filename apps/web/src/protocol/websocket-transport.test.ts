@@ -26,7 +26,7 @@ const ids = [
   "123e4567-e89b-42d3-a456-426614174003",
 ];
 
-function setup() {
+function setup(clock?: ReturnType<typeof createFakeClock>) {
   const socket = new FakeWebSocket();
   const store = new ProjectionStore();
   const states: string[] = [];
@@ -37,6 +37,7 @@ function setup() {
     createUuid: () => ids.shift() ?? "123e4567-e89b-42d3-a456-426614174099",
     projectionStore: store,
     tokenStore: new PlayerTokenStore(),
+    clock,
     onConnectionState: (state) => states.push(state),
     onCommandResult: (pending) => commandResults.push(pending.requestId),
   });
@@ -103,6 +104,19 @@ describe("WebSocketTransport", () => {
     expect(commandResults).toEqual([pending.requestId]);
   });
 
+  it("recycles an APPLIED pending action only after its authoritative sequence arrives", () => {
+    const { socket, commandResults, transport } = setup();
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+    socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "APPLIED", duplicate: false, appliedSequence: "9007199254740992" } });
+    socket.receive({ type: "GAME_EVENT", protocolVersion: 1, serverTime: 3, payload: { tournamentId: "tournament-1", sequence: "9007199254740992", handId: "hand-1", event: { type: "PLAYER_CHECKED", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET" } }, patch: { currentActorPlayerId: "player-2", viewer: { legalActions: null } } } });
+    socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 4, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "REJECTED", duplicate: false, error: { code: "INVALID_ACTION", message: "ignored", retryable: false, traceId: "trace-1" } } });
+    expect(commandResults).toEqual([pending.requestId]);
+  });
+
   it("drops pending commands when switching connections so stale results cannot notify a new room", () => {
     const { socket, commandResults, transport } = setup();
     transport.connect("room-1", "a".repeat(43));
@@ -129,5 +143,24 @@ describe("WebSocketTransport", () => {
     transport.send(pending);
 
     expect(socket.sent.slice(-1)).toEqual([pending.serialized]);
+  });
+
+  it("resets reconnect backoff after receiving a new snapshot barrier", () => {
+    const clock = createFakeClock();
+    const { socket, transport } = setup(clock);
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+
+    socket.close();
+    clock.advance(500);
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+
+    socket.close();
+    clock.advance(499);
+    expect(clock.pendingTimers()).toBe(1);
+    clock.advance(1);
+    expect(clock.pendingTimers()).toBe(0);
   });
 });

@@ -1,5 +1,6 @@
-import { RouteShell } from "../../../components/route-shell";
+import { LobbyPage } from "../../../features/lobby/lobby-page";
 
-export default function RoomPage() {
-  return <RouteShell />;
+export default async function RoomPage({ params }: { readonly params: Promise<{ roomId: string }> }) {
+  const { roomId } = await params;
+  return <LobbyPage roomId={roomId} />;
 }

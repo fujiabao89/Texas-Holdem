@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { randomUUID } from "node:crypto";
+import websocket from "@fastify/websocket";
 import rateLimit from "@fastify/rate-limit";
 import { validateTournamentConfig } from "@texas-holdem/poker-engine";
 import {
@@ -9,8 +9,10 @@ import {
 } from "@texas-holdem/protocol";
 import type { AppConfig } from "./config";
 import { registerRoomRoutes } from "./http/routes/rooms";
+import { registerLobbyGateway, type LobbyGatewayClock } from "./realtime/gateway/lobby-gateway";
 import { IdempotencyStore } from "./http/middleware/idempotency";
 import { createRateLimiter, type RateLimiter } from "./http/middleware/rate-limit";
+import { createNodeIdSource, type IdSource } from "./rooms/id-source";
 import type { RoomManager } from "./rooms/room-manager";
 
 /** 规则权威校验适配：engine 返回 readonly 冻结配置，复制为协议可变类型（只调用，不复制规则）。 */
@@ -44,6 +46,10 @@ export interface BuildAppOptions {
   readonly rateLimiter?: RateLimiter;
   readonly idempotency?: IdempotencyStore;
   readonly now?: () => number;
+  /** HTTP/WS trace 与 connectionId 的可注入安全随机来源。 */
+  readonly ids?: Pick<IdSource, "uuid">;
+  /** 仅用于受控的 Gateway 生命周期测试。 */
+  readonly lobbyGatewayClock?: LobbyGatewayClock;
   /** @fastify/rate-limit 全局 per-IP 额度（CodeQL 识别为 RateLimitingMiddleware）。 */
   readonly rateLimit?: { readonly max: number; readonly timeWindow: string };
 }
@@ -55,6 +61,10 @@ export interface BuildAppOptions {
  */
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 65_536 });
+  const ids = options.ids ?? createNodeIdSource();
+  const idempotency = options.idempotency ?? new IdempotencyStore();
+  // Must be registered before every route so upgrade interception is reliable.
+  app.register(websocket);
 
   // 显式 CORS Allowlist（含 OPTIONS 预检）。
   app.addHook("onRequest", (request, reply, done) => {
@@ -114,11 +124,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     registerRoomRoutes(app, {
       manager: options.roomManager,
       rateLimiter: options.rateLimiter ?? createRateLimiter(),
-      idempotency: options.idempotency ?? new IdempotencyStore(),
+      idempotency,
       validateConfig: validateRoomConfig,
       rateLimit: globalRateLimit,
       now: options.now ?? Date.now,
-      makeTraceId: () => randomUUID(),
+      makeTraceId: ids.uuid,
+    });
+    registerLobbyGateway(app, options.roomManager, {
+      now: options.now ?? Date.now,
+      ids,
+      idempotency,
+      clock: options.lobbyGatewayClock,
     });
   });
 

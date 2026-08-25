@@ -1,5 +1,5 @@
-import { RouteShell } from "../../components/route-shell";
+import { CreateRoomFlow } from "../../features/lobby/room-flows";
 
 export default function CreateRoomPage() {
-  return <RouteShell />;
+  return <CreateRoomFlow />;
 }

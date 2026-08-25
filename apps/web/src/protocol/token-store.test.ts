@@ -12,6 +12,12 @@ class FakeStorage implements Storage {
   setItem(key: string, value: string): void { this.values.set(key, value); }
 }
 
+class ThrowingStorage extends FakeStorage {
+  override setItem(): void { throw new Error("storage denied"); }
+  override getItem(): string | null { throw new Error("storage denied"); }
+  override removeItem(): void { throw new Error("storage denied"); }
+}
+
 describe("PlayerTokenStore", () => {
   it("isolates tokens by room in memory and sessionStorage only", () => {
     const session = new FakeStorage();
@@ -28,5 +34,23 @@ describe("PlayerTokenStore", () => {
     store.save("room-1", "token-one");
     store.clear("room-1", reason);
     expect(store.get("room-1")).toBeNull();
+  });
+
+  it("falls back to memory when sessionStorage is unavailable", () => {
+    const store = new PlayerTokenStore(new ThrowingStorage());
+    store.save("room-1", "token-one", "player-1");
+    expect(store.get("room-1")).toBe("token-one");
+    expect(store.getPlayerId("room-1")).toBe("player-1");
+    expect(() => store.clear("room-1", "CLOSED")).not.toThrow();
+  });
+
+  it("restores and clears a session only from a second same-tab store", () => {
+    const storage = new FakeStorage();
+    new PlayerTokenStore(storage).save("room-1", "token-one", "player-1");
+    const restored = new PlayerTokenStore(storage);
+    expect(restored.get("room-1")).toBe("token-one");
+    expect(restored.getPlayerId("room-1")).toBe("player-1");
+    restored.clear("room-1", "AUTH_FAILED");
+    expect(new PlayerTokenStore(storage).get("room-1")).toBeNull();
   });
 });
