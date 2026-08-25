@@ -102,10 +102,7 @@ function makeHarness(overrides: { config?: Partial<TournamentConfig>; seats?: nu
     },
     { clock: () => clock.now(), ids: fakeIds(clock), scheduler: clock },
   );
-  const executor = new TournamentExecutor(runtime, {
-    output,
-    hashAction: (action) => JSON.stringify(action),
-  });
+  const executor = new TournamentExecutor(runtime, { output });
   return { executor, clock, output, runtime };
 }
 
@@ -270,6 +267,26 @@ describe("Time Bank", () => {
     expect(result.error?.code).toBe("TIME_BANK_DISABLED");
   });
 
+  it("决策点未变（他人撤回）时 Time Bank 不能二次使用（GP-P1b）", async () => {
+    const harness = makeHarness({ seats: 3 });
+    await start(harness);
+    // 首位全下，次位跟注全下（不可折叠），第三位保持当前行动者
+    const first = currentActor(harness)!;
+    await submitAction(harness, { playerId: first, action: { type: "ALL_IN" } });
+    const second = currentActor(harness)!;
+    await submitAction(harness, { playerId: second, action: { type: "CALL" } });
+    const actor = currentActor(harness)!;
+    expect(actor).not.toBe(first);
+    expect(actor).not.toBe(second);
+    await useTimeBank(harness, actor, "tb-1");
+    // 撤回 all-in 的非当前行动者 → 当前行动者/决策点不变 → 机会标记不复位
+    await harness.executor.submit({ type: "WITHDRAW_PLAYER", playerId: second, reason: "USER_LEFT" });
+    expect(currentActor(harness)).toBe(actor);
+    const again = (await useTimeBank(harness, actor, "tb-2")) as { status: string; error?: { code: string } };
+    expect(again.status).toBe("REJECTED");
+    expect(again.error?.code).toBe("TIME_BANK_NOT_AVAILABLE");
+  });
+
   it("同一座位换街后的新行动机会可再次使用 Time Bank（§8.4 机会复位）", async () => {
     const harness = makeHarness();
     await start(harness);
@@ -342,19 +359,33 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     const harness = makeHarness();
     await start(harness);
     const firstActor = currentActor(harness)!;
-    const first = (await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-same" })) as { status: string; duplicate: boolean };
+    const sequence = String(harness.executor.getView().lastWireSequence);
+    const first = (await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-same", expectedSequence: sequence })) as { status: string; duplicate: boolean };
     expect(first.status).toBe("APPLIED");
-    const second = (await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-same" })) as { status: string; duplicate: boolean };
+    // 重试复用完全相同 Payload（含 expectedSequence）→ duplicate 复用原结果
+    const second = (await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-same", expectedSequence: sequence })) as { status: string; duplicate: boolean };
     expect(second.status).toBe("APPLIED");
     expect(second.duplicate).toBe(true);
+  });
+
+  it("相同 actionId 相同动作但不同 expectedSequence → IDEMPOTENCY_KEY_REUSE", async () => {
+    const harness = makeHarness();
+    await start(harness);
+    const firstActor = currentActor(harness)!;
+    const sequence = String(harness.executor.getView().lastWireSequence);
+    await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-seq", expectedSequence: sequence });
+    const retry = (await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-seq", expectedSequence: "999" })) as { status: string; error?: { code: string } };
+    expect(retry.status).toBe("REJECTED");
+    expect(retry.error?.code).toBe("IDEMPOTENCY_KEY_REUSE");
   });
 
   it("相同 actionId 不同 Payload → IDEMPOTENCY_KEY_REUSE", async () => {
     const harness = makeHarness();
     await start(harness);
     const firstActor = currentActor(harness)!;
-    await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-x" });
-    const second = (await submitAction(harness, { playerId: firstActor, action: fold(), actionId: "act-x" })) as { status: string; error?: { code: string } };
+    const sequence = String(harness.executor.getView().lastWireSequence);
+    await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-x", expectedSequence: sequence });
+    const second = (await submitAction(harness, { playerId: firstActor, action: fold(), actionId: "act-x", expectedSequence: sequence })) as { status: string; error?: { code: string } };
     expect(second.status).toBe("REJECTED");
     expect(second.error?.code).toBe("IDEMPOTENCY_KEY_REUSE");
   });

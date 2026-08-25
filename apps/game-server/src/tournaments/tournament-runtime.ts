@@ -55,8 +55,8 @@ export interface TournamentRuntimeState {
   actionDeadline: number | null;
   actionTimerGeneration: number;
   actionTimerHandle: TimerHandle | null;
-  /** 最近一次建立行动权的座位（Time Bank 机会复位判定）。 */
-  currentActorSeat: number | null;
+  /** 最近一次建立行动权的决策点标识 `handNumber:street:seat`（Time Bank 机会复位判定）。 */
+  lastDecisionPoint: string | null;
   /** time 模式定时升盲计时器（§8.1；只在 Hand 间生效）。 */
   blindTimerHandle: TimerHandle | null;
   blindTimerGeneration: number;
@@ -144,7 +144,7 @@ export function createTournamentRuntimeState(
     actionDeadline: null,
     actionTimerGeneration: 0,
     actionTimerHandle: null,
-    currentActorSeat: null,
+    lastDecisionPoint: null,
     blindTimerHandle: null,
     blindTimerGeneration: 0,
     currentHandId: null,

@@ -77,8 +77,6 @@ export interface TournamentOutputSink {
 
 export interface TournamentExecutorDeps {
   readonly output: TournamentOutputSink;
-  /** Action Payload 摘要（幂等键内容比较，§7.3）。 */
-  readonly hashAction: (action: SubmitAction) => string;
 }
 
 interface QueueItem {
@@ -203,6 +201,7 @@ export class TournamentExecutor {
 
   private processStart(): void {
     this.advance();
+    this.emitNewEvents();
   }
 
   /** 推进到下一个行动点 / 手 / 终局；手间逻辑（Commit、无真人、停手）在此统一执行。 */
@@ -233,8 +232,13 @@ export class TournamentExecutor {
       if (this.state.stopAfterCurrentHand) return;
       this.state.currentHandId = this.state.ids.uuid();
       this.state.currentHandStartedAt = this.state.clock();
-      this.state.engine.startNextHand();
-      this.emitNewEvents();
+      try {
+        this.state.engine.startNextHand();
+      } catch (error) {
+        // startNextHand 的 Engine Critical Error（不变量违反）→ 冻结该桌（04 §7.4/§15）。
+        this.freeze(error);
+        return;
+      }
       this.scheduleBlindTimer();
     }
   }
@@ -244,13 +248,22 @@ export class TournamentExecutor {
   private processAction(
     command: Extract<TournamentCommand, { type: "SUBMIT_ACTION" }>,
   ): CommandResultPayload | null {
-    const payloadHash = this.deps.hashAction(command.action);
-    // requestId（作用域 roomId+playerId）与 actionId（作用域 tournamentId+playerId）均为幂等键（02 §7.3）。
+    // 幂等摘要覆盖对应键的完整 wire 业务 Payload（02 §7.3）：同键不同 Payload 必须 IDEMPOTENCY_KEY_REUSE。
+    const requestPayloadHash = stableStringify({
+      type: "SUBMIT_ACTION",
+      actionId: command.actionId,
+      expectedSequence: command.expectedSequence,
+      action: command.action,
+    });
+    const actionPayloadHash = stableStringify({
+      expectedSequence: command.expectedSequence,
+      action: command.action,
+    });
     const requestKey = `${command.playerId}:request:${command.requestId}`;
-    const viaRequest = this.idempotencyLookup(requestKey, payloadHash, command.requestId, command.actionId);
+    const viaRequest = this.idempotencyLookup(requestKey, requestPayloadHash, command.requestId, command.actionId);
     if (viaRequest !== "continue") return viaRequest;
     const actionKey = `${command.playerId}:action:${command.actionId}`;
-    const viaAction = this.idempotencyLookup(actionKey, payloadHash, command.requestId, command.actionId);
+    const viaAction = this.idempotencyLookup(actionKey, actionPayloadHash, command.requestId, command.actionId);
     if (viaAction !== "continue") return viaAction;
 
     const expected = BigInt(command.expectedSequence);
@@ -298,8 +311,8 @@ export class TournamentExecutor {
       duplicate: false,
       appliedSequence: String(this.state.lastWireSequence),
     };
-    this.state.idempotency.set(requestKey, { payloadHash, result });
-    this.state.idempotency.set(actionKey, { payloadHash, result });
+    this.state.idempotency.set(requestKey, { payloadHash: requestPayloadHash, result });
+    this.state.idempotency.set(actionKey, { payloadHash: actionPayloadHash, result });
     return result;
   }
 
@@ -311,7 +324,7 @@ export class TournamentExecutor {
     const requestId = command.requestId;
     // requestId 幂等（02 §7.3）：同 requestId 同 Payload 复用原结果，不同 Payload 拒绝。
     const requestKey = `${command.playerId}:request:${requestId}`;
-    const payloadHash = stableStringify({ expectedSequence: command.expectedSequence });
+    const payloadHash = stableStringify({ type: "USE_TIME_BANK", expectedSequence: command.expectedSequence });
     const viaRequest = this.idempotencyLookup(requestKey, payloadHash, requestId);
     if (viaRequest !== "continue") return viaRequest;
     if (this.state.config.actionTime === "UNLIMITED") {
@@ -465,8 +478,9 @@ export class TournamentExecutor {
   // ---- 状态转移后统一编排 ----
 
   private afterEngineTransition(): void {
-    this.emitNewEvents();
+    // 先推进（提交手、建立下一行动权），再发射事件：patch 携带正确的截止线与 legalActions（CX-P1b）。
     this.advance();
+    this.emitNewEvents();
   }
 
   /** 无真人关房：所有真人均 WITHDRAWN → ABANDONED_NO_HUMAN + Room CLOSED（§6.5）。 */
@@ -517,12 +531,16 @@ export class TournamentExecutor {
     if (hand === null || hand.currentActor === null) return;
     const seat = hand.currentActor;
     const record = this.playerBySeat(seat);
-    // 每次建立行动权（新决策点）都复位该行动者的 Time Bank「本机会已使用」标记（§8.4）：
-    // 同一座位跨街/跨手连续行动（如 HU 的 BB 收官 preflop 后 postflop 首发）也属新机会。
-    if (record !== undefined) {
-      record.timeBank = resetTimeBankOpportunity(record.timeBank);
+    // 仅当行动者获得「真正的新行动机会」（手/街/座位任一变化）时复位 Time Bank 机会标记（§8.4）：
+    // - HU 的 BB 收官 preflop 后 postflop 首发 → 新机会，可再次使用；
+    // - 其他玩家撤回但当前行动者/决策点未变 → 非新机会，不复位（GP-P1b）。
+    const decisionPoint = `${this.state.engine.getState().handNumber}:${hand.street}:${seat}`;
+    if (decisionPoint !== this.state.lastDecisionPoint) {
+      if (record !== undefined) {
+        record.timeBank = resetTimeBankOpportunity(record.timeBank);
+      }
+      this.state.lastDecisionPoint = decisionPoint;
     }
-    this.state.currentActorSeat = seat;
     this.state.currentLegalActions = this.state.engine.getLegalActions();
     const config = this.state.config;
     if (config.actionTime === "UNLIMITED") {
@@ -604,6 +622,7 @@ export class TournamentExecutor {
 
   /** 把 Engine 新增事件转为逐接收者 wire 消息并分配全局 sequence。 */
   private emitNewEvents(): void {
+    if (this.state.status === "FROZEN") return; // 冻结后不再发射（状态已污染）
     const engineEvents = this.state.engine.getEvents();
     const emittedCount = this.state.lastWireSequence;
     const newEvents = engineEvents.slice(emittedCount);
@@ -694,10 +713,13 @@ export class TournamentExecutor {
     const championSeat = engineState.champion;
     const championPlayerId =
       championSeat !== null ? (this.state.seatToPlayer.get(championSeat) ?? null) : null;
+    // championTournamentPlayerId 引用 tournament_players.id（非 room 级 playerId），否则终局落库违反 FK。
+    const championTournamentPlayerId =
+      championPlayerId !== null ? (this.state.players.get(championPlayerId)?.tournamentPlayerId ?? null) : null;
     if (status === "FINISHED") {
       return {
         status,
-        championTournamentPlayerId: championPlayerId,
+        championTournamentPlayerId,
         finishedAt: now,
         retentionExpiresAt: retention,
         roomStatus: "FINISHED",

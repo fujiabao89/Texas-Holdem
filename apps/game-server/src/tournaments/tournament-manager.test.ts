@@ -11,7 +11,6 @@ import {
 import { fakeRoomRepository } from "../rooms/test-support";
 import type { IdSource } from "../rooms/id-source";
 import { createTournamentManager, type TournamentManager } from "./tournament-manager";
-import { stableStringify } from "../infrastructure/persistence/checksum";
 import type { HandCommitBundle } from "../infrastructure/persistence/repositories/hand-commit";
 
 const CONFIG: TournamentConfig = {
@@ -63,7 +62,7 @@ function makeWired(): Wired {
         void roomManager.submitCommand(roomId, command);
       },
     },
-    executorDeps: { hashAction: (action) => stableStringify(action) },
+    executorDeps: {},
   });
   const starter = createRuntimeTournamentStarter({
     persistence: baseStarter,

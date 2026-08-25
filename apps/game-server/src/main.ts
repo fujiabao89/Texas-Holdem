@@ -5,7 +5,6 @@ import {
   parseDatabaseConfig,
 } from "./infrastructure/persistence/database";
 import { createRoomRepository } from "./infrastructure/persistence/repositories";
-import { stableStringify } from "./infrastructure/persistence/checksum";
 import { createNodeIdSource } from "./rooms/id-source";
 import { createRoomManager, type RoomManager } from "./rooms/room-manager";
 import { createRoomPersistence } from "./rooms/room-persistence";
@@ -13,7 +12,7 @@ import {
   createPersistenceTournamentStarter,
   createRuntimeTournamentStarter,
 } from "./rooms/tournament-starter";
-import { createNodeTimerScheduler } from "./scheduler/timer-scheduler";
+import { createMonotonicEpochClock, createNodeTimerScheduler } from "./scheduler/timer-scheduler";
 import { createTournamentManager } from "./tournaments/tournament-manager";
 import { SecureRandomSource } from "@texas-holdem/poker-engine";
 
@@ -22,13 +21,14 @@ const database = createDatabase(parseDatabaseConfig());
 const roomRepository = createRoomRepository(database);
 const ids = createNodeIdSource();
 const scheduler = createNodeTimerScheduler();
+const tournamentClock = createMonotonicEpochClock(); // 单调时钟做超时裁决（04 §7.2）
 const baseStarter = createPersistenceTournamentStarter(roomRepository);
 
 // RoomManager 在 Tournament 输出汇之后创建（submitRoomCommand 闭包运行期引用，无循环初始化）。
 // eslint-disable-next-line prefer-const -- 闭包在赋值前引用，需 let 维持 TDZ 语义
 let roomManager: RoomManager;
 const tournamentManager = createTournamentManager({
-  clock: ids.now,
+  clock: tournamentClock,
   ids,
   scheduler,
   output: {
@@ -44,13 +44,13 @@ const tournamentManager = createTournamentManager({
       });
     },
   },
-  executorDeps: { hashAction: (action) => stableStringify(action) },
+  executorDeps: {},
 });
 
 const starter = createRuntimeTournamentStarter({
   persistence: baseStarter,
   manager: tournamentManager,
-  clock: ids.now,
+  clock: tournamentClock,
   ids,
   scheduler,
   rngFactory: () => new SecureRandomSource(),

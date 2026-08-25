@@ -22,7 +22,7 @@ import type {
   TournamentPlayerResultUpdate,
 } from "../infrastructure/persistence/repositories/hand-commit";
 import { sha256Checksum, stableStringify } from "../infrastructure/persistence/checksum";
-import type { PokerEvent, TournamentState } from "@texas-holdem/poker-engine";
+import type { PokerEvent, PotAward, TournamentState } from "@texas-holdem/poker-engine";
 import type { TournamentRuntimeState } from "./tournament-runtime";
 
 /** 生成该 Snapshot 的 Engine 版本标识（规则升级可追溯性，03 §5.7）。 */
@@ -175,13 +175,19 @@ function playerBySeat(ctx: HandCommitContext, seatIndex: number) {
 
 /** 结算摘要：各 Pot 金额/赢家/是否比牌（查询投影用；不含未公开底牌，03 §5.5）。 */
 function buildSummary(outcome: NonNullable<TournamentState["hand"]>["outcome"]): unknown {
+  // 赢家取 Engine 结算结果 outcome.awards（winners/prizeBySeat），而非 eligiblePlayers（只是可参赛者）。
+  const awardByPot = new Map<number, PotAward>();
+  for (const award of outcome?.awards ?? []) awardByPot.set(award.potIndex, award);
   return {
     showdown: outcome?.showdown ?? false,
-    pots: (outcome?.pots ?? []).map((pot) => ({
-      potIndex: pot.index,
-      amount: pot.amount,
-      winners: pot.eligiblePlayers,
-    })),
+    pots: (outcome?.pots ?? []).map((pot) => {
+      const award = awardByPot.get(pot.index);
+      return {
+        potIndex: pot.index,
+        amount: pot.amount,
+        winners: award?.winners ?? [],
+      };
+    }),
     winners: outcome?.winners ?? [],
   };
 }

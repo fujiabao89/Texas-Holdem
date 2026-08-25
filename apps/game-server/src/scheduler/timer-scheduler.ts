@@ -17,6 +17,18 @@ export interface TimerScheduler {
   clearTimeout(handle: TimerHandle): void;
 }
 
+/**
+ * 单调且近似 epoch 的毫秒时钟（04 §7.2 要求单调时钟裁决）。
+ * 基于 `process.hrtime.bigint()`（单调，不受墙钟/校时影响），锚定进程启动时的
+ * `Date.now()`，使读数同时近似 Unix epoch 毫秒（wire `actionDeadline`/`serverTime`
+ * 可接受该值）。禁止用裸 `Date.now()` 做超时裁决（NTP 回拨会让截止前 Action 误判）。
+ */
+export function createMonotonicEpochClock(): () => number {
+  const startEpochMs = Date.now();
+  const startHr = process.hrtime.bigint();
+  return () => startEpochMs + Number((process.hrtime.bigint() - startHr) / 1_000_000n);
+}
+
 /** 生产实现：委托 Node.js 计时器。 */
 export function createNodeTimerScheduler(): TimerScheduler {
   let nextId = 1;
