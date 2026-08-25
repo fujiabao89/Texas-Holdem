@@ -10,23 +10,25 @@ export interface ConnectionEpochRegistry {
 }
 
 export function createConnectionEpochRegistry(): ConnectionEpochRegistry {
-  const epochs = new Map<string, number>();
+  const activeEpochs = new Map<string, number>();
+  const generations = new Map<string, number>();
   const keyOf = (roomId: string, playerId: string): string => `${roomId}:${playerId}`;
 
   return {
     takeOver(roomId, playerId) {
       const key = keyOf(roomId, playerId);
-      const epoch = (epochs.get(key) ?? 0) + 1;
-      epochs.set(key, epoch);
+      const epoch = (generations.get(key) ?? 0) + 1;
+      generations.set(key, epoch);
+      activeEpochs.set(key, epoch);
       return epoch;
     },
     isCurrent(roomId, playerId, epoch) {
-      return epochs.get(keyOf(roomId, playerId)) === epoch;
+      return activeEpochs.get(keyOf(roomId, playerId)) === epoch;
     },
     release(roomId, playerId, epoch) {
       const key = keyOf(roomId, playerId);
-      if (epochs.get(key) !== epoch) return false;
-      epochs.delete(key);
+      if (activeEpochs.get(key) !== epoch) return false;
+      activeEpochs.delete(key);
       return true;
     },
   };
