@@ -136,9 +136,9 @@ describeTestDatabase("recovery repository: 读取与向前退回", (context) => 
         eventCount: 3,
       }),
     );
-    expect(await repo.hasCommittedEventsThrough(fixture.tournamentId, 3n)).toBe(true);
-    expect(await repo.hasCommittedEventsThrough(fixture.tournamentId, 2n)).toBe(false); // 缺口
-    expect(await repo.hasCommittedEventsThrough(fixture.tournamentId, 4n)).toBe(false); // 超界
+    expect(await repo.hasCommittedEventsThrough(fixture.tournamentId, 3n)).toBe(true); // 1..3 连续
+    expect(await repo.hasCommittedEventsThrough(fixture.tournamentId, 1n)).toBe(true); // 前缀连续
+    expect(await repo.hasCommittedEventsThrough(fixture.tournamentId, 4n)).toBe(false); // 请求超出已提交 → 缺口
   });
 
   it("listActiveTournaments / listSnapshots：定位活跃比赛并按 sequence 降序读取快照", async () => {

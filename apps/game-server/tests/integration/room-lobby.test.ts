@@ -117,6 +117,23 @@ describeTestDatabase("room lobby: 控制面写操作", (context) => {
     const { repo, roomId, playerId } = await createRoom();
     const tournamentId = randomUUID();
     const lockedPlayerId = randomUUID();
+    // 锁定参赛者必须是本 Room 的既有成员（tournament_players_player_fk 引用 room_players），先入库。
+    const alicePlayerId = randomUUID();
+    await repo.insertRoomPlayer({
+      roomId,
+      playerId: alicePlayerId,
+      displayName: "Alice",
+      displayNameKey: "alice",
+      kind: "HUMAN",
+      tokenDigest: computePlayerTokenDigest({
+        roomId,
+        playerId: alicePlayerId,
+        token: "token-alice",
+        keyId: "k1",
+        secret: "secret",
+      }),
+      tokenKeyId: "k1",
+    });
     await repo.startTournament({
       roomId,
       tournamentId,
@@ -126,7 +143,7 @@ describeTestDatabase("room lobby: 控制面写操作", (context) => {
         { id: lockedPlayerId, playerId, displayName: "Host", seatIndex: 0, kind: "HUMAN", startingStack: 1000n },
         {
           id: randomUUID(),
-          playerId: randomUUID(),
+          playerId: alicePlayerId,
           displayName: "Alice",
           seatIndex: 1,
           kind: "HUMAN",
