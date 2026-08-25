@@ -34,6 +34,7 @@ import type {
   TournamentConfigInput,
   TournamentParticipantConfig,
   TournamentParticipantState,
+  TournamentPhase,
   TournamentState,
 } from "../model/tournament";
 import type { PokerEvent } from "../events/events";
@@ -121,6 +122,81 @@ export class TournamentEngine {
       .filter((p) => p.chips > 0)
       .map((p) => ({ seatIndex: p.seatIndex, name: p.name, kind: p.kind, chips: p.chips }));
     this.dealerSeat = selectDealer(eligible, rng, opts.firstDealerSeat);
+  }
+
+  /**
+   * 从权威 `TournamentState` 快照重建引擎（崩溃恢复用，docs/04 §13）。
+   *
+   * 与 `getState()` 互逆的机械重建：恢复 config/phase/手号/盲注/Dealer/参与者/筹码/
+   * 淘汰/终局/elapsedSeconds/nextSequence。**只接受手末边界快照**（`handInProgress=false`，
+   * docs/03 §5.7「下一手 HAND_STARTED 尚未发生」）——进行中的手不重建（P0 不回放未提交
+   * 事件，§4.3），`hand` 在下一手 `startNextHand` 时重新建立。
+   *
+   * 事件流从空开始但 `nextSequence` 保持快照值：下一事件内部 sequence = 快照水位，
+   * 使 game-server 的 wire sequence 从快照处无缝延续、不重放已提交事件。恢复后
+   * `handStartChips` 为空 Map（只用于下一手结束时的淘汰排序，`startNextHand` 会重建）。
+   *
+   * 本方法不改变任何规则语义，仅重建与给定权威状态一致的同一引擎实例。
+   */
+  static restore(
+    state: TournamentState,
+    rng: RandomSource,
+    opts: TournamentEngineOptions = {},
+  ): TournamentEngine {
+    if (state.handInProgress) {
+      throw new Error(
+        `TournamentEngine.restore: 仅接受手末边界快照（handInProgress=false，当前=${state.handInProgress}）`,
+      );
+    }
+    const engine = Object.create(TournamentEngine.prototype) as TournamentEngine;
+    // 私有字段为 readonly，仅构造器可写；restore 是重建路径，经显式可变视图写入。
+    const mut = engine as unknown as MutableRestoredEngine;
+    mut.config = state.config;
+    mut.rng = rng;
+    mut.deckForHand = opts.deckForHand ?? (() => undefined);
+    mut.participants = state.participants.map((p) => ({
+      seatIndex: p.seatIndex,
+      name: p.name,
+      kind: p.kind,
+      status: p.status,
+      chips: p.chips,
+      startingStack: p.startingStack,
+      finish: p.finish
+        ? {
+            placementRange: { from: p.finish.placementRange.from, to: p.finish.placementRange.to },
+            displayOrder: p.finish.displayOrder,
+          }
+        : undefined,
+    }));
+    mut.phase = state.phase;
+    mut.handNumber = state.handNumber;
+    mut.handInProgress = false;
+    mut.blindLevel = state.blindLevel;
+    mut.smallBlind = state.smallBlind;
+    mut.bigBlind = state.bigBlind;
+    mut.dealerSeat = state.dealerSeat;
+    mut.forfeitedChips = state.forfeitedChips;
+    mut.initialTotalChips = state.initialTotalChips;
+    mut.champion = state.champion;
+    mut.eliminations = state.eliminations.map((g) => ({
+      handNumber: g.handNumber,
+      placementRange: { from: g.placementRange.from, to: g.placementRange.to },
+      players: [...g.players],
+    }));
+    mut.finalStandings = state.finalStandings.map((fs) => ({
+      seatIndex: fs.seatIndex,
+      name: fs.name,
+      placementRange: { from: fs.placementRange.from, to: fs.placementRange.to },
+      displayOrder: fs.displayOrder,
+    }));
+    mut.elapsedSeconds = state.elapsedSeconds;
+    mut.pokerHand = null;
+    mut.handEventsAbsorbed = 0;
+    mut.events = [];
+    mut.eventStates = [];
+    mut.nextSequence = state.nextSequence;
+    mut.handStartChips = new Map<number, number>();
+    return engine;
   }
 
   /** 启动下一手；已完结或已有进行中的手则抛错。返回当前行动者 LegalActions 或 null（手/锦标赛结束）。 */
@@ -410,6 +486,33 @@ export class TournamentEngine {
   private assertInvariants(): void {
     assertTournamentInvariants(this.getState());
   }
+}
+
+/** restore 的可变视图：把 readonly 私有字段视为可写，仅用于崩溃恢复重建（§13）。 */
+interface MutableRestoredEngine {
+  config: TournamentConfig;
+  rng: RandomSource;
+  deckForHand: (handNumber: number) => Deck | undefined;
+  participants: MutableParticipant[];
+  phase: TournamentPhase;
+  handNumber: number;
+  handInProgress: boolean;
+  blindLevel: number;
+  smallBlind: number;
+  bigBlind: number;
+  dealerSeat: number | null;
+  forfeitedChips: number;
+  initialTotalChips: number;
+  champion: number | null;
+  eliminations: EliminationGroup[];
+  finalStandings: FinalStanding[];
+  elapsedSeconds: number;
+  pokerHand: PokerHandEngine | null;
+  handEventsAbsorbed: number;
+  events: PokerEvent[];
+  eventStates: (GameState | null)[];
+  nextSequence: number;
+  handStartChips: Map<number, number>;
 }
 
 /** 递归冻结对象/数组，确保事件快照的嵌套字段（placementRange、finalStandings 等）同样不可变（§14）。 */

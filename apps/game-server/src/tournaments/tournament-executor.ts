@@ -189,6 +189,10 @@ export class TournamentExecutor {
       case "SHUTDOWN":
         this.state.stopAfterCurrentHand = true;
         return null;
+      case "PAUSE_AFTER_HAND":
+        // 背压暂停：当前手结束后停在手间边界；恢复则继续（docs/04 §12.2）。
+        this.state.stopAfterCurrentHand = command.paused;
+        return null;
     }
   }
 
@@ -641,7 +645,9 @@ export class TournamentExecutor {
     if (this.state.status === "FROZEN") return; // 冻结后不再发射（状态已污染）
     const engineEvents = this.state.engine.getEvents();
     const eventStates = this.state.engine.getEventStates();
-    const emittedCount = this.state.lastWireSequence;
+    // 数组切片基 = lastWireSequence - engineEventBase（崩溃恢复后 wire 从快照水位延续、
+    // 引擎事件数组从空开始，恢复后首个新事件数组下标为 0；正常开局 engineEventBase=0）。
+    const emittedCount = this.state.lastWireSequence - this.state.engineEventBase;
     const newEvents = engineEvents.slice(emittedCount);
     if (newEvents.length === 0) return;
     const blindLevelIndex = this.state.engine.getState().blindLevel;
@@ -713,8 +719,11 @@ export class TournamentExecutor {
     tournamentFinish?: TournamentFinishUpdate,
   ): void {
     const allEvents = this.state.engine.getEvents();
-    if (this.state.committedEventCount >= allEvents.length) return;
-    const events = allEvents.slice(this.state.committedEventCount);
+    // 数组切片基 = committedEventCount - engineEventBase（恢复后首 bundle 从快照水位 + 1
+    // 开始、不重放已提交事件；正常开局 engineEventBase=0）。
+    const sliceFrom = this.state.committedEventCount - this.state.engineEventBase;
+    if (sliceFrom >= allEvents.length) return;
+    const events = allEvents.slice(sliceFrom);
     const bundle = buildHandCommitBundle(
       {
         state: this.state,
@@ -726,7 +735,7 @@ export class TournamentExecutor {
       tournamentFinish,
     );
     this.deps.output.enqueueCommitBundles([bundle]);
-    this.state.committedEventCount = allEvents.length;
+    this.state.committedEventCount += events.length;
     this.state.committedThroughHand = engineState.handNumber;
   }
 

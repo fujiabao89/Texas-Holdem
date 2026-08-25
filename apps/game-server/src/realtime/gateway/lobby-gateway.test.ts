@@ -137,6 +137,7 @@ async function setupTournamentGateway() {
   let rejectTimeBank = false;
   const tournaments: TournamentManager = {
     create() {},
+    createRecovered() {},
     async submit(_tournamentId, command) {
       submitted.push(command);
       if (command.type === "USE_TIME_BANK" && rejectTimeBank) throw new TournamentDomainError("NOT_YOUR_TURN");
@@ -146,6 +147,8 @@ async function setupTournamentGateway() {
     },
     getView(tournamentId) { return tournamentId === "t1" ? executor.getView() : undefined; },
     async setConnection() {},
+    async pauseAll() {},
+    activeTournamentIds() { return []; },
   };
   const gatewayManager: RoomManager = {
     ...manager,
@@ -291,9 +294,12 @@ describe("LobbyGateway", () => {
     };
     const tournaments: TournamentManager = {
       create() {},
+      createRecovered() {},
       async submit() { return null; },
       getView() { return undefined; },
       async setConnection() {},
+      async pauseAll() {},
+    activeTournamentIds() { return []; },
     };
     let handler!: (socket: FakeSocket) => void;
     const app = { get(_path: string, _options: unknown, route: unknown) { handler = route as (socket: FakeSocket) => void; } } as unknown as FastifyInstance;

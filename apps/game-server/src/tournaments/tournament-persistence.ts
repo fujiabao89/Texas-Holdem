@@ -97,7 +97,9 @@ export function buildHandCommitBundle(
       state: snapshotState,
       schemaVersion: SCHEMA_VERSION,
       engineVersion: ENGINE_VERSION,
-      stateChecksum: sha256Checksum(snapshotState),
+      // state 以 jsonb 落库、读取时是解析后的对象；state_checksum 必须对解析后状态
+      // 的 canonical 序列化计算，恢复侧才能等价复算（docs/03 §5.7「稳定序列化结果」）。
+      stateChecksum: sha256Checksum(ctx.engineState),
       commitChecksum: sha256Checksum(commitChecksumInput),
     },
     playerUpdates,
