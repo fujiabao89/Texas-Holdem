@@ -216,7 +216,12 @@ export function createRecoveryRepository(database: Database): RecoveryRepository
           .set({
             // EXIT_PENDING 是运行期过渡态、手末边界不出现；防御性映射为 ACTIVE。
             pokerStatus: participant.status === "EXIT_PENDING" ? "ACTIVE" : participant.status,
-            finalStack: BigInt(participant.chips),
+            // final_stack 仅终局/撤回有意义：ACTIVE 必须为 NULL，避免把在场筹码误记为
+            // 终结结果（docs/03 §5.4「未终结前可为 NULL」）。
+            finalStack:
+              participant.status === "ACTIVE" || participant.status === "EXIT_PENDING"
+                ? null
+                : BigInt(participant.chips),
             forfeitedChips: withdrawnForfeited,
             rank: participant.rank,
             eliminatedHandId: null,

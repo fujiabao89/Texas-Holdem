@@ -205,7 +205,14 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
   }
 
   function isIntegrityError(error: unknown): boolean {
-    return error instanceof PersistenceError;
+    if (error instanceof PersistenceError) return true;
+    // PostgreSQL 原生完整性违例（SQLSTATE 23xxx：唯一/外键/CHECK 冲突）是永久性数据
+    // 不一致，不应按瞬态无限重试（P1：23505/23503/23514 等）。
+    if (typeof error === "object" && error !== null) {
+      const code = (error as { code?: unknown }).code;
+      if (typeof code === "string" && code.startsWith("23")) return true;
+    }
+    return false;
   }
 
   /**

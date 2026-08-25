@@ -89,6 +89,7 @@ function makeHarness(overrides: {
   config?: Partial<TournamentConfig>;
   seats?: number;
   isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
+  isBackpressurePaused?: () => boolean;
 } = {}): Harness {
   const clock = createFakeClock({ now: 1000 });
   const config = makeConfig(overrides.config);
@@ -105,7 +106,11 @@ function makeHarness(overrides: {
     },
     { clock: () => clock.now(), ids: fakeIds(clock), scheduler: clock },
   );
-  const executor = new TournamentExecutor(runtime, { output, isConnectionCurrent: overrides.isConnectionCurrent });
+  const executor = new TournamentExecutor(runtime, {
+    output,
+    isConnectionCurrent: overrides.isConnectionCurrent,
+    isBackpressurePaused: overrides.isBackpressurePaused,
+  });
   return { executor, clock, output, runtime };
 }
 
@@ -673,5 +678,31 @@ describe("PAUSE_AFTER_HAND 背压暂停/恢复（§12.2）", () => {
     await h.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false });
     expect(h.executor.getView().actionDeadline).toBe(deadlineBefore);
     expect(h.executor.getView().engineState.handInProgress).toBe(true);
+  });
+});
+
+describe("同步 hard 背压（isBackpressurePaused，§12.2）", () => {
+  it("手末 bundle 触达 hard 时也在推进下一手前停下；解除后恢复", async () => {
+    let hardPaused = false;
+    const h = makeHarness({ isBackpressurePaused: () => hardPaused });
+    await start(h); // 首手开始（未 hard）
+    hardPaused = true; // 模拟手末 bundle 自身触达 hard 的同步回调
+    await playHandToCompletion(h);
+    expect(h.output.bundles).toHaveLength(1); // 当前手已提交
+    expect(h.executor.getView().engineState.handNumber).toBe(1); // 不启动下一手
+    expect(h.executor.getView().engineState.handInProgress).toBe(false);
+    // 回落 ok：解除 latch 并经 PAUSE_AFTER_HAND(false) 恢复推进。
+    hardPaused = false;
+    await h.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false });
+    expect(h.executor.getView().engineState.handNumber).toBe(2);
+    expect(h.executor.getView().engineState.handInProgress).toBe(true);
+  });
+
+  it("新 Tournament 在 hard 期间 START 也不开局（停在首手前）", async () => {
+    const h = makeHarness({ isBackpressurePaused: () => true });
+    await start(h);
+    // hard 期间：不开始任何一手。
+    expect(h.executor.getView().engineState.handNumber).toBe(0);
+    expect(h.executor.getView().engineState.handInProgress).toBe(false);
   });
 });

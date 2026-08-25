@@ -163,6 +163,15 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       if (runtime === undefined) {
         throw new RoomDomainError("ROOM_NOT_FOUND");
       }
+      // 持久化降级（soft/hard watermark）或优雅关停期间拒绝新开局（docs/04 §12.2/§13.1）：
+      // 不新增 Tournament，避免在积压/关停窗口继续产生待提交 Bundle。
+      if (
+        command.type === "START_TOURNAMENT" &&
+        deps.isPersistenceAvailable !== undefined &&
+        !deps.isPersistenceAvailable()
+      ) {
+        throw new RoomDomainError("GAME_UNAVAILABLE");
+      }
       const result = await runtime.submit(command);
       publish(projectRoomSnapshot(result.state));
       return result;

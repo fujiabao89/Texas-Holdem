@@ -20,6 +20,7 @@ import { createMonotonicEpochClock, createNodeTimerScheduler } from "./scheduler
 import { createTournamentManager, type TournamentManager } from "./tournaments/tournament-manager";
 import { createConnectionEpochRegistry } from "./realtime/connection-epochs";
 import { createTournamentEventBus } from "./realtime/tournament-event-bus";
+import { createBackpressureLatch } from "./persistence/backpressure";
 import { createPersistenceWriter } from "./persistence/persistence-writer";
 import { recoverActiveTournaments } from "./persistence/recovery";
 import { SecureRandomSource } from "@texas-holdem/poker-engine";
@@ -38,19 +39,23 @@ const baseStarter = createPersistenceTournamentStarter(roomRepository);
 const persistenceDegraded = { accepting: true };
 const isPersistenceAvailable = (): boolean => persistenceDegraded.accepting;
 
+// 背压 latch：hard 命中后保持暂停直到回落到 ok（低于 soft）才恢复（§12.2）。
+const backpressureLatch = createBackpressureLatch();
+
 // TEX-22 Persistence Writer：唯一写者的异步编排（队列/退避/watermark/flush，docs/04 §12）。
 const writer = createPersistenceWriter({
   commit: createHandCommitRepository(database),
   scheduler,
   clock: tournamentClock,
   onBackpressureChange: (level) => {
+    backpressureLatch.onLevel(level);
     persistenceDegraded.accepting = level === "ok";
     if (level === "hard") {
       console.warn("persistence hard watermark: pausing active tournaments at hand boundary");
     }
-    // soft/hard → 停止创建新 Room；hard → 当前手结束后停在手间边界；回落 ok → 恢复。
+    // soft/hard → 停止创建新 Room；hard → 当前手结束后停在手间边界；仅回落到 ok → 恢复。
     if (tournamentManager !== undefined) {
-      void tournamentManager.pauseAll(level === "hard");
+      void tournamentManager.pauseAll(backpressureLatch.hardPaused);
     }
   },
   onIntegrityError: (error, bundle) => {
@@ -88,7 +93,11 @@ tournamentManager = createTournamentManager({
       });
     },
   },
-  executorDeps: { isConnectionCurrent: connectionEpochs.isCurrent },
+  executorDeps: {
+    isConnectionCurrent: connectionEpochs.isCurrent,
+    // 同步 hard 背压检查：手末 bundle 自身触达 hard 时也能在推进下一手前停下（§12.2）。
+    isBackpressurePaused: () => backpressureLatch.hardPaused,
+  },
 });
 
 const starter = createRuntimeTournamentStarter({

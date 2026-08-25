@@ -195,6 +195,23 @@ describe("PersistenceWriter", () => {
     await until(() => levels.includes("soft")); // bundle 字节 > 100
   });
 
+  it("原生 PostgreSQL 完整性违例（SQLSTATE 23xxx）视为损坏：隔离而非无限重试", async () => {
+    const { writer, commit, integrityErrors, clock } = setup();
+    // 模拟 Drizzle/pg 透传的唯一键冲突（23505）：永久性数据不一致。
+    commit.alwaysFail = true;
+    commit.transientError = Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+    });
+    writer.enqueue([makeBundle("t1", 1, 1n, 3)]);
+    await until(() => integrityErrors.length === 1);
+    expect(writer.getMetrics().quarantined).toEqual(["t1"]);
+    expect(writer.pendingCount()).toBe(1); // 保留不重试
+    commit.alwaysFail = false;
+    clock.advance(10_000);
+    await until(() => integrityErrors.length === 1);
+    expect(commit.committed).toHaveLength(0); // 未被重试提交
+  });
+
   it("数据损坏（PersistenceError）隔离：不重试、上报、后续 bundle 保留", async () => {
     const { writer, commit, integrityErrors, clock } = setup();
     commit.failIntegrityOnce = true;

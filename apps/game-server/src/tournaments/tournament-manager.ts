@@ -106,6 +106,13 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         output: deps.output,
       });
       runtimes.set(input.tournamentId, executor);
+      // 恢复后所有连接视为断开（docs/04 §13）：对每个 HUMAN 投递断线以启动 10 分钟
+      // 宽限计时（不重连的缺席玩家到期转 WITHDRAWN，避免无限行动阻塞）。
+      for (const player of input.players) {
+        if (player.kind === "HUMAN") {
+          void executor.submit({ type: "CONNECTION_CHANGED", playerId: player.playerId, connected: false });
+        }
+      }
       // 驱动下一手为 fire-and-forget；恢复后事件从快照水位继续（sequence 无缝衔接）。
       void executor.submit({ type: "START" }).catch(() => {
         runtimes.delete(input.tournamentId);

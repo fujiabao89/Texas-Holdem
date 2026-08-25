@@ -361,6 +361,12 @@ describe("崩溃恢复端到端序列连续性", () => {
     // 恢复运行时已被 START 驱动；推进并打第 3 手。
     expect(manager.getView("t1")).toBeDefined();
     await untilIdle();
+    // 恢复后所有连接视为断开（docs/04 §13）：HUMAN 玩家 connected=false，且已启动宽限计时。
+    for (const player of players) {
+      const record = manager.getView("t1")!.players.get(player.playerId);
+      expect(record!.connected).toBe(false);
+      expect(record!.graceHandle).not.toBeNull(); // 10 分钟断线宽限已调度
+    }
     await playHandThroughManager(manager, clock);
 
     const recoveredBundles = sink.bundles.slice(2);

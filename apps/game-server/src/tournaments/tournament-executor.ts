@@ -72,6 +72,12 @@ export interface TournamentExecutorDeps {
   readonly output: TournamentOutputSink;
   /** Optional transport authority check. Internal timers and tests do not need it. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
+  /**
+   * 同步背压检查（§12.2）：hard watermark 命中时，即使 PAUSE_AFTER_HAND 尚未经队列
+   * 处理（例如手末 bundle 自身触达 hard 的同步回调），执行器也在手间边界停下、
+   * 不启动下一手。由组合根注入 backpressure latch 的 `isHardPaused()`。
+   */
+  readonly isBackpressurePaused?: () => boolean;
 }
 
 interface QueueItem {
@@ -233,8 +239,16 @@ export class TournamentExecutor {
       if (engineState.handNumber > this.state.committedThroughHand) {
         this.commitCurrentHand(engineState);
       }
-      // stopAfterCurrentHand（优雅关停/完整性隔离，不可恢复）或 backpressurePaused（背压，可恢复）都停在此边界。
-      if (this.state.stopAfterCurrentHand || this.state.backpressurePaused) return;
+      // stopAfterCurrentHand（优雅关停/完整性隔离，不可恢复）、backpressurePaused（背压，可恢复）
+      // 或同步 hard 背压（isBackpressurePaused）都停在此边界——同步检查覆盖「手末 bundle 自身
+      // 触达 hard、PAUSE_AFTER_HAND 尚未入队」的窗口，避免越过 hard 后仍启动下一手（§12.2）。
+      if (
+        this.state.stopAfterCurrentHand ||
+        this.state.backpressurePaused ||
+        (this.deps.isBackpressurePaused !== undefined && this.deps.isBackpressurePaused())
+      ) {
+        return;
+      }
       this.state.currentHandId = this.state.ids.uuid();
       this.state.currentHandStartedAt = this.state.clock();
       try {

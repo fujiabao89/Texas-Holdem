@@ -128,6 +128,7 @@ export function createTournamentRuntimeState(
     engine,
     seed.config,
     { lastWireSequence: 0, committedEventCount: 0, committedThroughHand: 0, engineEventBase: 0 },
+    false,
   );
 }
 
@@ -167,6 +168,7 @@ export function createRecoveredTournamentRuntimeState(
       committedThroughHand: seed.recovered.committedThroughHand,
       engineEventBase: seed.recovered.engineEventBase,
     },
+    true, // 恢复后所有连接视为断开（§13），宽限计时由 createRecovered 启动
   );
 }
 
@@ -177,6 +179,7 @@ function buildRuntimeState(
   engine: TournamentEngine,
   config: TournamentConfig,
   wire: { lastWireSequence: number; committedEventCount: number; committedThroughHand: number; engineEventBase: number },
+  playersDisconnected: boolean,
 ): TournamentRuntimeState {
   const players = new Map<string, PlayerRuntimeRecord>();
   const seatToPlayer = new Map<number, string>();
@@ -187,7 +190,9 @@ function buildRuntimeState(
       seatIndex: player.seatIndex,
       kind: player.kind,
       displayName: player.displayName,
-      connected: true,
+      // 崩溃恢复后所有连接视为断开（docs/04 §13「所有连接均视为断开」）：恢复玩家
+      // 初始为 disconnected，由 createRecovered 经 CONNECTION_CHANGED(false) 启动宽限计时。
+      connected: playersDisconnected ? false : true,
       graceHandle: null,
       graceGeneration: 0,
       timeBank: initialTimeBankState(config.timeBank),

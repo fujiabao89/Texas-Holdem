@@ -225,7 +225,7 @@ describeTestDatabase("recovery repository: 读取与向前退回", (context) => 
       .where(eq(tournaments.id, fixture.tournamentId));
     expect(tournament!.watermark).toBe(3n);
 
-    // tournament_players 按快照参与者重置。
+    // tournament_players 按快照参与者重置；ACTIVE 的 final_stack 必须为 NULL（docs/03 §5.4）。
     const [player] = await testDb!.database.db
       .select({
         pokerStatus: tournamentPlayers.pokerStatus,
@@ -235,7 +235,7 @@ describeTestDatabase("recovery repository: 读取与向前退回", (context) => 
       .from(tournamentPlayers)
       .where(eq(tournamentPlayers.id, fixture.participantId));
     expect(player!.pokerStatus).toBe("ACTIVE");
-    expect(player!.finalStack).toBe(900n);
+    expect(player!.finalStack).toBeNull();
     expect(player!.rank).toBeNull();
   });
 
