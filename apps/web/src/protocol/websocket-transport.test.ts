@@ -129,6 +129,44 @@ describe("WebSocketTransport", () => {
     expect(commandResults).toEqual([]);
   });
 
+  it("ignores callbacks that were queued by a replaced socket", () => {
+    const clock = createFakeClock();
+    const firstSocket = new FakeWebSocket();
+    const secondSocket = new FakeWebSocket();
+    const sockets = [firstSocket, secondSocket];
+    const store = new ProjectionStore();
+    const states: string[] = [];
+    const transport = new WebSocketTransport({
+      wsUrl: "wss://example.test/api/v1/ws",
+      socketFactory: () => sockets.shift() ?? secondSocket,
+      createUuid: () => ids.shift() ?? "123e4567-e89b-42d3-a456-426614174099",
+      projectionStore: store,
+      tokenStore: new PlayerTokenStore(),
+      clock,
+      onConnectionState: (state) => states.push(state),
+    });
+
+    transport.connect("room-1", "a".repeat(43));
+    firstSocket.open();
+    firstSocket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const oldMessage = firstSocket.onmessage;
+    const oldClose = firstSocket.onclose;
+    const oldError = firstSocket.onerror;
+
+    transport.connect("room-1", "a".repeat(43));
+    secondSocket.open();
+    secondSocket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    states.length = 0;
+
+    oldMessage?.({ data: JSON.stringify({ type: "GAME_EVENT", protocolVersion: 1, serverTime: 3, payload: { tournamentId: "tournament-1", sequence: "9007199254740992", handId: "hand-1", event: { type: "PLAYER_CHECKED", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET" } }, patch: { currentActorPlayerId: "player-2", viewer: { legalActions: null } } } }) } as MessageEvent<string>);
+    oldClose?.({ code: 1006 } as CloseEvent);
+    oldError?.({} as Event);
+
+    expect(store.getSnapshot().game?.sequence).toBe("9007199254740991");
+    expect(states).toEqual([]);
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
   it("retains an unresolved command for an exact retry after reconnecting to the same room", () => {
     const { socket, transport } = setup();
     transport.connect("room-1", "a".repeat(43));
@@ -162,5 +200,20 @@ describe("WebSocketTransport", () => {
     expect(clock.pendingTimers()).toBe(1);
     clock.advance(1);
     expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("retries an unresolved command byte-for-byte after reconnecting", () => {
+    const clock = createFakeClock();
+    const { socket, transport } = setup(clock);
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+    socket.close();
+    clock.advance(500);
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    expect(socket.sent.at(-1)).toBe(pending.serialized);
   });
 });

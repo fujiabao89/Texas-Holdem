@@ -33,8 +33,8 @@ import type { TournamentStartRequest } from "./tournament-starter";
 
 export type RoomCommand =
   | { type: "JOIN"; member: RoomMemberSeed }
-  | { type: "LEAVE"; playerId: string; reason: LeaveReason; leftAt: number }
-  | { type: "SET_READY"; playerId: string; ready: boolean }
+  | { type: "LEAVE"; playerId: string; reason: LeaveReason; leftAt: number; afterTournamentWithdrawal?: boolean; connectionEpoch?: number }
+  | { type: "SET_READY"; playerId: string; ready: boolean; connectionEpoch?: number }
   | { type: "SET_CONNECTION_STATUS"; playerId: string; connectionStatus: "CONNECTED" | "DISCONNECTED" }
   | { type: "CHANGE_SEAT"; playerId: string; seat: number | null; expectedRevision?: number }
   | { type: "UPDATE_CONFIG"; actorPlayerId: string; config: TournamentConfig; expectedRevision?: number }
@@ -54,6 +54,8 @@ export interface RoomCommandResult {
 export interface RoomRuntimeDeps {
   readonly persistence: RoomPersistence;
   readonly ids: IdSource;
+  /** Transport-private epoch guard, checked after this Room command obtains queue ownership. */
+  readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
 }
 
 export class RoomRuntime {
@@ -100,11 +102,17 @@ export class RoomRuntime {
       case "JOIN":
         return { next: joinRoomTransition(before, command.member), persisted: true };
       case "LEAVE":
+        assertConnectionCurrent(before, command, this.deps);
         return {
-          next: leaveRoom(before, command.playerId, { reason: command.reason, leftAt: command.leftAt }),
+          next: leaveRoom(before, command.playerId, {
+            reason: command.reason,
+            leftAt: command.leftAt,
+            afterTournamentWithdrawal: command.afterTournamentWithdrawal,
+          }),
           persisted: true,
         };
       case "SET_READY":
+        assertConnectionCurrent(before, command, this.deps);
         return { next: setReady(before, command.playerId, command.ready), persisted: false };
       case "SET_CONNECTION_STATUS":
         return { next: setConnectionStatus(before, command.playerId, command.connectionStatus), persisted: false };
@@ -201,6 +209,17 @@ function assertRevision(state: RoomState, expectedRevision: number | undefined):
     throw new RoomDomainError("STALE_ROOM_STATE", {
       details: { currentRoomRevision: String(state.roomRevision) },
     });
+  }
+}
+
+/** Re-check socket ownership only after the Room queue grants execution. */
+function assertConnectionCurrent(
+  state: RoomState,
+  command: Extract<RoomCommand, { type: "LEAVE" | "SET_READY" }>,
+  deps: RoomRuntimeDeps,
+): void {
+  if (command.connectionEpoch !== undefined && deps.isConnectionCurrent !== undefined && !deps.isConnectionCurrent(state.roomId, command.playerId, command.connectionEpoch)) {
+    throw new RoomDomainError("SESSION_REPLACED");
   }
 }
 

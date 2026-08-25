@@ -3,6 +3,7 @@ import {
   CLOSE_CODES,
   PROTOCOL_VERSION,
   type CommandResultPayload,
+  type ClockUpdatedPayload,
   type ClientCommand,
   type ErrorCode,
   type GameEventMessage,
@@ -88,9 +89,18 @@ export class WebSocketTransport {
         payload: { roomId, playerToken },
       });
     };
-    socket.onmessage = (event) => this.handleMessage(event.data);
-    socket.onclose = (event) => this.handleClose(event.code);
-    socket.onerror = () => this.transition("CLOSED");
+    socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
+      this.handleMessage(event.data);
+    };
+    socket.onclose = (event) => {
+      if (this.socket !== socket) return;
+      this.handleClose(event.code);
+    };
+    socket.onerror = () => {
+      if (this.socket !== socket) return;
+      this.transition("CLOSED");
+    };
   }
 
   disconnect(clearPending = true, preserveSession = false): void {
@@ -143,16 +153,17 @@ export class WebSocketTransport {
     const message = parsed.data;
     switch (message.type) {
       case "RECONNECT_RESULT":
-        this.acceptReconnect(message.payload as ReconnectResult);
+        this.acceptReconnect(message.payload as ReconnectResult, message.serverTime);
         this.recycleAppliedPending();
         this.retryAttempt = 0;
         this.transition("CONNECTED");
+        this.retryUnresolvedPending();
         return;
       case "ROOM_SNAPSHOT":
         this.acceptRoom(message.payload as RoomSnapshot);
         return;
       case "GAME_SNAPSHOT":
-        this.options.projectionStore.acceptGameSnapshot(message.payload as GameSnapshot);
+        this.options.projectionStore.acceptGameSnapshot(message.payload as GameSnapshot, message.serverTime);
         this.recycleAppliedPending();
         this.retryAttempt = 0;
         this.transition("CONNECTED");
@@ -178,7 +189,8 @@ export class WebSocketTransport {
         this.handleError("SESSION_REPLACED");
         return;
       case "CLOCK_UPDATED":
-        return; // TEX-23 keeps the transport boundary; display clock wiring is a later UI concern.
+        this.options.projectionStore.acceptClockUpdated(message.payload as ClockUpdatedPayload, message.serverTime);
+        return;
     }
   }
 
@@ -195,11 +207,13 @@ export class WebSocketTransport {
     if (result.status === "REJECTED") {
       this.pending.delete(result.requestId);
       this.handleError(result.error?.code ?? "INVALID_MESSAGE");
+      return;
     }
+    if (pending.command.type === "LEAVE_ROOM" && this.roomId !== null) this.options.tokenStore.clear(this.roomId, "LEAVE_SUCCEEDED");
   }
 
-  private acceptReconnect(result: ReconnectResult): void {
-    this.options.projectionStore.acceptReconnectResult(result.roomSnapshot, result.gameSnapshot);
+  private acceptReconnect(result: ReconnectResult, serverTime: number): void {
+    this.options.projectionStore.acceptReconnectResult(result.roomSnapshot, result.gameSnapshot, serverTime);
   }
 
   /** COMMAND_RESULT is feedback only; the matching authoritative sequence releases memory. */
@@ -213,9 +227,20 @@ export class WebSocketTransport {
     }
   }
 
+  /** Unknown command delivery is retried byte-for-byte after the new snapshot barrier. */
+  private retryUnresolvedPending(): void {
+    for (const pending of this.pending.values()) {
+      if (pending.status === "SENDING") this.socket?.send(pending.serialized);
+    }
+  }
+
   private acceptRoom(snapshot: RoomSnapshot): void {
     this.options.projectionStore.acceptRoomSnapshot(snapshot);
-    if (snapshot.status === "CLOSED" && this.roomId !== null) this.options.tokenStore.clear(this.roomId, "CLOSED");
+    if (snapshot.status === "CLOSED" && this.roomId !== null) {
+      this.options.tokenStore.clear(this.roomId, "CLOSED");
+      this.cancelRetry();
+      this.transition("STOPPED");
+    }
   }
 
   private handleInvalidMessage(): void {

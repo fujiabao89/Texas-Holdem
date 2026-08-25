@@ -33,6 +33,7 @@ import { normalizeDisplayNameKey } from "../../infrastructure/persistence/displa
 import { RoomDomainError } from "../../rooms/room-errors";
 import type { RoomManager } from "../../rooms/room-manager";
 import { projectRoomSnapshot } from "../../rooms/room-runtime";
+import type { TournamentManager } from "../../tournaments/tournament-manager";
 import { toErrorResponse } from "../errors";
 import { extractBearerToken } from "../middleware/auth";
 import { hashPayload, type IdempotencyStore } from "../middleware/idempotency";
@@ -40,6 +41,8 @@ import type { RateLimiter } from "../middleware/rate-limit";
 
 export interface RoomRoutesDeps {
   readonly manager: RoomManager;
+  /** Optional until TEX-20 runtime wiring; required in production for in-game leave parity with WS. */
+  readonly tournaments?: TournamentManager;
   readonly rateLimiter: RateLimiter;
   readonly idempotency: IdempotencyStore;
   /** 规则权威校验：poker-engine 的 validateTournamentConfig（只调用，不复制规则）。 */
@@ -249,11 +252,16 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
     if (!parsed.success) return sendInvalidMessage(reply, traceId);
     const payloadHash = hashPayload(request.body);
     return respondIdempotently(reply, traceId, deps.idempotency, `player:${auth.playerId}:leave:${key}`, payloadHash, async () => {
+      const activeTournamentId = deps.manager.getSnapshot(request.params.roomId)?.activeTournamentId;
+      if (activeTournamentId !== null && activeTournamentId !== undefined && deps.tournaments !== undefined) {
+        await deps.tournaments.submit(activeTournamentId, { type: "WITHDRAW_PLAYER", playerId: auth.playerId, reason: "USER_LEFT" });
+      }
       const result = await deps.manager.submitCommand(request.params.roomId, {
         type: "LEAVE",
         playerId: auth.playerId,
         reason: "USER_LEFT",
         leftAt: deps.now(),
+        afterTournamentWithdrawal: activeTournamentId !== null && activeTournamentId !== undefined && deps.tournaments !== undefined,
       });
       return { statusCode: 200, body: LeaveRoomResponseSchema.parse({ data: { roomSnapshot: projectRoomSnapshot(result.state) } }) };
     });

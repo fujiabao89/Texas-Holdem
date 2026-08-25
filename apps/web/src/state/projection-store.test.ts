@@ -66,4 +66,17 @@ describe("ProjectionStore", () => {
     expect(store.acceptGameEvent(privateCard)).toBe("RESYNC");
     expect(store.getSnapshot().game?.sequence).toBe("9007199254740991");
   });
+
+  it("accepts only a current, non-stale display clock without changing game state", () => {
+    const store = new ProjectionStore();
+    store.acceptGameSnapshot(gameSnapshot(), 10);
+    const before = store.getSnapshot().game;
+    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 20_000, timeBankRemainingMs: 30_000 }, 11);
+    expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: 20_000, timeBankRemainingMs: 30_000 });
+    expect(store.getSnapshot().game).toBe(before);
+
+    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-2", actionDeadline: 99_000, timeBankRemainingMs: 0 }, 12);
+    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 99_000, timeBankRemainingMs: 0 }, 9);
+    expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: 20_000, timeBankRemainingMs: 30_000 });
+  });
 });

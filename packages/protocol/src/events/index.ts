@@ -58,12 +58,19 @@ export const GameEventMessageSchema = serverMessage("GAME_EVENT", z.strictObject
   event: GameEventSchema,
   patch: PlayerViewPatchSchema,
 }));
+export const ClockUpdatedPayloadSchema = z.strictObject({
+  tournamentId: OpaqueIdSchema,
+  handId: OpaqueIdSchema.nullable(),
+  currentActorPlayerId: OpaqueIdSchema.nullable(),
+  actionDeadline: EpochMillisecondsSchema.nullable(),
+  timeBankRemainingMs: SafeIntegerSchema,
+});
 export const ServerMessageSchema = z.discriminatedUnion("type", [
   serverMessage("RECONNECT_RESULT", ReconnectResultSchema),
   serverMessage("ROOM_SNAPSHOT", RoomSnapshotSchema),
   serverMessage("GAME_SNAPSHOT", GameSnapshotSchema),
   GameEventMessageSchema,
-  serverMessage("CLOCK_UPDATED", z.strictObject({ tournamentId: OpaqueIdSchema, handId: OpaqueIdSchema.nullable(), currentActorPlayerId: OpaqueIdSchema.nullable(), actionDeadline: EpochMillisecondsSchema.nullable(), timeBankRemainingMs: SafeIntegerSchema })),
+  serverMessage("CLOCK_UPDATED", ClockUpdatedPayloadSchema),
   serverMessage("COMMAND_RESULT", CommandResultPayloadSchema),
   serverMessage("RESYNC_REQUIRED", z.strictObject({ tournamentId: OpaqueIdSchema, reason: z.enum(["BACKPRESSURE", "GAP", "INVALID_EVENT", "STALE_ACTION"]) })),
   serverMessage("SESSION_REPLACED", z.strictObject({})),
@@ -86,4 +93,5 @@ export function validateServerMessage(value: unknown):
 export type GameEvent = z.infer<typeof GameEventSchema>;
 export type GameEventMessage = z.infer<typeof GameEventMessageSchema>;
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
+export type ClockUpdatedPayload = z.infer<typeof ClockUpdatedPayloadSchema>;
 export type CloseCode = z.infer<typeof CloseCodeSchema>;

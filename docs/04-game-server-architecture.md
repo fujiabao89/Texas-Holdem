@@ -17,7 +17,8 @@
 > - **投影**：`PlayerView`/wire `GameEvent`/`PlayerViewPatch` 由 `projection/state-projector.ts` 纯函数生成（字段级隔离，红线 2）；Patch 为**逐事件**全字段新视图——Engine 新增 `getEventStates()`（与事件流平行的每事件后状态快照，§14 逐事件投影），使 `PLAYER_CHECKED` 的 patch 不携带后续 `FLOP_DEALT` 才产生的 board/phase，满足 02 §6.3「得到该事件后的权威视图」。
 > - **持久化入口**：执行器在整手结算后构造 `HandCommitBundle` 交 `TournamentOutputSink.enqueueCommitBundles`；**DB Writer（异步队列/退避/watermark）属 TEX-22**，`main.ts` 暂为空实现。
 > - **手间事件边界**：两手之间的 `PLAYER_WITHDRAWN` 作为下一手 bundle 的前导事件落入同一原子提交（其 sequence 仍在手 N 之后、手 N+1 之前，快照边界「Withdraw 均已应用、下一手 HAND_STARTED 尚未发生」成立）；TEX-22 Writer 需据此验证。
-> - **未覆盖**：连接管理（§9）、事件积压/Fast Forward（§9.5）、心跳（§9.6）、优雅关停完整流程（§13.1，仅实现 `SHUTDOWN` 队列命令）、崩溃恢复（§13，恢复读取路径属 TEX-22）、P1 AI 接入（§14）。`main.ts` 的 `TournamentOutputSink` 事件输出为空实现（TEX-21 连接层订阅）。
+> - **连接管理（TEX-21）**：`GET /api/v1/ws` 首帧只接受 v1 `AUTHENTICATE`，5 秒认证时限；成功先发 `RECONNECT_RESULT`（含 Room 与按接收者投影的 Game Snapshot），再接收命令。Runtime 输出经内部 Event Bus 进入这条唯一 Gateway；`REQUEST_SNAPSHOT` 从当前内存 Runtime 重新投影。连接 epoch 在 Tournament 执行器执行点校验，旧 Socket 已排队的 Action/Time Bank 也会被拒绝。每 15 秒 Ping，45 秒无 Pong/有效帧终止；时钟可注入测试。
+> - **未覆盖**：§9.5 的事件积压/Fast Forward 阈值与 Close 1013、§13.1 优雅关停完整流程（仅实现 `SHUTDOWN` 队列命令）、§13 崩溃恢复读取路径（TEX-22）、P1 AI 接入（§14）。
 > - **Engine 序列映射**：Engine 内部 sequence 为 0 基；wire/持久化 sequence 由执行器分配为 1 基跨手全局递增（`engineSeq + 1`，02 §7.1），与 03 §7.3 水位线咬合。
 
 ## 1. Purpose
@@ -337,7 +338,7 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 ### 8.4 权威计时
 
-- `actionDeadline` 与 `timeBankRemainingMs` 由 server 更新并出现在 Snapshot；Time Bank 使用成功后另发 `CLOCK_UPDATED`（[02](./02-protocol-spec.md) §8.2）。
+- `actionDeadline` 与 `timeBankRemainingMs` 由 server 更新并出现在 Snapshot；Time Bank 使用成功后另发 `CLOCK_UPDATED`。Clock 的行动者/截止线是公开行动机会，余额按接收者投影为该接收者自己的余额（[02](./02-protocol-spec.md) §8.2）。
 - 服务器单调时钟是唯一计时权威；客户端倒计时仅展示（《总规划》§3.2；[02](./02-protocol-spec.md) §14）。
 - 单次成功使用 Time Bank 延长 `min(30_000ms, timeBankRemainingMs)`，并立即扣除同额余额；新 Deadline = 旧 Deadline + 延长量，不按命令处理时刻重新起算。
 - 每个行动机会最多成功使用一次；仅当前 actor、有限时模式、`receivedAt <= 当前 actionDeadline`、余额大于 0 且本行动尚未使用时可成功。它与行动超时按 §7.2 同样以 `receivedAt` 裁决；重复、逾期或不可用请求不扣余额。
@@ -356,8 +357,8 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 ### 9.2 单活跃连接与多设备接管
 
-- 同一 `playerToken` 同时只允许**一个活跃控制连接**。认证成功并建立 Snapshot 屏障后，Connection Manager 原子递增该玩家的 `connectionEpoch`，把新连接绑定到新 epoch，并立即把旧连接标为 `REPLACED`（[02](./02-protocol-spec.md) §10）。
-- 每条 HUMAN_SOCKET 命令在入口携带内部的 `connectionId + connectionEpoch`（不是 wire 字段）；在 Tournament 提交状态转移前再次校验。接管完成后，所有尚未提交的旧 epoch 命令均拒绝，不得因早已排队而在新设备取得控制权后生效。
+- 同一 `playerToken` 同时只允许**一个活跃控制连接**。Gateway 会先保留新 `connectionEpoch` 与活跃映射，再异步提交 `CONNECTED`/Runtime 重连；因此旧 Socket 在这两个提交之间关闭时已不是 current，不得把陈旧 `DISCONNECTED` 排到新连接之后。认证超时或失败会撤销该保留；若被替换 Socket 仍打开则恢复其映射并重新上报 `CONNECTED`，否则保持断线。只有认证完成并发送 Snapshot 屏障后才将旧连接标为 `REPLACED`（[02](./02-protocol-spec.md) §10）。
+- 每条 HUMAN_SOCKET 命令在入口携带内部的 `connectionId + connectionEpoch`（不是 wire 字段）；在 Room 与 Tournament 队列真正取得执行权时再次校验。比赛中离开先在 Tournament 队列校验并确认撤回，随后 Room 成员/Token 清理仍携带同一 epoch；若期间已接管，旧请求不得移除新连接的成员资格或 Token。接管完成后，所有尚未提交的旧 epoch Ready、离开、Action 与 Time Bank 均拒绝，不得因早已排队而在新设备取得控制权后生效。
 - 服务端尽力向旧连接发送 `SESSION_REPLACED`，随后以 WS Close Code `4001` 关闭。即使通知或 Close 帧丢失，epoch 校验仍保证旧连接不能控制 Seat；新连接只在 epoch 提升与 Snapshot 屏障完成后接收成功结果。
 
 ### 9.3 断线
@@ -368,7 +369,7 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 ### 9.4 重连
 
-走 [02](./02-protocol-spec.md) §6/§10 流程：Snapshot 首帧 + 后续带 `sequence` 事件；断线期间旧动画不重放；漏序/积压/过期直接重取 Snapshot（《总规划》§5.2/§7.2）。运行期重连从内存投影，不读 DB（[03](./03-data-model.md) §4.3）。
+走 [02](./02-protocol-spec.md) §6/§10 流程：认证成功的 `RECONNECT_RESULT` 携带 Room 与按接收者投影的 Game Snapshot；`resumed` 记录该 Room 内此前成功认证的历史，在成员离开/被移出或 Room 关闭前保留。其后 Room 变更只推 `ROOM_SNAPSHOT`，Game Snapshot 只由重连或 `REQUEST_SNAPSHOT` 重同步产生，避免用 Lobby 变化重置牌局投影。后续带 `sequence` 事件；断线期间旧动画不重放；漏序/积压/过期直接重取 Snapshot（《总规划》§5.2/§7.2）。运行期重连从内存投影，不读 DB（[03](./03-data-model.md) §4.3）。
 
 ### 9.5 事件积压与 Fast Forward
 

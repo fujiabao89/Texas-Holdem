@@ -2,7 +2,7 @@
 
 玩家 Web 客户端（Next.js 16 + React 19 + Tailwind CSS 4）。采用单一 `src/app` 路由入口；页面组合功能模块，扑克规则以服务端投影和共享协议为准，客户端绝不裁决牌局。
 
-TEX-24 已实现 Home、创建/加入表单、邀请码预填/复制和 Lobby 的选座、Ready、房主配置/踢人/开局反馈。页面只消费共享 Schema 验证后的 HTTP/WS `RoomSnapshot`，不根据命令回执模拟状态。牌桌下注、动画、音效、赛果和历史仍由 TEX-25+ 实现。
+TEX-24 已实现 Home、创建/加入表单、邀请码预填/复制和 Lobby 的选座、Ready、房主配置/踢人/开局反馈。TEX-21 在同一 Transport 上实现 WebSocket 认证、Room/Game 权威快照、断线重连、Token 恢复和有序投影消费；页面不根据命令回执模拟状态。牌桌下注、动画、音效、赛果和历史仍由 TEX-25+ 实现。
 
 ## 命令
 

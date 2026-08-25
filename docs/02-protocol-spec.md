@@ -271,7 +271,7 @@ type SubmitActionPayload = {
 | `ROOM_SNAPSHOT` | Lobby 全量投影；携带递增 `roomRevision`，替代含糊的 `ROOM_UPDATED` 增量 | 《区块6-10 v0.2》§7.7 |
 | `GAME_SNAPSHOT` | 首次进入、重连、缺序、过期或 Fast Forward 后的完整 `PlayerView` | 《区块6-10 v0.2》§10.8 |
 | `GAME_EVENT` | §6.3 信封；事件类型一一对应 01 §14，不再引入 `PLAYER_ACTION/CARD_DEALT` 等第二套聚合名 | 《区块6-10 v0.2》§7.7 |
-| `CLOCK_UPDATED` | `{ tournamentId, handId, currentActorPlayerId, actionDeadline, timeBankRemainingMs }`；只更新计时显示，不占用 Game Event sequence | Time Bank / 权威计时 |
+| `CLOCK_UPDATED` | `{ tournamentId, handId, currentActorPlayerId, actionDeadline, timeBankRemainingMs }`；`timeBankRemainingMs` 是**接收者本人**的余额，其他字段描述公开行动机会；只更新计时显示，不占用 Game Event sequence | Time Bank / 权威计时 |
 | `COMMAND_RESULT` | `{ requestId, actionId?, status, duplicate, appliedSequence?, error? }`；`status` 为 `APPLIED/REJECTED` | 幂等与关联 |
 | `RESYNC_REQUIRED` | 服务端无法保证该连接事件连续时，要求客户端请求/接受 Snapshot；不得附带私密内部状态 | Fast Forward |
 | `SESSION_REPLACED` | 新设备接管后发给旧连接，随后旧连接关闭 | 多设备接管 |

@@ -10,10 +10,13 @@ import {
 import type { AppConfig } from "./config";
 import { registerRoomRoutes } from "./http/routes/rooms";
 import { registerLobbyGateway, type LobbyGatewayClock } from "./realtime/gateway/lobby-gateway";
+import type { ConnectionEpochRegistry } from "./realtime/connection-epochs";
+import type { TournamentEventBus } from "./realtime/tournament-event-bus";
 import { IdempotencyStore } from "./http/middleware/idempotency";
 import { createRateLimiter, type RateLimiter } from "./http/middleware/rate-limit";
 import { createNodeIdSource, type IdSource } from "./rooms/id-source";
 import type { RoomManager } from "./rooms/room-manager";
+import type { TournamentManager } from "./tournaments/tournament-manager";
 
 /** 规则权威校验适配：engine 返回 readonly 冻结配置，复制为协议可变类型（只调用，不复制规则）。 */
 function validateRoomConfig(config: TournamentConfig): TournamentConfig {
@@ -50,6 +53,9 @@ export interface BuildAppOptions {
   readonly ids?: Pick<IdSource, "uuid">;
   /** 仅用于受控的 Gateway 生命周期测试。 */
   readonly lobbyGatewayClock?: LobbyGatewayClock;
+  readonly tournamentManager?: TournamentManager;
+  readonly tournamentEvents?: TournamentEventBus;
+  readonly connectionEpochs?: ConnectionEpochRegistry;
   /** @fastify/rate-limit 全局 per-IP 额度（CodeQL 识别为 RateLimitingMiddleware）。 */
   readonly rateLimit?: { readonly max: number; readonly timeWindow: string };
 }
@@ -123,6 +129,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.after(() => {
     registerRoomRoutes(app, {
       manager: options.roomManager,
+      tournaments: options.tournamentManager,
       rateLimiter: options.rateLimiter ?? createRateLimiter(),
       idempotency,
       validateConfig: validateRoomConfig,
@@ -135,6 +142,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       ids,
       idempotency,
       clock: options.lobbyGatewayClock,
+      tournaments: options.tournamentManager,
+      events: options.tournamentEvents,
+      epochs: options.connectionEpochs,
     });
   });
 

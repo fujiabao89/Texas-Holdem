@@ -59,6 +59,8 @@ export interface RoomState {
 export interface LeaveInput {
   readonly reason: LeaveReason;
   readonly leftAt: number;
+  /** Set only after the active Tournament accepted the participant withdrawal. */
+  readonly afterTournamentWithdrawal?: boolean;
 }
 
 export interface StartTournamentInput {
@@ -224,12 +226,12 @@ export function kickPlayer(state: RoomState, actorPlayerId: string, targetPlayer
 }
 
 /** 离开：移除成员；Host 主动离开立即把 Host 转给最早加入且在线的真人；末位真人离开则关闭房间。 */
-export function leaveRoom(state: RoomState, playerId: string, _input: LeaveInput): RoomState {
+export function leaveRoom(state: RoomState, playerId: string, input: LeaveInput): RoomState {
   requireMember(state, playerId);
   // IN_GAME 离开必须走 Tournament 撤回/弃赛流程（§6.6 EXIT_PENDING → WITHDRAWN，
   // §6.5 无真人弃赛，TEX-20）。TEX-19 未实现该流程：拒绝而非按普通离开持久化，
   // 避免房间/比赛留在"无真人但 IN_GAME、邀请码仍有效"的半态。
-  if (state.status === "IN_GAME") {
+  if (state.status === "IN_GAME" && !input.afterTournamentWithdrawal) {
     throw new RoomDomainError("ROOM_LOCKED");
   }
   const members = new Map(state.members);

@@ -5,7 +5,7 @@
 公开入口为 `src/index.ts`：
 
 - `commands`：HTTP 请求、WS Client Command、幂等与版本校验；
-- `events`：Server Message、Game Event、Close Code；
+- `events`：Server Message、Game Event、`CLOCK_UPDATED` payload、Close Code；
 - `errors`：稳定 ErrorCode、严格 ErrorEnvelope 与安全错误构造器；
 - `schemas/views`：Room/Game Snapshot、PlayerView/BotView 和 Patch；
 - `schemas/projection`：最小服务端源模型、纯投影、私有发牌事件过滤与 Patch 应用。

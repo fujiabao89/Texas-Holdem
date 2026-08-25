@@ -296,6 +296,23 @@ describe("leaveRoom / transferHost", () => {
     expect(started.activeTournamentId).toBe("t-1");
   });
 
+  it("Tournament 已确认撤回后，IN_GAME 成员可完成 Room 离开与 Token 撤销路径", () => {
+    const { state: s } = readyRoom();
+    const started = startTournament(s, {
+      actorPlayerId: "host-1",
+      expectedRevision: s.roomRevision,
+      tournamentId: "t-1",
+    });
+    const after = leaveRoom(started, "host-1", {
+      reason: "USER_LEFT",
+      leftAt: 9000,
+      afterTournamentWithdrawal: true,
+    });
+    expect(after.members.has("host-1")).toBe(false);
+    expect(after.hostPlayerId).toBe("alice");
+    expect(after.status).toBe("IN_GAME");
+  });
+
   it("transferHost 是显式可注入入口：把 Host 转给最早加入且在线的真人；无在线真人时保持 null", () => {
     const { state } = baseRoom();
     let s = joinRoom(state, makeMember("alice", "Alice", { joinedAt: 2000 }));

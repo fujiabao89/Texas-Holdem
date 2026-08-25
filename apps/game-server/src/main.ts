@@ -14,6 +14,8 @@ import {
 } from "./rooms/tournament-starter";
 import { createMonotonicEpochClock, createNodeTimerScheduler } from "./scheduler/timer-scheduler";
 import { createTournamentManager } from "./tournaments/tournament-manager";
+import { createConnectionEpochRegistry } from "./realtime/connection-epochs";
+import { createTournamentEventBus } from "./realtime/tournament-event-bus";
 import { SecureRandomSource } from "@texas-holdem/poker-engine";
 
 const config = parseAppConfig();
@@ -22,6 +24,8 @@ const roomRepository = createRoomRepository(database);
 const ids = createNodeIdSource();
 const scheduler = createNodeTimerScheduler();
 const tournamentClock = createMonotonicEpochClock(); // 单调时钟做超时裁决（04 §7.2）
+const connectionEpochs = createConnectionEpochRegistry();
+const tournamentEvents = createTournamentEventBus();
 const baseStarter = createPersistenceTournamentStarter(roomRepository);
 
 // RoomManager 在 Tournament 输出汇之后创建（submitRoomCommand 闭包运行期引用，无循环初始化）。
@@ -34,8 +38,8 @@ const tournamentManager = createTournamentManager({
   output: {
     // 事件/计时输出供 TEX-21 连接层订阅、Commit Bundle 供 TEX-22 Writer 处理；
     // P0 交付前为空实现，不投递到客户端。
-    emitEvents: () => {},
-    emitClockUpdated: () => {},
+    emitEvents: tournamentEvents.emitEvents,
+    emitClockUpdated: tournamentEvents.emitClockUpdated,
     enqueueCommitBundles: () => {},
     submitRoomCommand: (roomId, command) => {
       void roomManager.submitCommand(roomId, command).catch((error: unknown) => {
@@ -44,7 +48,7 @@ const tournamentManager = createTournamentManager({
       });
     },
   },
-  executorDeps: {},
+  executorDeps: { isConnectionCurrent: connectionEpochs.isCurrent },
 });
 
 const starter = createRuntimeTournamentStarter({
@@ -62,9 +66,16 @@ roomManager = createRoomManager({
   ids,
   tokenSecret: config.token.secret,
   tokenKeyId: config.token.keyId,
+  isConnectionCurrent: connectionEpochs.isCurrent,
 });
 
-const app = buildApp({ config, roomManager });
+const app = buildApp({
+  config,
+  roomManager,
+  tournamentManager,
+  tournamentEvents,
+  connectionEpochs,
+});
 
 const rawPort = process.env.PORT ?? "3001";
 const port = Number(rawPort);
