@@ -22,7 +22,7 @@ import {
 import type { IdSource } from "../rooms/id-source";
 import type { TimerHandle, TimerScheduler } from "../scheduler/timer-scheduler";
 
-export type TournamentStatus = "RUNNING" | "FINISHED" | "ABANDONED_NO_HUMAN";
+export type TournamentStatus = "RUNNING" | "FINISHED" | "ABANDONED_NO_HUMAN" | "FROZEN";
 
 export interface PlayerRuntimeRecord {
   readonly playerId: string;
@@ -69,7 +69,9 @@ export interface TournamentRuntimeState {
   committedEventCount: number;
   currentLegalActions: LegalActions | null;
   stopAfterCurrentHand: boolean;
-  /** 幂等账本：actionId → Payload 摘要 + 最终结果（驻留内存期间保留，§7.3）。 */
+  /** Engine Critical Error 诊断（§7.4 冻结）；非冻结为 null。 */
+  criticalDiagnostic: string | null;
+  /** 幂等账本：`playerId:request:requestId` / `playerId:action:actionId` → Payload 摘要 + 结果（§7.3）。 */
   readonly idempotency: Map<string, { payloadHash: string; result: unknown }>;
 }
 
@@ -151,6 +153,7 @@ export function createTournamentRuntimeState(
     committedEventCount: 0,
     currentLegalActions: null,
     stopAfterCurrentHand: false,
+    criticalDiagnostic: null,
     idempotency: new Map(),
   };
 }

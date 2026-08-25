@@ -5,7 +5,7 @@ import type { HandCommitBundle } from "../infrastructure/persistence/repositorie
 import type { RoomCommand } from "../rooms/room-executor";
 import type { IdSource } from "../rooms/id-source";
 import { createFakeClock, type FakeClock } from "../../../../tests/support/fake-clock";
-import { createTournamentRuntimeState, type PlayerSeed } from "./tournament-runtime";
+import { createTournamentRuntimeState, type PlayerSeed, type TournamentRuntimeState } from "./tournament-runtime";
 import {
   TournamentExecutor,
   type ClockUpdatedPayload,
@@ -17,6 +17,7 @@ interface Harness {
   readonly executor: TournamentExecutor;
   readonly clock: FakeClock;
   readonly output: RecordingSink;
+  readonly runtime: TournamentRuntimeState;
 }
 
 interface RecordingSink extends TournamentOutputSink {
@@ -105,7 +106,7 @@ function makeHarness(overrides: { config?: Partial<TournamentConfig>; seats?: nu
     output,
     hashAction: (action) => JSON.stringify(action),
   });
-  return { executor, clock, output };
+  return { executor, clock, output, runtime };
 }
 
 /** 当前行动者 playerId；无行动者为 null。 */
@@ -367,6 +368,47 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     expect(stale.error?.code).toBe("STALE_GAME_STATE");
     const notTurn = (await submitAction(harness, { playerId: other, action: fold() })) as { status: string; error?: { code: string } };
     expect(notTurn.error?.code).toBe("NOT_YOUR_TURN");
+  });
+
+  it("USE_TIME_BANK 同 requestId 重试复用原结果且只扣一次余额（02 §7.3）", async () => {
+    const harness = makeHarness();
+    await start(harness);
+    const firstActor = currentActor(harness)!;
+    const sequence = String(harness.executor.getView().lastWireSequence);
+    const submit = (requestId: string) =>
+      harness.executor.submit({
+        type: "USE_TIME_BANK",
+        requestId,
+        playerId: firstActor,
+        expectedSequence: sequence,
+        receivedAt: harness.clock.now(),
+      });
+    const first = (await submit("tb-same")) as { status: string; duplicate: boolean };
+    expect(first.status).toBe("APPLIED");
+    const second = (await submit("tb-same")) as { status: string; duplicate: boolean };
+    expect(second.status).toBe("APPLIED");
+    expect(second.duplicate).toBe(true);
+    // 余额只扣一次（60s → 30s），未因重试再次扣减
+    expect(harness.executor.getView().timeBankRemainingMs.get(firstActor)).toBe(30_000);
+  });
+});
+
+describe("Engine Critical Error 冻结（§7.4/§15）", () => {
+  it("冻结后拒绝业务命令（GAME_UNAVAILABLE）且不再推进", async () => {
+    const harness = makeHarness();
+    await start(harness);
+    // 模拟 Engine Critical Error 后执行器置 FROZEN 并保存诊断
+    harness.runtime.status = "FROZEN";
+    harness.runtime.criticalDiagnostic = "不变量违反: 座位 0 筹码非法";
+    harness.clock.advance(30_000); // Timer 已取消 → 不应触发自动动作
+    const result = (await submitAction(harness, { playerId: "p0", action: call() })) as {
+      status: string;
+      error?: { code: string };
+    };
+    expect(result.status).toBe("REJECTED");
+    expect(result.error?.code).toBe("GAME_UNAVAILABLE");
+    expect(harness.executor.getView().status).toBe("FROZEN");
+    expect(harness.clock.pendingTimers()).toBe(0);
   });
 });
 

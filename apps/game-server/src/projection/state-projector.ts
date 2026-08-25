@@ -12,7 +12,9 @@
  * - Engine 座位号 → 协议 `playerId`：经执行器注入的 seatToPlayer 映射。
  * - Engine Card（数值 rank、小写 suit）→ wire Card（字符串 rank、UPPER_SNAKE suit）。
  * - `isFullRaise`：Engine 只允许完整加注进入 `PLAYER_RAISED`（短全下走 `ALL_IN`），恒为 true。
- * - `POT_AWARDED.winningHandRank` 与 `HAND_STARTED.blindLevel` 由执行器在 WireContext 提供。
+ * - `HAND_STARTED.blindLevel` 由执行器在 WireContext 提供。
+ * - `POT_AWARDED.winningHandRank` 本版固定为 `null`（schema 合法）：获胜牌型可由
+ *   `PLAYER_REVEALED` 事件推导；计算侧待后续在 WireContext 传入赢家底牌与公共牌后补齐。
  */
 
 import { evaluateHand, handRankName } from "@texas-holdem/poker-engine";

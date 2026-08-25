@@ -41,6 +41,7 @@ import {
 } from "../projection/state-projector";
 import { TournamentDomainError } from "./tournament-errors";
 import { buildHandCommitBundle } from "./tournament-persistence";
+import { stableStringify } from "../infrastructure/persistence/checksum";
 import type { TournamentCommand } from "./tournament-commands";
 import {
   runtimeView,
@@ -159,6 +160,16 @@ export class TournamentExecutor {
   }
 
   private process(command: TournamentCommand): CommandResultPayload | null {
+    // Engine Critical Error 冻结后：拒绝业务命令，停止该桌后续执行（04 §7.4/§15）。
+    if (this.state.status === "FROZEN") {
+      if (command.type === "SUBMIT_ACTION") {
+        return this.rejected("GAME_UNAVAILABLE", command.requestId, command.actionId);
+      }
+      if (command.type === "USE_TIME_BANK") {
+        return this.rejected("GAME_UNAVAILABLE", command.requestId);
+      }
+      return null; // 内部/计时回调直接丢弃
+    }
     switch (command.type) {
       case "START":
         this.processStart();
@@ -234,22 +245,13 @@ export class TournamentExecutor {
     command: Extract<TournamentCommand, { type: "SUBMIT_ACTION" }>,
   ): CommandResultPayload | null {
     const payloadHash = this.deps.hashAction(command.action);
-    // actionId 作用域 = tournamentId + playerId（02 §7.3）：键含 playerId 维度。
-    const idempotencyKey = `${command.playerId}:${command.actionId}`;
-    const cached = this.state.idempotency.get(idempotencyKey);
-    if (cached !== undefined) {
-      if (cached.payloadHash !== payloadHash) {
-        return this.rejected("IDEMPOTENCY_KEY_REUSE", command.requestId, command.actionId);
-      }
-      const previous = cached.result as CommandResultPayload;
-      return {
-        requestId: command.requestId,
-        actionId: command.actionId,
-        status: "APPLIED",
-        duplicate: true,
-        appliedSequence: previous.appliedSequence,
-      };
-    }
+    // requestId（作用域 roomId+playerId）与 actionId（作用域 tournamentId+playerId）均为幂等键（02 §7.3）。
+    const requestKey = `${command.playerId}:request:${command.requestId}`;
+    const viaRequest = this.idempotencyLookup(requestKey, payloadHash, command.requestId, command.actionId);
+    if (viaRequest !== "continue") return viaRequest;
+    const actionKey = `${command.playerId}:action:${command.actionId}`;
+    const viaAction = this.idempotencyLookup(actionKey, payloadHash, command.requestId, command.actionId);
+    if (viaAction !== "continue") return viaAction;
 
     const expected = BigInt(command.expectedSequence);
     const current = BigInt(this.state.lastWireSequence);
@@ -280,6 +282,11 @@ export class TournamentExecutor {
     try {
       legal = this.state.engine.applyAction(toEngineAction(command.action, seat));
     } catch (error) {
+      // Engine Critical Error（不变量违反，状态已污染）→ 冻结该桌，不再继续（04 §7.4/§15）。
+      if (isCriticalEngineError(error)) {
+        this.freeze(error);
+        return this.rejected("GAME_UNAVAILABLE", command.requestId, command.actionId);
+      }
       return this.rejected(mapEngineError(error), command.requestId, command.actionId);
     }
     this.state.currentLegalActions = legal;
@@ -291,7 +298,8 @@ export class TournamentExecutor {
       duplicate: false,
       appliedSequence: String(this.state.lastWireSequence),
     };
-    this.state.idempotency.set(idempotencyKey, { payloadHash, result });
+    this.state.idempotency.set(requestKey, { payloadHash, result });
+    this.state.idempotency.set(actionKey, { payloadHash, result });
     return result;
   }
 
@@ -301,6 +309,11 @@ export class TournamentExecutor {
     command: Extract<TournamentCommand, { type: "USE_TIME_BANK" }>,
   ): CommandResultPayload | null {
     const requestId = command.requestId;
+    // requestId 幂等（02 §7.3）：同 requestId 同 Payload 复用原结果，不同 Payload 拒绝。
+    const requestKey = `${command.playerId}:request:${requestId}`;
+    const payloadHash = stableStringify({ expectedSequence: command.expectedSequence });
+    const viaRequest = this.idempotencyLookup(requestKey, payloadHash, requestId);
+    if (viaRequest !== "continue") return viaRequest;
     if (this.state.config.actionTime === "UNLIMITED") {
       return this.rejected("TIME_BANK_DISABLED", requestId);
     }
@@ -338,12 +351,14 @@ export class TournamentExecutor {
       actionDeadline: newDeadline,
       timeBankRemainingMs: consumed.secondsRemaining * 1000,
     });
-    return {
+    const result: CommandResultPayload = {
       requestId,
       status: "APPLIED",
       duplicate: false,
       appliedSequence: String(this.state.lastWireSequence),
     };
+    this.state.idempotency.set(requestKey, { payloadHash, result });
+    return result;
   }
 
   // ---- Timer 回调 ----
@@ -365,8 +380,9 @@ export class TournamentExecutor {
       : { type: "fold", seatIndex: command.seatIndex, source: "system_timer" };
     try {
       this.state.currentLegalActions = this.state.engine.applyAction(action);
-    } catch {
-      // Timer 自动动作不应失败；Engine 不变量兜底，不再推进。
+    } catch (error) {
+      // Timer 自动动作不应失败；Engine Critical Error → 冻结（§15），否则静默丢弃。
+      if (isCriticalEngineError(error)) this.freeze(error);
       return;
     }
     this.afterEngineTransition();
@@ -399,7 +415,8 @@ export class TournamentExecutor {
     try {
       // WithdrawParticipant 是 Tournament 级 Engine 指令，不占 currentActor（§6.6/§7.5）。
       this.state.engine.withdrawParticipant(record.seatIndex);
-    } catch {
+    } catch (error) {
+      if (isCriticalEngineError(error)) this.freeze(error); // Engine Critical Error → 冻结
       return; // 已撤回/非法 → no-op
     }
     this.afterEngineTransition();
@@ -483,6 +500,13 @@ export class TournamentExecutor {
       type: "TOURNAMENT_FINISHED",
       tournamentId: this.state.tournamentId,
     });
+  }
+
+  /** Engine Critical Error（不变量违反，状态已污染）→ 冻结当前 Hand、保存诊断、停止后续执行（§7.4/§15）；Room 保持隔离待人工处置（§13）。 */
+  private freeze(error: unknown): void {
+    this.state.status = "FROZEN";
+    this.state.criticalDiagnostic = error instanceof Error ? error.message : String(error);
+    this.cancelAllTimers();
   }
 
   // ---- Timer 调度 ----
@@ -720,6 +744,28 @@ export class TournamentExecutor {
       error: { code, message: code, retryable: false, traceId: this.state.ids.uuid() },
     };
   }
+
+  /** 幂等账本查询（§7.3）：命中同 Payload → 复用原结果；不同 Payload → IDEMPOTENCY_KEY_REUSE。 */
+  private idempotencyLookup(
+    key: string,
+    payloadHash: string,
+    requestId: string,
+    actionId?: string,
+  ): CommandResultPayload | "continue" {
+    const cached = this.state.idempotency.get(key);
+    if (cached === undefined) return "continue";
+    if (cached.payloadHash !== payloadHash) {
+      return this.rejected("IDEMPOTENCY_KEY_REUSE", requestId, actionId);
+    }
+    const previous = cached.result as CommandResultPayload;
+    return {
+      requestId,
+      actionId,
+      status: "APPLIED",
+      duplicate: true,
+      appliedSequence: previous.appliedSequence,
+    };
+  }
 }
 
 /** wire SubmitAction → Engine PlayerAction（金额为本街目标总投入；source 恒 HUMAN_SOCKET）。 */
@@ -738,6 +784,12 @@ function toEngineAction(action: SubmitAction, seatIndex: number): PlayerAction {
     case "ALL_IN":
       return { type: "all-in", seatIndex, source: "human_socket" };
   }
+}
+
+/** Engine Critical Error（不变量违反）：状态已在断言前被污染，必须冻结整桌（04 §15/§7.4）。 */
+function isCriticalEngineError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("不变量违反") || message.includes("锦标赛不变量违反");
 }
 
 /** Engine 拒绝原因 → 稳定 ErrorCode（02 §11）。Engine 是唯一合法动作来源。 */
