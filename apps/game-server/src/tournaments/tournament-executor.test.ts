@@ -533,6 +533,25 @@ describe("事件 sequence 与 Commit Bundle", () => {
     expect(calledMsg!.payload.patch.viewer?.legalActions).not.toBeNull();
   });
 
+  it("非当前玩家撤回：PLAYER_FOLDED patch 的 currentActorPlayerId 保持原行动者（P1 回归）", async () => {
+    const harness = makeHarness({ seats: 3 });
+    await start(harness);
+    const actor = currentActor(harness)!; // UTG（座位 0）正在行动
+    const withdrawTarget = ["p0", "p1", "p2"].find((p) => p !== actor)!; // 非当前、未全下玩家
+    const before = harness.output.events.length;
+    await harness.executor.submit({ type: "WITHDRAW_PLAYER", playerId: withdrawTarget, reason: "USER_LEFT" });
+    // 权威状态：原行动者仍待行动（非当前玩家撤回不转移行动权）
+    expect(currentActor(harness)).toBe(actor);
+    const newEvents = harness.output.events.slice(before);
+    const foldedMsg = newEvents.find(
+      (m) => m.payload.event.type === "PLAYER_FOLDED" && m.payload.patch.viewer?.playerId === actor,
+    );
+    expect(foldedMsg).toBeDefined();
+    // patch 的行动者与权威状态一致：原行动者继续行动并拿到 legalActions
+    expect(foldedMsg!.payload.patch.currentActorPlayerId).toBe(actor);
+    expect(foldedMsg!.payload.patch.viewer?.legalActions).not.toBeNull();
+  });
+
   it("非授权 Payload 不含其他玩家底牌（字段级隔离）", async () => {
     const harness = makeHarness();
     await start(harness);

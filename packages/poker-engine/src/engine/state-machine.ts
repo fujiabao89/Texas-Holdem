@@ -425,10 +425,6 @@ export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandRe
   });
   states.push(next); // 撤回折叠事件的状态占位 = next（折叠已应用）
   const result = advanceAfterAction(next, emit, states);
-  // 同街推进到下一行动者时，把折叠事件快照更新为「下一行动者已确定」的状态。
-  if (states.length === 1) {
-    states[0] = Object.freeze({ ...result, nextSequence: seq.value });
-  }
   const previousActor = state.currentActor;
   const actorStillPending =
     previousActor !== seatIndex &&
@@ -436,12 +432,19 @@ export function foldSeatForWithdraw(state: GameState, seatIndex: number): HandRe
     result.seats.some(
       (s) => s.seatIndex === previousActor && isPending(s, result.currentBet),
     );
+  // 权威返回态：非当前玩家撤回且原行动者仍待行动时，把 currentActor 恢复为原行动者。
+  const finalState = Object.freeze({
+    ...result,
+    ...(actorStillPending ? { currentActor: previousActor } : {}),
+    nextSequence: seq.value,
+  });
+  // 同街推进到下一行动者时，用最终返回态更新折叠事件快照，保证 PLAYER_FOLDED patch
+  // 的 currentActorPlayerId 与权威状态一致（原行动者继续行动，拿到 legalActions）。
+  if (states.length === 1) {
+    states[0] = finalState;
+  }
   return {
-    state: Object.freeze({
-      ...result,
-      ...(actorStillPending ? { currentActor: previousActor } : {}),
-      nextSequence: seq.value,
-    }),
+    state: finalState,
     events: Object.freeze(events),
     states: Object.freeze(states),
   };
