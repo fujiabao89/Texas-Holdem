@@ -265,6 +265,59 @@ describe("LobbyGateway", () => {
     expect(() => manager.authenticate(host.roomId, host.playerToken)).toThrowError("AUTH_FAILED");
   });
 
+  it("does not let a superseded in-game leave remove the replacement session's Room membership", async () => {
+    const clock = createFakeClock();
+    const ids = fakeIds(clock);
+    const epochs = createConnectionEpochRegistry();
+    const manager = createRoomManager({
+      persistence: fakePersistence(), roomRepository: fakeRoomRepository(), ids, tokenSecret: "test-secret", tokenKeyId: "k1", isConnectionCurrent: epochs.isCurrent,
+    });
+    const session = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config });
+    let releaseRoomLeave: (() => void) | undefined;
+    const activeTournamentManager: RoomManager = {
+      ...manager,
+      getSnapshot(roomId) {
+        const snapshot = manager.getSnapshot(roomId);
+        return snapshot === undefined ? undefined : { ...snapshot, status: "IN_GAME", activeTournamentId: "t1" };
+      },
+      submitCommand(roomId, command) {
+        if (command.type === "LEAVE" && command.afterTournamentWithdrawal) {
+          return new Promise((resolve, reject) => {
+            releaseRoomLeave = () => { void manager.submitCommand(roomId, command).then(resolve, reject); };
+          });
+        }
+        return manager.submitCommand(roomId, command);
+      },
+    };
+    const tournaments: TournamentManager = {
+      create() {},
+      async submit() { return null; },
+      getView() { return undefined; },
+      async setConnection() {},
+    };
+    let handler!: (socket: FakeSocket) => void;
+    const app = { get(_path: string, _options: unknown, route: unknown) { handler = route as (socket: FakeSocket) => void; } } as unknown as FastifyInstance;
+    registerLobbyGateway(app, activeTournamentManager, { now: clock.now, ids, idempotency: new IdempotencyStore(), clock, tournaments, epochs });
+
+    const oldSocket = new FakeSocket();
+    handler(oldSocket);
+    authenticate(oldSocket, session.roomId, session.playerToken);
+    await flush();
+    oldSocket.receive({ type: "LEAVE_ROOM", requestId: "00000000-0000-4000-8000-000000000022", payload: {} });
+    await flush();
+    expect(releaseRoomLeave).toBeDefined();
+
+    const replacement = new FakeSocket();
+    handler(replacement);
+    authenticate(replacement, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000023");
+    await flush();
+    releaseRoomLeave?.();
+    await flush();
+
+    expect(manager.getSnapshot(session.roomId)?.players.some((player) => player.playerId === session.playerId)).toBe(true);
+    expect(manager.authenticate(session.roomId, session.playerToken)).toBe(session.playerId);
+  });
+
   it("routes runtime commands with the active epoch and restores only authority snapshots/events", async () => {
     const { host, handler, submitted, events, emittedEvents, executor, rejectTimeBank, manager } = await setupTournamentGateway();
     const socket = new FakeSocket();
