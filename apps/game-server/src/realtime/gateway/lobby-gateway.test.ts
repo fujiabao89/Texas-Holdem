@@ -132,14 +132,14 @@ describe("LobbyGateway", () => {
       persistence: fakePersistence(), roomRepository: fakeRoomRepository(), ids, tokenSecret: "test-secret", tokenKeyId: "k1",
     });
     let blockConnectionUpdate = false;
-    let releaseConnectionUpdate!: () => void;
+    const releaseConnectionUpdates: Array<() => void> = [];
     const delayedManager: RoomManager = {
       ...manager,
       submitCommand(roomId, command) {
         if (blockConnectionUpdate && command.type === "SET_CONNECTION_STATUS" && command.connectionStatus === "CONNECTED") {
-          return new Promise((resolve, reject) => {
-            releaseConnectionUpdate = () => { void manager.submitCommand(roomId, command).then(resolve, reject); };
-          });
+          return manager.submitCommand(roomId, command).then((result) => new Promise<typeof result>((resolve) => {
+            releaseConnectionUpdates.push(() => resolve(result));
+          }));
         }
         return manager.submitCommand(roomId, command);
       },
@@ -159,7 +159,7 @@ describe("LobbyGateway", () => {
     authenticate(timedOut, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000005");
     await flush();
     clock.advance(5_000);
-    releaseConnectionUpdate();
+    releaseConnectionUpdates.shift()!();
     await flush();
     clock.advance(15_000);
 
@@ -177,11 +177,30 @@ describe("LobbyGateway", () => {
     authenticate(orphaned, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000006");
     await flush();
     clock.advance(5_000);
-    releaseConnectionUpdate();
+    releaseConnectionUpdates.shift()!();
     await flush();
 
     expect(orphaned.closeCodes).toContain(4003);
     expect(manager.getSnapshot(session.roomId)?.players[0]?.connectionStatus).toBe("DISCONNECTED");
+
+    const stale = new FakeSocket();
+    handler(stale);
+    authenticate(stale, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000007");
+    await flush();
+    clock.advance(5_000);
+    const replacement = new FakeSocket();
+    handler(replacement);
+    authenticate(replacement, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000008");
+    await flush();
+
+    releaseConnectionUpdates.shift()!();
+    await flush();
+    releaseConnectionUpdates.shift()!();
+    await flush();
+
+    expect(stale.closeCodes).toContain(4003);
+    expect(replacement.readyState).toBe(replacement.OPEN);
+    expect(manager.getSnapshot(session.roomId)?.players[0]?.connectionStatus).toBe("CONNECTED");
   });
 
   it("uses requestId plus the complete payload to replay a Lobby mutation", async () => {

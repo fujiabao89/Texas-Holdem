@@ -52,6 +52,8 @@ const systemClock: LobbyGatewayClock = {
  */
 export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager, options: LobbyGatewayOptions): void {
   const activeConnections = new Map<string, ActiveConnection>();
+  const authenticationAttempts = new Map<string, number>();
+  let nextAuthenticationAttempt = 0;
   const clock = options.clock ?? systemClock;
 
   app.get("/api/v1/ws", { websocket: true }, (socket) => {
@@ -171,16 +173,21 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
           socket.close(CLOSE_CODES.AUTH_FAILED);
           return;
         }
+        let pendingConnectionKey: string | null = null;
+        let authenticationAttempt: number | null = null;
         try {
           roomId = command.payload.roomId;
           playerId = manager.authenticate(roomId, command.payload.playerToken);
-          const pendingConnectionKey = `${roomId}:${playerId}`;
+          pendingConnectionKey = `${roomId}:${playerId}`;
+          authenticationAttempt = ++nextAuthenticationAttempt;
+          authenticationAttempts.set(pendingConnectionKey, authenticationAttempt);
           await manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "CONNECTED" });
           // The authentication timeout can close this socket while the room queue is busy.
           if (socket.readyState !== socket.OPEN) {
-            if (!activeConnections.has(pendingConnectionKey)) {
+            if (authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt && !activeConnections.has(pendingConnectionKey)) {
               await manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "DISCONNECTED" });
             }
+            if (authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt) authenticationAttempts.delete(pendingConnectionKey);
             return;
           }
           const roomSnapshot = manager.getSnapshot(roomId);
@@ -190,6 +197,7 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
           connectionKey = pendingConnectionKey;
           const previous = activeConnections.get(connectionKey);
           activeConnections.set(connectionKey, { connectionId, replace });
+          if (authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt) authenticationAttempts.delete(pendingConnectionKey);
           authenticated = true;
           clock.clearTimeout(authTimer);
           unsubscribe = manager.subscribe((snapshot) => {
@@ -204,6 +212,9 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
           previous?.replace();
           startHeartbeat();
         } catch (error) {
+          if (pendingConnectionKey !== null && authenticationAttempt !== null && authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt) {
+            authenticationAttempts.delete(pendingConnectionKey);
+          }
           sendError(error instanceof RoomDomainError ? error.code : "AUTH_FAILED");
           socket.close(CLOSE_CODES.AUTH_FAILED);
         }
