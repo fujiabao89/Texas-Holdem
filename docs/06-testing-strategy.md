@@ -158,7 +158,7 @@ Fixture 必须通过公开的 Engine/协议入口执行，不得直接篡改被�
 
 ## 6. 联机与重连测试
 
-TEX-21 在 `apps/{web,game-server}/src/{protocol,state,realtime}/**/*.test.ts` 使用可注入 Fake WebSocket、UUID、Event Bus 与 Fake Clock 验证认证超时、版本/Token 拒绝、15/45 心跳、旧会话接管（含新 `CONNECTED` 等待期间旧 Socket Close 的时序）、执行器对旧 epoch Action/Time Bank 的拒绝、`RECONNECT_RESULT`/`REQUEST_SNAPSHOT`、Runtime Event/Clock 扇出、投影乱序、Token 降级与重连重试；它们属于 Unit 层，不替代后续 `tests/clients/` 的多客户端压力/故障注入测试。
+TEX-21 在 `apps/{web,game-server}/src/{protocol,state,realtime}/**/*.test.ts` 使用可注入 Fake WebSocket、UUID、Event Bus 与 Fake Clock 验证认证超时、版本/Token 拒绝、15/45 心跳、旧会话接管（含新 `CONNECTED` 等待期间旧 Socket Close 的时序）、Room/Tournament 队列对旧 epoch Ready/离开/Action/Time Bank 的拒绝、`RECONNECT_RESULT`/`REQUEST_SNAPSHOT`、Runtime Event/Clock 扇出（含两名接收者的 Time Bank 隔离）、投影乱序、Token 降级与重连重试；它们属于 Unit 层，不替代后续 `tests/clients/` 的多客户端压力/故障注入测试。
 
 - 多客户端测试：同一 Tournament 的多个测试客户端必须收到一致的公开状态；每个 sequence 应满足 `apply(previousView, patch) == serverProject(state, viewer)`，私有信息按 PlayerView 隔离（§7）；覆盖 Event 丢失、重复、乱序、未知字段、断连中积压、过期 Action、`actionId` 重复，并断言客户端**重新同步而非继续错误应用**（《区块6-10 v0.2》§9.11）。
 - 故障注入【工程基线】：测试代理可确定性地 drop/duplicate/delay/reorder/close WS 帧；每个用例记录故障脚本和 Seed。协议级测试不用真实移动网络，真实设备 Release 验收再覆盖 Wi-Fi/蜂窝切换。

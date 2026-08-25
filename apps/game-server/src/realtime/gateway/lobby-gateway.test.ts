@@ -14,6 +14,7 @@ import type { TournamentManager } from "../../tournaments/tournament-manager";
 import { createTournamentRuntimeState } from "../../tournaments/tournament-runtime";
 import { createFakeClock } from "../../../../../tests/support/fake-clock";
 import { createTournamentEventBus } from "../tournament-event-bus";
+import { createConnectionEpochRegistry } from "../connection-epochs";
 import { registerLobbyGateway } from "./lobby-gateway";
 
 const config: TournamentConfig = {
@@ -158,7 +159,7 @@ async function setupTournamentGateway() {
   const app = { get(_path: string, _options: unknown, route: unknown) { handler = route as (socket: FakeSocket) => void; } } as unknown as FastifyInstance;
   registerLobbyGateway(app, gatewayManager, { now: clock.now, ids, idempotency: new IdempotencyStore(), clock, tournaments, events });
   return {
-    clock, manager, host, handler: (socket: FakeSocket) => handler(socket), tournaments, submitted, events, emittedEvents, emittedClocks, executor,
+    clock, manager, host, member, handler: (socket: FakeSocket) => handler(socket), tournaments, submitted, events, emittedEvents, emittedClocks, executor,
     rejectTimeBank: () => { rejectTimeBank = true; },
   };
 }
@@ -172,6 +173,98 @@ function authenticate(socket: FakeSocket, roomId: string, playerToken: string, r
 }
 
 describe("LobbyGateway", () => {
+  it("rejects a Lobby mutation queued by an old socket after a takeover", async () => {
+    const clock = createFakeClock();
+    const ids = fakeIds(clock);
+    const epochs = createConnectionEpochRegistry();
+    const manager = createRoomManager({
+      persistence: fakePersistence(), roomRepository: fakeRoomRepository(), ids, tokenSecret: "test-secret", tokenKeyId: "k1", isConnectionCurrent: epochs.isCurrent,
+    });
+    let releaseOldMutation: (() => void) | undefined;
+    const delayedManager: RoomManager = {
+      ...manager,
+      submitCommand(roomId, command) {
+        if (command.type === "SET_READY" && command.connectionEpoch !== undefined) {
+          return new Promise((resolve, reject) => {
+            releaseOldMutation = () => { void manager.submitCommand(roomId, command).then(resolve, reject); };
+          });
+        }
+        return manager.submitCommand(roomId, command);
+      },
+    };
+    let handler!: (socket: FakeSocket) => void;
+    const app = { get(_path: string, _options: unknown, route: unknown) { handler = route as (socket: FakeSocket) => void; } } as unknown as FastifyInstance;
+    registerLobbyGateway(app, delayedManager, { now: clock.now, ids, idempotency: new IdempotencyStore(), clock, epochs });
+    const session = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config });
+    const oldSocket = new FakeSocket();
+    handler(oldSocket);
+    authenticate(oldSocket, session.roomId, session.playerToken);
+    await flush();
+
+    oldSocket.receive({ type: "SET_READY", requestId: "00000000-0000-4000-8000-000000000020", payload: { ready: true } });
+    await flush();
+    const replacement = new FakeSocket();
+    handler(replacement);
+    authenticate(replacement, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000021");
+    await flush();
+    releaseOldMutation?.();
+    await flush();
+
+    expect(manager.getSnapshot(session.roomId)?.players[0]?.ready).toBe(false);
+  });
+
+  it("marks a normal reconnect as resumed after the first authenticated connection closes", async () => {
+    const { manager, handler } = setup();
+    const session = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config });
+    const first = new FakeSocket();
+    handler(first);
+    authenticate(first, session.roomId, session.playerToken);
+    await flush();
+    first.close();
+    await flush();
+
+    const second = new FakeSocket();
+    handler(second);
+    authenticate(second, session.roomId, session.playerToken, "00000000-0000-4000-8000-000000000017");
+    await flush();
+    expect(second.sent).toContainEqual(expect.objectContaining({ type: "RECONNECT_RESULT", payload: expect.objectContaining({ resumed: true }) }));
+  });
+
+  it("projects Time Bank clock data per receiving player and removes an in-game leaver from Room membership", async () => {
+    const { host, member, handler, submitted, events, emittedClocks, executor, manager } = await setupTournamentGateway();
+    const hostSocket = new FakeSocket();
+    const memberSocket = new FakeSocket();
+    handler(hostSocket);
+    authenticate(hostSocket, host.roomId, host.playerToken);
+    await flush();
+    handler(memberSocket);
+    authenticate(memberSocket, member.roomId, member.playerToken, "00000000-0000-4000-8000-000000000018");
+    await flush();
+
+    const view = executor.getView();
+    const actorSeat = view.engineState.hand!.currentActor!;
+    const actorPlayerId = view.seatToPlayer.get(actorSeat)!;
+    await executor.submit({
+      type: "USE_TIME_BANK",
+      requestId: "clock-per-viewer",
+      playerId: actorPlayerId,
+      expectedSequence: String(view.lastWireSequence),
+      receivedAt: 1_000,
+    });
+    events.emitClockUpdated(emittedClocks.at(-1)!);
+
+    const clockFor = (socket: FakeSocket) => socket.sent.filter((message) => (message as { type: string }).type === "CLOCK_UPDATED").at(-1) as { payload: { timeBankRemainingMs: number } };
+    expect(memberSocket.sent.map((message) => (message as { type: string }).type)).toContain("CLOCK_UPDATED");
+    expect(clockFor(actorPlayerId === host.playerId ? hostSocket : memberSocket).payload.timeBankRemainingMs).toBe(30_000);
+    expect(clockFor(actorPlayerId === host.playerId ? memberSocket : hostSocket).payload.timeBankRemainingMs).toBe(60_000);
+
+    hostSocket.receive({ type: "LEAVE_ROOM", requestId: "00000000-0000-4000-8000-000000000019", payload: {} });
+    await flush();
+    expect(submitted).toContainEqual(expect.objectContaining({ type: "WITHDRAW_PLAYER", playerId: host.playerId, connectionEpoch: expect.any(Number) }));
+    expect(manager.getSnapshot(host.roomId)?.players.some((player) => player.playerId === host.playerId)).toBe(false);
+    expect(() => manager.authenticate(host.roomId, host.playerToken)).toThrowError("AUTH_FAILED");
+  });
+
   it("routes runtime commands with the active epoch and restores only authority snapshots/events", async () => {
     const { host, handler, submitted, events, emittedEvents, executor, rejectTimeBank, manager } = await setupTournamentGateway();
     const socket = new FakeSocket();

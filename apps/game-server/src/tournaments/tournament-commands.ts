@@ -65,6 +65,8 @@ export interface WithdrawPlayerInput {
   readonly type: "WITHDRAW_PLAYER";
   readonly playerId: string;
   readonly reason: "USER_LEFT" | "DISCONNECT_TIMEOUT";
+  /** Transport-private epoch for a user-initiated withdrawal; timers omit it. */
+  readonly connectionEpoch?: number;
 }
 
 /** 连接状态变化（WS 层上报；用于宽限计时器与无真人判定，不改变扑克状态）。 */

@@ -431,6 +431,13 @@ export class TournamentExecutor {
   private processWithdraw(
     command: Extract<TournamentCommand, { type: "WITHDRAW_PLAYER" }>,
   ): void {
+    if (
+      command.connectionEpoch !== undefined &&
+      this.deps.isConnectionCurrent !== undefined &&
+      !this.deps.isConnectionCurrent(this.state.roomId, command.playerId, command.connectionEpoch)
+    ) {
+      throw new TournamentDomainError("SESSION_REPLACED");
+    }
     const record = this.state.players.get(command.playerId);
     if (record === undefined) return;
     if (this.state.engine.getState().phase === "finished") return;

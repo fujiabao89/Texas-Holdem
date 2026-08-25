@@ -129,6 +129,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.after(() => {
     registerRoomRoutes(app, {
       manager: options.roomManager,
+      tournaments: options.tournamentManager,
       rateLimiter: options.rateLimiter ?? createRateLimiter(),
       idempotency,
       validateConfig: validateRoomConfig,

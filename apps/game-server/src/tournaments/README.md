@@ -19,7 +19,7 @@
 - **截止点仲裁**：对截止点 `D`，所有 `receivedAt <= D` 的 Action/Time Bank 排在 `SYSTEM_TIMER_ACTION` 之前处理（即使仍排在 Timer 之后）；`receivedAt > D` 且仍指向同一行动机会 → `ACTION_TIMEOUT`，否则 `STALE_GAME_STATE`。
 - **计时权威**：以可注入 Clock/`TimerScheduler` 为准；Timer 携带 `handId/seatIndex/deadline/generation`，执行前复核、任一不匹配作 stale no-op（§8.2）。
 - **幂等**：`actionId + Payload 摘要` 驻留内存账本（§7.3）；相同 Payload 复用原结果，不同 Payload → `IDEMPOTENCY_KEY_REUSE`。
-- **无真人关房**：所有真人 `WITHDRAWN` → `ABANDONED_NO_HUMAN` + Room `CLOSE_ROOM`（§6.5）；最后存活者的冠军语义由 Engine 裁决。
+- **无真人关房**：所有真人 `WITHDRAWN` → `ABANDONED_NO_HUMAN` + Room `CLOSE_ROOM`（§6.5）；最后存活者的冠军语义由 Engine 裁决。WS 发起的 `WITHDRAW_PLAYER` 也在执行点复核连接 epoch，Timer 撤回不携带该私有字段。
 - **手末提交边界**：手间事件（如两手之间的 `PLAYER_WITHDRAWN`）作为下一手 bundle 的前导事件落入同一原子提交；DB Writer（TEX-22）需据此验证（见 `tournament-persistence.ts` 注释）。
 
 ## 测试

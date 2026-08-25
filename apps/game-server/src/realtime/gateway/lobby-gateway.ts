@@ -69,11 +69,27 @@ const systemClock: LobbyGatewayClock = {
 export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager, options: LobbyGatewayOptions): void {
   const activeConnections = new Map<string, ActiveConnection>();
   const authenticationAttempts = new Map<string, number>();
-  const authenticatedPlayers = new Set<string>();
+  const authenticatedPlayers = new Map<string, Set<string>>();
   let nextAuthenticationAttempt = 0;
   let nextIngressOrdinal = 0;
   const clock = options.clock ?? systemClock;
   const epochs = options.epochs ?? createConnectionEpochRegistry();
+
+  // `resumed` is Room-lifetime history, not active-socket history. Prune it only
+  // when authoritative Room membership ends (or the Room closes).
+  manager.subscribe((snapshot) => {
+    const history = authenticatedPlayers.get(snapshot.roomId);
+    if (history === undefined) return;
+    if (snapshot.status === "CLOSED") {
+      authenticatedPlayers.delete(snapshot.roomId);
+      return;
+    }
+    const members = new Set(snapshot.players.map((player) => player.playerId));
+    for (const playerId of history) {
+      if (!members.has(playerId)) history.delete(playerId);
+    }
+    if (history.size === 0) authenticatedPlayers.delete(snapshot.roomId);
+  });
 
   options.events?.subscribe({
     onEvents(messages) {
@@ -90,11 +106,12 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
     onClockUpdated(payload) {
       for (const connection of activeConnections.values()) {
         if (manager.getSnapshot(connection.roomId)?.activeTournamentId !== payload.tournamentId) continue;
+        const viewerTimeBank = options.tournaments?.getView(payload.tournamentId)?.timeBankRemainingMs.get(connection.playerId) ?? 0;
         connection.sendServerMessage({
           type: "CLOCK_UPDATED",
           protocolVersion: PROTOCOL_VERSION,
           serverTime: options.now(),
-          payload,
+          payload: { ...payload, timeBankRemainingMs: viewerTimeBank },
         });
       }
     },
@@ -227,7 +244,6 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
       if (isCurrentConnection() && current !== undefined && connectionKey !== null && roomId !== null && playerId !== null) {
         activeConnections.delete(connectionKey);
         epochs.release(roomId, playerId, current.epoch);
-        if (authenticated) authenticatedPlayers.delete(connectionKey);
         void manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "DISCONNECTED" }).catch(() => undefined);
         const activeTournamentId = manager.getSnapshot(roomId)?.activeTournamentId;
         if (activeTournamentId !== null && activeTournamentId !== undefined) {
@@ -241,15 +257,24 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
       const payloadHash = hashPayload({ type: command.type, payload: command.payload });
       try {
         const outcome = await options.idempotency.run(key, payloadHash, async () => {
-          if (!isCurrentConnection()) throw new RoomDomainError("SESSION_REPLACED");
+          const epoch = currentConnection()?.epoch;
+          if (epoch === undefined) throw new RoomDomainError("SESSION_REPLACED");
           if (command.type === "SET_READY") {
-            await manager.submitCommand(roomId as string, { type: "SET_READY", playerId: playerId as string, ready: command.payload.ready });
+            await manager.submitCommand(roomId as string, { type: "SET_READY", playerId: playerId as string, ready: command.payload.ready, connectionEpoch: epoch });
           } else {
             const activeTournamentId = manager.getSnapshot(roomId as string)?.activeTournamentId;
             if (activeTournamentId !== null && activeTournamentId !== undefined && options.tournaments !== undefined) {
-              await options.tournaments.submit(activeTournamentId, { type: "WITHDRAW_PLAYER", playerId: playerId as string, reason: "USER_LEFT" });
+              await options.tournaments.submit(activeTournamentId, { type: "WITHDRAW_PLAYER", playerId: playerId as string, reason: "USER_LEFT", connectionEpoch: epoch });
+              await manager.submitCommand(roomId as string, {
+                type: "LEAVE",
+                playerId: playerId as string,
+                reason: "USER_LEFT",
+                leftAt: options.now(),
+                afterTournamentWithdrawal: true,
+                connectionEpoch: epoch,
+              });
             } else {
-              await manager.submitCommand(roomId as string, { type: "LEAVE", playerId: playerId as string, reason: "USER_LEFT", leftAt: options.now() });
+              await manager.submitCommand(roomId as string, { type: "LEAVE", playerId: playerId as string, reason: "USER_LEFT", leftAt: options.now(), connectionEpoch: epoch });
             }
           }
           const body: CommandResultPayload = { requestId: command.requestId, status: "APPLIED", duplicate: false };
@@ -262,7 +287,7 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
         const result = outcome.body as CommandResultPayload;
         send("COMMAND_RESULT", { ...result, duplicate: outcome.kind === "replay" });
       } catch (error) {
-        send("COMMAND_RESULT", rejectedResult(command.requestId, error instanceof RoomDomainError ? error.code : "INTERNAL_ERROR", options.ids.uuid()));
+        send("COMMAND_RESULT", rejectedResult(command.requestId, domainErrorCode(error), options.ids.uuid()));
       }
     }
 
@@ -327,8 +352,10 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
           const roomSnapshot = manager.getSnapshot(roomId);
           if (roomSnapshot === undefined) throw new RoomDomainError("ROOM_NOT_FOUND");
 
-          const resumed = authenticatedPlayers.has(connectionKey);
-          authenticatedPlayers.add(connectionKey);
+          const authenticatedInRoom = authenticatedPlayers.get(roomId) ?? new Set<string>();
+          const resumed = authenticatedInRoom.has(playerId);
+          authenticatedInRoom.add(playerId);
+          authenticatedPlayers.set(roomId, authenticatedInRoom);
           if (authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt) authenticationAttempts.delete(pendingConnectionKey);
           authenticated = true;
           clock.clearTimeout(authTimer);

@@ -66,6 +66,7 @@ roomManager = createRoomManager({
   ids,
   tokenSecret: config.token.secret,
   tokenKeyId: config.token.keyId,
+  isConnectionCurrent: connectionEpochs.isCurrent,
 });
 
 const app = buildApp({

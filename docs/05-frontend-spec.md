@@ -140,7 +140,7 @@ apps/web/
 - `packages/protocol` 必须导出以 `event.type` 为判别字段的 `ProjectedGameEvent` 联合类型、每种 Payload 的运行时 Schema 与 `GameSnapshot` Schema；前端不得针对 `payload: object` 手写类型断言。Schema 不通过、未知 Event 或 reducer 无法穷尽处理时，不应用该消息并以 `INVALID_EVENT` 请求 Snapshot。
 - reducer 必须是纯函数并对联合类型做穷尽检查，按 [02](./02-protocol-spec.md) §6.3/§9.2 应用 `PlayerViewPatch`；每个 Event 的测试至少断言 `apply(before, patch) == after`、重复 sequence 无副作用、缺序触发重同步。具体 wire 字段只在 02 / `packages/protocol` 定义，本文不复制第二套 Payload 契约。
 
-`CLOCK_UPDATED` 是明确的旁路消息，不属于 Game Event，也不推进 `sequence`。客户端只在 `tournamentId`、`handId`、`currentActorPlayerId` 与当前牌局规范态一致，且消息信封 `serverTime` 不早于最近一次已接受的 Clock/Snapshot 时应用；否则丢弃。它只允许修改计时展示态，不能修改筹码、行动权或 `LegalActions`。新的 `GAME_SNAPSHOT` 总是重置这条计时旁路的基线。
+`CLOCK_UPDATED` 是明确的旁路消息，不属于 Game Event，也不推进 `sequence`。客户端只在 `tournamentId`、`handId`、`currentActorPlayerId` 与当前牌局规范态一致，且消息信封 `serverTime` 不早于最近一次已接受的 Clock/Snapshot 时应用；否则丢弃。其 `timeBankRemainingMs` 始终是当前接收者的余额，即使行动者是其他玩家。它只允许修改计时展示态，不能修改筹码、行动权或 `LegalActions`。新的 `GAME_SNAPSHOT` 总是重置这条计时旁路的基线。
 
 ### 5.3 Transport Client 不变量
 

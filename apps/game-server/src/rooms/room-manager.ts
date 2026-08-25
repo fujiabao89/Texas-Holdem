@@ -30,6 +30,8 @@ export interface RoomManagerDeps {
   /** token HMAC 密钥与版本（docs/03-data-model.md §5.2）：只存服务端环境注入。 */
   readonly tokenSecret: string;
   readonly tokenKeyId: string;
+  /** Optional WS authority guard; only transport-originated commands carry an epoch. */
+  readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
 }
 
 export interface PlayerSession {
@@ -110,7 +112,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
         },
         config: input.config,
       });
-      const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids });
+      const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids, isConnectionCurrent: deps.isConnectionCurrent });
       rooms.set(roomId, runtime);
       inviteByCode.set(inviteCode, roomId);
       const roomSnapshot = projectRoomSnapshot(state);

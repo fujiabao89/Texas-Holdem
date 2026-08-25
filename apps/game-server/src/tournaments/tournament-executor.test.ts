@@ -390,6 +390,19 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     expect(harness.output.clockUpdates).toHaveLength(0);
   });
 
+  it("接管后拒绝旧 Socket 发起的退出撤回", async () => {
+    const harness = makeHarness({ isConnectionCurrent: () => false });
+    await start(harness);
+    const actor = currentActor(harness)!;
+    await expect(harness.executor.submit({
+      type: "WITHDRAW_PLAYER",
+      playerId: actor,
+      reason: "USER_LEFT",
+      connectionEpoch: 1,
+    })).rejects.toMatchObject({ code: "SESSION_REPLACED" });
+    expect(harness.executor.getEngineState().participants.find((participant) => participant.seatIndex === 0)?.status).toBe("ACTIVE");
+  });
+
   it("重复 actionId 相同 Payload → duplicate 复用原结果，不二次执行", async () => {
     const harness = makeHarness();
     await start(harness);
