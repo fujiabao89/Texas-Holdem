@@ -1,5 +1,6 @@
-import { RouteShell } from "../../../../components/route-shell";
+import { PokerTablePage } from "../../../../features/poker-table/poker-table-page";
 
-export default function TablePage() {
-  return <RouteShell />;
+export default async function TablePage({ params }: { readonly params: Promise<{ roomId: string }> }) {
+  const { roomId } = await params;
+  return <PokerTablePage roomId={roomId} />;
 }
