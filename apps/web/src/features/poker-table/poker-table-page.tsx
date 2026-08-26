@@ -213,12 +213,13 @@ function CardBack({ variant, className = "" }: { readonly variant: "seat" | "hol
 }
 
 function CardCorner({ rank, suit, className }: { readonly rank: Card["rank"]; readonly suit: string; readonly className: string }) {
-  return <span aria-hidden="true" className={`absolute z-10 grid justify-items-center gap-px rounded-[0.1rem] bg-white/95 px-px leading-[0.95] ${className}`}><span>{rank}</span><span>{suit}</span></span>;
+  const compactTen = rank === "10" ? "text-[8px] tracking-[-0.08em] sm:text-xs" : "";
+  return <span aria-hidden="true" className={`absolute z-10 grid justify-items-center gap-px rounded-[0.1rem] bg-white/95 px-px leading-[0.95] ${className} ${compactTen}`}><span>{rank}</span><span>{suit}</span></span>;
 }
 
 function CardPips({ card, variant }: { readonly card: Card; readonly variant: "board" | "seat" | "hole" }) {
   const suit = cardSuit(card);
-  const pipText = variant === "seat" ? "text-[9px] sm:text-xs" : variant === "board" ? "text-xs sm:text-base" : "text-xs sm:text-sm";
+  const pipText = card.rank === "10" ? variant === "seat" ? "text-[8px] sm:text-[10px]" : "text-[10px] sm:text-xs" : variant === "seat" ? "text-[9px] sm:text-xs" : variant === "board" ? "text-xs sm:text-base" : "text-xs sm:text-sm";
   const layout = pipLayouts[card.rank];
   if (layout !== undefined) return <>{layout.map((pip, index) => <span aria-hidden="true" className={`absolute -translate-x-1/2 -translate-y-1/2 leading-none ${pip.inverted ? "rotate-180" : ""} ${pipText}`} style={{ left: `${pip.x}%`, top: `${pip.y}%` }} key={index}>{suit}</span>)}</>;
   if (card.rank === "A") return <span aria-hidden="true" className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl"}`}>{suit}</span>;
@@ -239,7 +240,7 @@ const pipLayouts: Readonly<Partial<Record<Card["rank"], readonly PipPosition[]>>
   "7": [{ x: 34, y: 24 }, { x: 66, y: 24 }, { x: 50, y: 37 }, { x: 34, y: 58 }, { x: 66, y: 58 }, { x: 34, y: 76, inverted: true }, { x: 66, y: 76, inverted: true }],
   "8": [{ x: 34, y: 22 }, { x: 66, y: 22 }, { x: 50, y: 36 }, { x: 34, y: 50 }, { x: 66, y: 50 }, { x: 50, y: 64, inverted: true }, { x: 34, y: 78, inverted: true }, { x: 66, y: 78, inverted: true }],
   "9": [{ x: 34, y: 22 }, { x: 66, y: 22 }, { x: 34, y: 36 }, { x: 66, y: 36 }, { x: 50, y: 50 }, { x: 34, y: 64, inverted: true }, { x: 66, y: 64, inverted: true }, { x: 34, y: 78, inverted: true }, { x: 66, y: 78, inverted: true }],
-  "10": [{ x: 34, y: 22 }, { x: 66, y: 22 }, { x: 34, y: 36 }, { x: 66, y: 36 }, { x: 34, y: 50 }, { x: 66, y: 50, inverted: true }, { x: 34, y: 64, inverted: true }, { x: 66, y: 64, inverted: true }, { x: 34, y: 78, inverted: true }, { x: 66, y: 78, inverted: true }],
+  "10": [{ x: 38, y: 26 }, { x: 62, y: 26 }, { x: 38, y: 38 }, { x: 62, y: 38 }, { x: 38, y: 50 }, { x: 62, y: 50, inverted: true }, { x: 38, y: 62, inverted: true }, { x: 62, y: 62, inverted: true }, { x: 38, y: 74, inverted: true }, { x: 62, y: 74, inverted: true }],
 };
 
 function ClockStatus({ actionDeadline, timeBankMs }: { readonly actionDeadline: number | null; readonly timeBankMs: number }) { return <p className="text-xs text-slate-600 sm:text-sm">{actionDeadline === null ? message("table.waiting") : `${message("table.deadline")}：${new Date(actionDeadline).toLocaleTimeString("zh-CN")} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>; }
