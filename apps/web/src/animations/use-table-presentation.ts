@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import type { GameEvent } from "@texas-holdem/protocol";
+
 import type { WebSocketTransport } from "../protocol/websocket-transport";
 import type { ProjectionStore } from "../state/projection-store";
 import { AnimationQueue, type PresentationState } from "./animation-queue";
@@ -9,8 +11,11 @@ import { AnimationQueue, type PresentationState } from "./animation-queue";
 const emptyPresentation: PresentationState = { game: null, overlay: null, mode: "NORMAL" };
 
 /** Connects presentation to the single canonical ProjectionStore lifecycle. */
-export function useTablePresentation(projection: ProjectionStore, websocket: WebSocketTransport): PresentationState {
-  const [queue] = useState(() => new AnimationQueue({ onHardForward: () => { websocket.requestAuthoritativeSnapshot("MANUAL"); } }));
+export function useTablePresentation(projection: ProjectionStore, websocket: WebSocketTransport, onEventStarted?: (event: GameEvent) => void): PresentationState {
+  const [queue] = useState(() => new AnimationQueue({
+    onHardForward: () => { websocket.requestAuthoritativeSnapshot("MANUAL"); },
+    onEventStarted,
+  }));
   const presentation = useSyncExternalStore(queue.subscribe, queue.getSnapshot, () => emptyPresentation);
 
   useEffect(() => {

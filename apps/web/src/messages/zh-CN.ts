@@ -108,6 +108,8 @@ export const zhCN = {
     animationPotAward: "正在分配底池",
     animationElimination: "玩家被淘汰",
     animationFinish: "比赛结束",
+    showdownCombining: "正在组合 {name} 的最佳五张",
+    bestFiveServer: "最佳五张（由服务端判定）",
     syncing: "正在同步最新牌局状态，暂不能行动。",
     pot: "底池",
     board: "公共牌",

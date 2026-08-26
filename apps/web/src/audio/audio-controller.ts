@@ -4,8 +4,18 @@ export type SoundName = "deal" | "board" | "check" | "bet" | "fold" | "allIn" | 
 
 export interface AudioAdapter {
   unlock(): Promise<void>;
-  play(url: string): Promise<void>;
+  play(url: string, options?: AudioPlayOptions): Promise<void>;
   preload?(urls: readonly string[]): void;
+}
+
+export interface AudioPlayOptions {
+  readonly volume?: number;
+  readonly playbackRate?: number;
+}
+
+export interface AudioClock {
+  setTimeout(callback: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
 }
 
 const soundUrls: Readonly<Record<SoundName, string>> = {
@@ -24,10 +34,14 @@ const soundUrls: Readonly<Record<SoundName, string>> = {
 export class AudioController {
   private enabled = true;
   private unlocked = false;
+  private readonly pending = new Set<unknown>();
 
-  constructor(private readonly adapter: AudioAdapter) {}
+  constructor(private readonly adapter: AudioAdapter, private readonly clock: AudioClock = browserClock) {}
 
-  setEnabled(enabled: boolean): void { this.enabled = enabled; }
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.cancelPending();
+  }
   isEnabled(): boolean { return this.enabled; }
 
   async unlock(): Promise<void> {
@@ -36,13 +50,37 @@ export class AudioController {
   }
 
   preloadCritical(): void {
-    this.adapter.preload?.([soundUrls.turn, soundUrls.allIn, soundUrls.pot]);
+    this.adapter.preload?.([...new Set(Object.values(soundUrls))]);
   }
 
   playEvent(event: GameEvent): void {
     const sound = soundFor(event);
     if (!this.enabled || !this.unlocked || sound === null) return;
-    void this.adapter.play(soundUrls[sound]).catch(() => undefined);
+    this.play(sound);
+    // A flop is one authoritative event, but its three cards have separate
+    // visual arrivals. Schedule two quiet local cues to match those arrivals.
+    if (event.type === "FLOP_DEALT") {
+      this.schedule("board", 650, { volume: 0.78, playbackRate: 1.03 });
+      this.schedule("board", 1_300, { volume: 0.72, playbackRate: 1.06 });
+    }
+  }
+
+  cancelPending(): void {
+    for (const handle of this.pending) this.clock.clearTimeout(handle);
+    this.pending.clear();
+  }
+
+  private schedule(sound: SoundName, delayMs: number, options?: AudioPlayOptions): void {
+    const handle = this.clock.setTimeout(() => {
+      this.pending.delete(handle);
+      this.play(sound, options);
+    }, delayMs);
+    this.pending.add(handle);
+  }
+
+  private play(sound: SoundName, options?: AudioPlayOptions): void {
+    if (!this.enabled || !this.unlocked) return;
+    void this.adapter.play(soundUrls[sound], options).catch(() => undefined);
   }
 }
 
@@ -61,15 +99,45 @@ export function soundFor(event: GameEvent): SoundName | null {
 }
 
 export function createBrowserAudioAdapter(): AudioAdapter {
+  const pools = new Map<string, HTMLAudioElement[]>();
+  const nextVoice = new Map<string, number>();
+  const voices = (url: string): HTMLAudioElement[] => {
+    const existing = pools.get(url);
+    if (existing !== undefined) return existing;
+    // Reusing a small voice pool avoids re-decoding the same short clip while
+    // cards arrive in a burst, without sharing state with the game protocol.
+    const created = Array.from({ length: 4 }, () => {
+      const audio = new Audio(url);
+      audio.preload = "auto";
+      return audio;
+    });
+    pools.set(url, created);
+    return created;
+  };
   return {
     async unlock() {
       // Creating and immediately pausing a local audio element is enough to
       // bind subsequent playback to the user's gesture without remote audio.
-      const audio = new Audio(soundUrls.check);
+      const audio = voices(soundUrls.check)[0]!;
       audio.muted = true;
-      try { await audio.play(); } finally { audio.pause(); }
+      try { await audio.play(); } finally { audio.pause(); audio.currentTime = 0; audio.muted = false; }
     },
-    async play(url) { await new Audio(url).play(); },
-    preload(urls) { for (const url of urls) { const audio = new Audio(); audio.preload = "auto"; audio.src = url; } },
+    async play(url, options = {}) {
+      const pool = voices(url);
+      const index = nextVoice.get(url) ?? 0;
+      const audio = pool[index % pool.length]!;
+      nextVoice.set(url, index + 1);
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = options.volume ?? 0.8;
+      audio.playbackRate = options.playbackRate ?? 1;
+      await audio.play();
+    },
+    preload(urls) { for (const url of urls) voices(url); },
   };
 }
+
+const browserClock: AudioClock = {
+  setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+  clearTimeout: (handle) => window.clearTimeout(handle as ReturnType<typeof window.setTimeout>),
+};

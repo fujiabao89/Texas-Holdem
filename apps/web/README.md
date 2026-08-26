@@ -2,7 +2,7 @@
 
 玩家 Web 客户端（Next.js 16 + React 19 + Tailwind CSS 4）。采用单一 `src/app` 路由入口；页面组合功能模块，扑克规则以服务端投影和共享协议为准，客户端绝不裁决牌局。
 
-TEX-24 已实现 Home、创建/加入表单、邀请码预填/复制和 Lobby 的选座、Ready、房主配置/踢人/开局反馈。TEX-21 在同一 Transport 上实现 WebSocket 认证、Room/Game 权威快照、断线重连、Token 恢复和有序投影消费；页面不根据命令回执模拟状态。TEX-25 已实现白色页面中的深青绿色椭圆响应式牌桌、服务端 `LegalActions` 驱动的下注/加注/All-in/Time Bank、命令 pending 与重连反馈。TEX-26 在同一投影/Transport 生命周期上增加 AnimationQueue、可访问的本地 Kenney CC0 音效开关和重连/接管体验；动画只消费已连续应用的 Event，Snapshot/重连是清队列的展示屏障，操作、计时和命令仍只读 canonical projection。赛果页和历史仍由后续任务实现。
+TEX-24 已实现 Home、创建/加入表单、邀请码预填/复制和 Lobby 的选座、Ready、房主配置/踢人/开局反馈。TEX-21 在同一 Transport 上实现 WebSocket 认证、Room/Game 权威快照、断线重连、Token 恢复和有序投影消费；页面不根据命令回执模拟状态。TEX-25 已实现白色页面中的深青绿色椭圆响应式牌桌、服务端 `LegalActions` 驱动的下注/加注/All-in/Time Bank、命令 pending 与重连反馈。TEX-26 在同一投影/Transport 生命周期上增加 AnimationQueue、可访问的本地 Kenney CC0 音效开关和重连/接管体验：公共牌在目标框内逐张入框、翻面，Showdown 仅按服务端 `bestFiveCards` 组合公开候选牌；本地音效预加载并复用短音效 voice。动画只消费已连续应用的 Event，Snapshot/重连是清队列的展示屏障，操作、计时和命令仍只读 canonical projection。赛果页和历史仍由后续任务实现。
 
 ## 命令
 

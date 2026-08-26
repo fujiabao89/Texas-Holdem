@@ -347,8 +347,8 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 | --- | --- | --- |
 | `HAND_STARTED` / `DEAL_HOLE_CARD` | 从牌堆位置按座位顺序发两轮；自己的牌到位后翻开，其他人保持牌背 | 《区块1-5 v0.1》§5.5 |
 | `BURN_CARD` | 牌背从 Deck 移出，进入 Muck/弃牌区或淡出；**永不翻面**（事件不携带牌面） | 《区块6-10 v0.2》§6.6；《总规划》§7.2 |
-| `FLOP_DEALT` | 三张公共牌短间隔依次出现并翻开 | 《区块1-5 v0.1》§5.5 |
-| `TURN_DEALT` / `RIVER_DEALT` | 单张牌背进入后 Flip 展示 | 同上 |
+| `FLOP_DEALT` | 三张公共牌从 Deck 方向依次到达各自的目标牌框，再逐张 Flip；一条 Event 不得直接把三张正面牌替换进 Board | 《区块1-5 v0.1》§5.5 |
+| `TURN_DEALT` / `RIVER_DEALT` | 单张牌背先进入对应目标框、停顿后 Flip 展示 | 同上 |
 | `PLAYER_CHECKED` / `PLAYER_CALLED` / `PLAYER_BET` / `PLAYER_RAISED` / `PLAYER_FOLDED` / `PLAYER_ALL_IN` | 快速、克制的筹码位移或淡出反馈 | 同上 |
 | `SHOWDOWN_STARTED` / `PLAYER_REVEALED` | 揭牌（仍有权争夺的玩家按规则公开底牌） | 《区块1-5 v0.1》§5.11 |
 | `POT_AWARDED` | Pot 分配视觉反馈（筹码移动 + 获胜者突出） | 同上 |
@@ -357,10 +357,12 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 ### 9.5 Showdown 剧本（《区块1-5 v0.1》§5.11；《区块6-10 v0.2》§9.17）
 
 ```text
-揭牌（Reveal）→ 识别牌型 → 高亮最佳五张（bestFiveCards，[01] §10）
+揭牌（Reveal）→ 展示七张已公开候选牌 → 淡出服务端未选中的候选牌
+→ 组合服务端 `bestFiveCards`（[01] §10）→ 牌型文字
 → 比较 → 突出获胜者与获胜金额 → Pot 分配视觉反馈
 ```
 
+- `PLAYER_REVEALED.handRank.bestFiveCards` 是唯一的选牌事实：客户端只按 rank+suit 身份将已公开底牌和 Board 中的五张移入组合，不能用规则代码重算牌型、选择替代牌或判断赢家。两张底牌并不必然都入选，Board 的五张也可能全部入选。
 - 先展示牌型、再突出赢家与金额、最后执行 Pot 分配；Side Pot 按各 Pot 独立展示获胜结果。
 - Hand End 短暂停留让用户看清结果，再开始下一手（《区块1-5 v0.1》§5.6）。
 - Showdown 是重点人工验收场景（《区块6-10 v0.2》§9.17）。
@@ -375,15 +377,15 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 | Blind/Call/Bet/Raise 筹码移动 | 220ms |
 | Check / Fold / All-in 反馈 | 140ms / 200ms / 280ms |
 | Burn 移出 | 160ms |
-| Flop 单张翻牌 / 张间隔 | 220ms / 90ms |
-| Turn、River 翻牌 | 240ms |
-| Showdown 单人 Reveal / 人间隔 | 260ms / 120ms |
-| Best Five 高亮 / 牌型标签停留 | 320ms / 600ms |
+| Flop 单张入框并翻牌 / 张间隔 | 520ms / 130ms |
+| Turn、River 入框并翻牌 | 520ms |
+| Showdown 单人 Reveal / 人间隔 | 760ms / 120ms |
+| Best Five 候选淡出与组合 / 牌型标签停留 | 1,180ms / 600ms |
 | Winner 突出 / 每个 Pot 分配 | 800ms / 450ms |
 | Hand End 最终停留 | 1,000ms |
 
 - 单个普通动作视觉反馈不得超过 300ms；Showdown 从首次 Reveal 到首个 Pot 开始分配目标不超过 4 秒，完整剧本目标不超过 6 秒。Side Pot 很多时保留信息顺序，但每个额外 Pot 的停留可缩短至 300ms。
-- AnimationQueue 预计视觉落后超过 2 秒或待播任务超过 8 个时进入 Soft Catch-up：播放速率提高到 1.75×，跳过纯装饰任务，但保留 Deal/Burn/Board/Reveal/Winner/Pot 语义帧。预计落后超过 5 秒或未播 Event 超过 20 个时进入 Hard Fast Forward，发送 `REQUEST_SNAPSHOT(reason=MANUAL)`。
+- AnimationQueue 预计视觉落后超过 2 秒或待播任务超过 8 个时进入 Soft Catch-up：播放速率提高到 1.75×，跳过纯装饰任务，但保留 Deal/Burn/Board/Reveal/Winner/Pot 语义帧。预计落后超过 15 秒或未播 Event 超过 40 个时进入 Hard Fast Forward，发送 `REQUEST_SNAPSHOT(reason=MANUAL)`；阈值高于一手 All-in 的正常事件突发，因此完整的公开街牌、Reveal 与 Best Five 先在 Soft Catch-up 中播放，不能被 Hard Forward 直接跳过。
 - 服务端对单连接满足任一条件即发送 `RESYNC_REQUIRED`：未发送 `GAME_EVENT ≥64`、最老未发送 Event 等待 `≥5s`、或应用队列估算字节数加 `ws.bufferedAmount ≥256KiB`；随后丢弃该连接旧积压并用 Snapshot 重建屏障。总待发送量达到 `1MiB`，或 30 秒内始终无法回落到 `256KiB` 以下时，以 Close Code `1013` 关闭并由客户端退避重连（[04](./04-game-server-architecture.md) §9.5）。
 - Fast Forward 的原子操作顺序为：暂停取任务 → 清空队列与 Overlay → 应用新 Snapshot 到牌局规范态 → 将动画展示态整体对齐到该 Snapshot → 恢复接收屏障后的 Event。不得出现新规范态搭配旧牌面/筹码 Overlay 的混合帧。
 - Soft Catch-up 不提示用户；Hard Fast Forward 使用 120ms 淡出/淡入，并在完成后显示 3 秒 Toast“牌局进度已同步至最新状态”。如果正在展示 Showdown，先保留最终 Board、赢家和各 Pot 结果的静态摘要至少 1 秒，再完成跳转。
@@ -402,7 +404,7 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 
 - 至少提供**全局音效开关**；细分开关（如牌型提示音）可后续加入（《区块1-5 v0.1》§5.12）。
 - 浏览器自动播放策略：AudioContext 在首次用户交互后解锁；播放失败静默降级，不影响牌局【设计意图】。
-- P0 基础牌局素材固定采用 [Kenney Casino Audio](https://kenney.nl/assets/casino-audio)，按钮/提醒缺口采用 [Kenney UI Audio](https://kenney.nl/assets/ui-audio)；两套资产页面均标示 Creative Commons CC0，[Kenney 官方授权说明](https://kenney.nl/support)确认资产可商用且无需署名（2026-08-21 核验）。Wolfcha 素材不纳入（《区块6-10 v0.2》§6.1）。
+- P0 基础牌局素材固定采用 [Kenney Casino Audio](https://kenney.nl/assets/casino-audio)，按钮/提醒缺口采用 [Kenney UI Audio](https://kenney.nl/assets/ui-audio)；两套资产页面均标示 Creative Commons CC0，[Kenney 官方授权说明](https://kenney.nl/support)确认资产可商用且无需署名（2026-08-21 核验）。Wolfcha 素材不纳入（《区块6-10 v0.2》§6.1）。同一短音效必须复用预加载的本地 voice pool，连续发牌不得为每个 Event 新建并解码音频元素；一条 Flop Event 可以按其三张牌的视觉到位节奏发出三个本地 cue。
 - 素材必须下载后随应用本地托管，禁止运行时热链第三方。引入时在 `public/audio/THIRD_PARTY_NOTICES.md` 记录资产名、原始 URL、下载日期、原始文件名、采用文件、SHA-256 与许可证副本路径；即使 CC0 无强制署名，Settings / Credits 仍显示“Audio assets: Kenney”。
 - 允许裁剪、响度归一化和格式转换，但不得叠加来源不明的采样。交付 `mp3` 主格式，并保留原始授权包与 License 文件；单个短音效目标小于 100 KiB，首屏不预载全部素材，轮到自己/All-in/Showdown 等关键音效在进入牌桌后空闲预取。
 - P0 不依赖浏览器 TTS 或远程语音服务；牌型使用可区分但克制的非语音短音，并始终有同步中文文字。未来增加真人/合成语音时须重新记录来源、生成条款与商业使用权。

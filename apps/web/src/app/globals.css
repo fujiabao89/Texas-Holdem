@@ -1,1 +1,63 @@
 @import "tailwindcss";
+
+/* TEX-26 presentation only: these animations never alter canonical state. */
+@keyframes board-deal-flight {
+  0% { opacity: 0; transform: translate(120%, 95%) rotate(16deg) scale(0.72); }
+  62% { opacity: 1; transform: translate(-5%, -4%) rotate(-2deg) scale(1.04); }
+  100% { opacity: 1; transform: translate(0) rotate(0) scale(1); }
+}
+
+@keyframes board-card-flip {
+  0%, 38% { transform: rotateY(0deg); }
+  100% { transform: rotateY(180deg); }
+}
+
+@keyframes showdown-source-card {
+  0% { opacity: 0; transform: translateY(2.25rem) scale(0.75); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes showdown-discard-card {
+  0%, 62% { opacity: 1; filter: saturate(1); transform: scale(1); }
+  100% { opacity: 0.22; filter: saturate(0.15); transform: scale(0.72); }
+}
+
+@keyframes showdown-best-card {
+  0% { opacity: 0; transform: translateY(-1.5rem) scale(0.55); }
+  70% { opacity: 1; transform: translateY(0.12rem) scale(1.07); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes showdown-best-label {
+  0%, 68% { opacity: 0; transform: translateY(-0.35rem); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.board-deal-flight {
+  animation: board-deal-flight 460ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--deal-delay) both;
+  perspective: 800px;
+}
+
+.board-deal-flip {
+  animation: board-card-flip 360ms cubic-bezier(0.3, 0.75, 0.25, 1) calc(var(--deal-delay) + 150ms) both;
+  transform-style: preserve-3d;
+}
+
+.board-deal-back,
+.board-deal-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.board-deal-face { transform: rotateY(180deg); }
+
+.showdown-showcase { min-width: min(21rem, 100%); }
+.showdown-source-card { animation: showdown-source-card 380ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--showdown-delay) both; }
+.showdown-discard-card { animation-name: showdown-source-card, showdown-discard-card; animation-duration: 380ms, 570ms; animation-timing-function: cubic-bezier(0.2, 0.85, 0.25, 1), ease-out; animation-delay: var(--showdown-delay), 450ms; animation-fill-mode: both, forwards; }
+.showdown-best-card { animation: showdown-best-card 460ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--best-delay) both; }
+.showdown-best-label { animation: showdown-best-label 350ms ease-out 900ms both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .board-deal-flight,
+  .board-deal-flip,
+  .showdown-source-card,
+  .showdown-discard-card,
+  .showdown-best-card,
+  .showdown-best-label { animation: none; }
+}

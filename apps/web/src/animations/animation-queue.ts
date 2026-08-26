@@ -11,6 +11,10 @@ export interface PresentationOverlay {
   readonly burnCardBackOnly: boolean;
   /** Copied directly from the server-projected PLAYER_REVEALED payload. */
   readonly bestFiveCards: readonly Card[];
+  /** Public board cards included in this already accepted server event. */
+  readonly boardCards: readonly Card[];
+  /** The existing board length before this event, used only to place the visual destination slots. */
+  readonly boardStartIndex: number;
 }
 
 export interface PresentationState {
@@ -88,7 +92,9 @@ export class AnimationQueue {
     this.tailTarget = afterCanonical;
     if (this.reducedMotion) { this.commitFinalFrame(item); return; }
     this.queue.push(item);
-    if (this.shouldHardForward()) { this.hardForward(); return; }
+    // An all-in can arrive as one burst. Compress it, but do not erase the
+    // only public showdown/best-five explanation the player can inspect.
+    if (this.shouldHardForward() && !this.hasShowdownSemanticFrame()) { this.hardForward(); return; }
     this.pump();
   }
 
@@ -101,7 +107,7 @@ export class AnimationQueue {
     if (item === undefined) { this.replace({ ...this.state, mode: "NORMAL" }); return; }
     this.active = item;
     const soft = this.shouldSoftCatchUp();
-    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event), mode: soft ? "SOFT_CATCH_UP" : "NORMAL" });
+    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event, item.beforePresentation), mode: soft ? "SOFT_CATCH_UP" : "NORMAL" });
     try { this.options.onEventStarted?.(item.message.payload.event); }
     catch { this.finishActive(); return; }
     this.timer = this.clock.setTimeout(() => this.finishActive(), Math.round(item.durationMs / (soft ? softCatchUpRate : 1)));
@@ -143,6 +149,10 @@ export class AnimationQueue {
   private clearTimer(): void { if (this.timer !== null) this.clock.clearTimeout(this.timer); this.timer = null; }
   private shouldSoftCatchUp(): boolean { return this.estimatedBacklogMs() > softCatchUpBacklogMs || this.queue.length > softCatchUpTasks; }
   private shouldHardForward(): boolean { return this.estimatedBacklogMs() > hardForwardBacklogMs || this.queue.length > hardForwardEvents; }
+  private hasShowdownSemanticFrame(): boolean {
+    const isShowdown = (item: QueueItem): boolean => item.message.payload.event.type === "SHOWDOWN_STARTED" || item.message.payload.event.type === "PLAYER_REVEALED";
+    return (this.active !== null && isShowdown(this.active)) || this.queue.some(isShowdown);
+  }
   private estimatedBacklogMs(): number { return (this.active?.durationMs ?? 0) + this.queue.reduce((sum, item) => sum + item.durationMs, 0); }
   private replace(next: PresentationState): void { this.state = next; for (const listener of this.listeners) listener(); }
 }
@@ -157,7 +167,8 @@ function durationFor(event: GameEvent): number {
     case "PLAYER_CHECKED": return animationTimings.check;
     case "PLAYER_FOLDED": return animationTimings.fold;
     case "PLAYER_ALL_IN": return animationTimings.allIn;
-    case "SHOWDOWN_STARTED": case "PLAYER_REVEALED": return animationTimings.showdownReveal + animationTimings.bestFive;
+    case "SHOWDOWN_STARTED": return animationTimings.check;
+    case "PLAYER_REVEALED": return animationTimings.showdownReveal + animationTimings.bestFive;
     case "POT_AWARDED": return animationTimings.winner + animationTimings.potAward;
     case "PLAYER_ELIMINATED": case "PLAYER_WITHDRAWN": return animationTimings.fold;
     case "TOURNAMENT_FINISHED": return animationTimings.handEnd;
@@ -165,11 +176,20 @@ function durationFor(event: GameEvent): number {
   }
 }
 
-function overlayFor(event: GameEvent): PresentationOverlay {
+function overlayFor(event: GameEvent, beforePresentation: GameSnapshot | null): PresentationOverlay {
   const kind: AnimationKind = event.type === "DEAL_HOLE_CARD" ? "DEAL" : event.type === "BURN_CARD" ? "BURN"
     : event.type === "FLOP_DEALT" || event.type === "TURN_DEALT" || event.type === "RIVER_DEALT" ? "BOARD"
       : event.type === "PLAYER_FOLDED" ? "FOLD" : event.type === "SHOWDOWN_STARTED" || event.type === "PLAYER_REVEALED" ? "SHOWDOWN"
         : event.type === "POT_AWARDED" ? "POT_AWARD" : event.type === "PLAYER_ELIMINATED" || event.type === "PLAYER_WITHDRAWN" ? "ELIMINATION"
           : event.type === "TOURNAMENT_FINISHED" ? "FINISH" : "WAGER";
-  return { kind, event, burnCardBackOnly: event.type === "BURN_CARD", bestFiveCards: event.type === "PLAYER_REVEALED" ? event.payload.handRank.bestFiveCards : [] };
+  const boardCards = event.type === "FLOP_DEALT" ? event.payload.cards
+    : event.type === "TURN_DEALT" || event.type === "RIVER_DEALT" ? [event.payload.card] : [];
+  return {
+    kind,
+    event,
+    burnCardBackOnly: event.type === "BURN_CARD",
+    bestFiveCards: event.type === "PLAYER_REVEALED" ? event.payload.handRank.bestFiveCards : [],
+    boardCards,
+    boardStartIndex: beforePresentation?.board.length ?? 0,
+  };
 }

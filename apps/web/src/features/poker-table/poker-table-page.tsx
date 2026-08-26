@@ -21,8 +21,8 @@ type TerminalError = Extract<ErrorCode, "AUTH_FAILED" | "UNSUPPORTED_PROTOCOL_VE
 export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const { projection, tokens, websocket, connectionState } = useRoomClient();
   const state = useProjectionState(projection);
-  const presentation = useTablePresentation(projection, websocket);
   const [audio, soundEnabled, setSoundEnabled] = useAudioController();
+  const presentation = useTablePresentation(projection, websocket, (event) => audio.playEvent(event));
   const [pending, setPending] = useState<TransportPendingCommand | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [retryCommand, setRetryCommand] = useState<TransportPendingCommand | null>(null);
@@ -43,10 +43,8 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     const unlock = () => { void audio.unlock(); };
     window.addEventListener("pointerdown", unlock, { once: true });
     audio.preloadCritical();
-    return () => window.removeEventListener("pointerdown", unlock);
+    return () => { window.removeEventListener("pointerdown", unlock); audio.cancelPending(); };
   }, [audio]);
-
-  useEffect(() => projection.subscribeAcceptedGameEvents((event) => audio.playEvent(event.message.payload.event)), [audio, projection]);
 
   useEffect(() => {
     if (connectionState !== "CONNECTED") wasDisconnected.current = true;
@@ -138,7 +136,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         </div>
         <div className="absolute left-1/2 top-1/2 z-20 w-[72%] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-emerald-100/10 bg-emerald-100/20 p-2.5 shadow-inner backdrop-blur-[1px] sm:w-auto sm:p-3" aria-label={message("table.board")}>
           <p className="sr-only">{message("table.board")}</p>
-          <CommunityCards cards={game.board} />
+          <CommunityCards cards={game.board} overlay={presentation.overlay} />
         </div>
         <div className="absolute bottom-[8%] left-1/2 z-20 -translate-x-1/2 text-center text-[10px] font-medium text-emerald-100/75 sm:text-xs">
           <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{actorName(game) ?? message("table.waiting")}</span>
@@ -146,7 +144,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
           {tableSeats(game).map((player, seat) => <SeatCard game={game} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
         </div>
-        {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} />}
+        {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} />}
       </div>
     </section>
     <section className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-center shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus actionDeadline={state.clock?.actionDeadline ?? game.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? game.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${game.handId}:${game.currentActorPlayerId ?? "none"}`} /></section>
@@ -220,11 +218,25 @@ function SeatCard({ game, room, player, seat, slot }: { readonly game: GameSnaps
   </article>;
 }
 
-function CommunityCards({ cards }: { readonly cards: readonly Card[] }) {
+function CommunityCards({ cards, overlay }: { readonly cards: readonly Card[]; readonly overlay: PresentationOverlayState | null }) {
+  const dealingBoard = overlay?.kind === "BOARD" ? overlay : null;
   return <div className="grid grid-cols-5 gap-1.5 sm:gap-2">{Array.from({ length: 5 }, (_, index) => {
     const card = cards[index];
-    return card === undefined ? <span aria-hidden="true" className="h-16 w-12 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-24 sm:w-[4.3rem]" key={`empty-${index}`} /> : <CardFace card={card} variant="board" key={`${card.rank}-${card.suit}-${index}`} />;
+    const dealingIndex = dealingBoard === null ? -1 : index - dealingBoard.boardStartIndex;
+    const dealingCard = dealingIndex >= 0 ? dealingBoard?.boardCards[dealingIndex] : undefined;
+    return card !== undefined ? <CardFace card={card} variant="board" key={`${card.rank}-${card.suit}-${index}`} />
+      : dealingCard !== undefined ? <BoardDealCard card={dealingCard} index={dealingIndex} key={`dealing-${dealingCard.rank}-${dealingCard.suit}-${index}`} />
+        : <span aria-hidden="true" className="h-16 w-12 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-24 sm:w-[4.3rem]" key={`empty-${index}`} />;
   })}</div>;
+}
+
+function BoardDealCard({ card, index }: { readonly card: Card; readonly index: number }) {
+  return <span className="board-deal-flight relative block h-16 w-12 sm:h-24 sm:w-[4.3rem]" style={{ "--deal-delay": `${index * 650}ms` } as CSSProperties} aria-label={cardName(card)}>
+    <span className="board-deal-flip relative block h-full w-full">
+      <CardBack variant="board" className="board-deal-back absolute inset-0" />
+      <CardFace card={card} variant="board" className="board-deal-face absolute inset-0" />
+    </span>
+  </span>;
 }
 
 function CardRow({ cards, hiddenCount = 0, variant = "seat" }: { readonly cards: readonly Card[]; readonly hiddenCount?: number; readonly variant?: "seat" | "hole" }) {
@@ -246,7 +258,7 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
   </span>;
 }
 
-function CardBack({ variant, className = "" }: { readonly variant: "seat" | "hole"; readonly className?: string }) {
+function CardBack({ variant, className = "" }: { readonly variant: "board" | "seat" | "hole"; readonly className?: string }) {
   return <span className={`relative grid ${cardDimensions(variant)} ${className} shrink-0 place-items-center overflow-hidden rounded-[0.45rem] border border-blue-100/70 bg-[#1f4698] shadow-[0_3px_7px_rgba(15,23,42,0.24)]`} aria-label={message("table.hiddenCard")}>
     <span aria-hidden="true" className="absolute inset-1 rounded-[0.28rem] border border-blue-200/60 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.13)_0_1px,transparent_1px_5px)]" />
     <span aria-hidden="true" className="relative h-1/3 w-1/2 rounded-full border border-blue-100/70 bg-blue-200/20" />
@@ -303,9 +315,35 @@ function ClockStatus({ actionDeadline, timeBankMs, serverTime, clockKey }: { rea
   return <p className="text-xs text-slate-600 sm:text-sm">{remaining === null ? message("table.waiting") : `${message("table.remainingTime")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(remaining / 1000) })} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>;
 }
 function ConnectionStatus({ connectionState, syncing }: { readonly connectionState: string; readonly syncing: boolean }) { return <p role="status" aria-live="polite" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">{syncing ? message("table.syncing") : connectionState === "CONNECTED" ? message("table.connectionConnected") : connectionState === "STOPPED" ? message("table.connectionReplaced") : connectionState === "CONNECTING" || connectionState === "AUTHENTICATING" ? message("table.connectionConnecting") : message("table.connectionDisconnected")}</p>; }
-function PresentationOverlay({ overlay }: { readonly overlay: PresentationOverlayState }) {
+function PresentationOverlay({ overlay, boardCards, game }: { readonly overlay: PresentationOverlayState; readonly boardCards: readonly Card[]; readonly game: GameSnapshot }) {
   const text = overlay.kind === "DEAL" ? message("table.animationDeal") : overlay.kind === "BURN" ? message("table.animationBurn") : overlay.kind === "BOARD" ? message("table.animationBoard") : overlay.kind === "WAGER" ? message("table.animationWager") : overlay.kind === "FOLD" ? message("table.animationFold") : overlay.kind === "SHOWDOWN" ? message("table.animationShowdown") : overlay.kind === "POT_AWARD" ? message("table.animationPotAward") : overlay.kind === "ELIMINATION" ? message("table.animationElimination") : message("table.animationFinish");
-  return <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center" aria-live="polite"><div className="grid justify-items-center gap-2"><span className="animate-pulse rounded-full bg-slate-950/80 px-3 py-1.5 text-xs font-semibold text-white shadow-lg">{overlay.burnCardBackOnly ? "🂠" : ""} {text}</span>{overlay.bestFiveCards.length > 0 && <div className="flex gap-1 rounded-xl bg-slate-950/75 p-1.5">{overlay.bestFiveCards.map((card, index) => <CardFace card={card} variant="seat" className="ring-2 ring-amber-300" key={`${card.rank}-${card.suit}-${index}`} />)}</div>}</div></div>;
+  if (overlay.kind === "BOARD") return <p className="sr-only" aria-live="polite">{text}</p>;
+  if (overlay.event.type === "PLAYER_REVEALED" && "playerId" in overlay.event.payload) {
+    const playerId = overlay.event.payload.playerId;
+    const playerName = game.players.find((player) => player.playerId === playerId)?.displayName ?? message("table.player");
+    return <ShowdownShowcase cards={overlay.event.payload.cards} boardCards={boardCards} bestFiveCards={overlay.bestFiveCards} playerName={playerName} />;
+  }
+  return <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center" aria-live="polite"><div className="grid justify-items-center gap-2"><span className="animate-pulse rounded-full bg-slate-950/80 px-3 py-1.5 text-xs font-semibold text-white shadow-lg">{overlay.burnCardBackOnly ? "🂠" : ""} {text}</span></div></div>;
+}
+
+function ShowdownShowcase({ cards, boardCards, bestFiveCards, playerName }: { readonly cards: readonly Card[]; readonly boardCards: readonly Card[]; readonly bestFiveCards: readonly Card[]; readonly playerName: string }) {
+  const candidates = [...cards, ...boardCards];
+  return <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center px-2" aria-live="polite">
+    <section className="showdown-showcase grid max-w-full justify-items-center gap-2 rounded-2xl border border-amber-200/70 bg-slate-950/90 p-3 shadow-2xl sm:p-4" aria-label={message("table.bestFiveServer") }>
+      <p className="text-center text-xs font-semibold text-amber-100">{formatMessage("table.showdownCombining", { name: playerName })}</p>
+      <div className="flex max-w-full flex-wrap justify-center gap-1.5">
+        {candidates.map((card, index) => <span className={isProjectedBestCard(bestFiveCards, card) ? "showdown-source-card" : "showdown-source-card showdown-discard-card"} style={{ "--showdown-delay": `${index * 70}ms` } as CSSProperties} key={`candidate-${card.rank}-${card.suit}-${index}`}><CardFace card={card} variant="seat" /></span>)}
+      </div>
+      <p className="showdown-best-label text-center text-[11px] font-semibold text-amber-200">{message("table.bestFiveServer")}</p>
+      <div className="flex gap-1">
+        {bestFiveCards.map((card, index) => <span className="showdown-best-card" style={{ "--best-delay": `${1_030 + index * 85}ms` } as CSSProperties} key={`best-${card.rank}-${card.suit}-${index}`}><CardFace card={card} variant="seat" className="ring-2 ring-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.7)]" /></span>)}
+      </div>
+    </section>
+  </div>;
+}
+
+function isProjectedBestCard(bestFiveCards: readonly Card[], candidate: Card): boolean {
+  return bestFiveCards.some((card) => card.rank === candidate.rank && card.suit === candidate.suit);
 }
 function RankingSummary({ game }: { readonly game: GameSnapshot }) { const players = new Map(game.players.map((player) => [player.playerId, player.displayName])); return <section aria-labelledby="rankings-heading" className="mx-auto w-full max-w-xl rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><h2 id="rankings-heading" className="font-semibold">{message("table.tournamentFinished")}</h2><ol className="mt-2 list-decimal pl-5">{game.rankings.map((ranking) => <li key={ranking.playerId}>{players.get(ranking.playerId) ?? message("table.player")} · {formatMessage("table.rank", { position: ranking.placement.from })}</li>)}</ol></section>; }
 type ButtonTone = "neutral" | "fold" | "call" | "bet" | "allIn";
