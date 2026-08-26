@@ -183,11 +183,15 @@ async function tryValidate(
   snapshot: CommittedSnapshotRecord,
 ): Promise<ValidatedSnapshot | null> {
   // Schema/Engine 版本兼容（§5.6/§5.7）：未知版本拒绝猜测恢复。
+  // SCHEMA_VERSION=2 起快照 state 必须携带 serverTimeBank companion；v1 旧格式
+  // 缺少该权威余额，接受会把已消耗 Time Bank 重置为满值 → 拒绝（P1-C）。
   if (snapshot.schemaVersion !== SCHEMA_VERSION) return null;
   if (snapshot.engineVersion !== ENGINE_VERSION) return null;
   // 结构校验：state 必须是手末边界内部 GameState。
   const state = snapshot.state;
   if (!isHandBoundaryState(state)) return null;
+  // 防御性：声称 v2 的 Time Bank 启用快照若仍缺少/为空 serverTimeBank → 拒绝，不回退满余额。
+  if (isTimeBankEnabled(state) && extractServerTimeBank(state) === undefined) return null;
   // state_checksum 与 state 一致（canonical JSON 往返稳定，§5.7）。
   const recomputed = sha256Checksum(state);
   if (Buffer.compare(recomputed, snapshot.stateChecksum) !== 0) return null;
@@ -213,6 +217,11 @@ function isHandBoundaryState(value: unknown): value is TournamentState {
     typeof s.phase === "string" &&
     Array.isArray(s.participants)
   );
+}
+
+/** 快照配置是否启用 Time Bank（timeBank > 0）——启用时缺少 serverTimeBank 即不可恢复。 */
+function isTimeBankEnabled(state: TournamentState): boolean {
+  return typeof state.config?.timeBank === "number" && state.config.timeBank > 0;
 }
 
 /** 从快照 state 提取服务端权威的每玩家剩余 Time Bank（P1-B）；旧快照无该键 → undefined（满余额回退）。 */

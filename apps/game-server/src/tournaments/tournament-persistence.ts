@@ -28,7 +28,13 @@ import type { TournamentRuntimeState } from "./tournament-runtime";
 /** 生成该 Snapshot 的 Engine 版本标识（规则升级可追溯性，03 §5.7）。 */
 export const ENGINE_VERSION = "0.1.0";
 /** Event/Snapshot 序列化格式版本（03 §5.6）。 */
-export const SCHEMA_VERSION = 1;
+/**
+ * 持久化 Snapshot/Event 的 Schema 版本（docs/03 §5.6/§5.7）。
+ * v1：初始格式。v2：快照 state 携带服务端权威的每玩家剩余 Time Bank（`serverTimeBank`，
+ * P1-B/P1-C）；v1 快照缺少该 companion state，若被接受会把已消耗 Time Bank 重置为满值，
+ * 因此恢复侧拒绝 schemaVersion !== SCHEMA_VERSION 的旧格式快照（见 recovery.ts tryValidate）。
+ */
+export const SCHEMA_VERSION = 2;
 
 export interface HandCommitContext {
   readonly state: TournamentRuntimeState;

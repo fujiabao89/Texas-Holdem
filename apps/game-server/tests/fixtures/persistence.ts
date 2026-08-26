@@ -71,12 +71,14 @@ export function makeBundle(
     elapsedSeconds: 0,
     nextSequence: Number(lastSequence), // 与快照水位一致（恢复校验要求 state.nextSequence == snapshot.sequence）
     hand: null,
+    // v2 companion state：服务端权威的每玩家剩余 Time Bank（config.timeBank=60 启用时不可缺）。
+    serverTimeBank: { p0: 60, p1: 60, p2: 60 },
   });
   const snapshot = {
     id: `snapshot-${tournamentId}-${handNumber}`,
     sequence: firstSequence + BigInt(eventCount - 1),
     state: snapshotState,
-    schemaVersion: 1,
+    schemaVersion: 2, // v2：state 携带 serverTimeBank companion（P1-C）
     engineVersion: "0.1.0",
     // 与生产 bundle 构造一致：对解析后状态对象计算（恢复侧等价复算）。
     stateChecksum: sha256Checksum(JSON.parse(snapshotState) as object),

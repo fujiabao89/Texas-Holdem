@@ -20,6 +20,7 @@ import { createTournamentRuntimeState, type PlayerSeed } from "../tournaments/to
 import { TournamentExecutor, type TournamentOutputSink } from "../tournaments/tournament-executor";
 import type { ClockUpdatedPayload, GameEventMessage, TournamentConfig } from "@texas-holdem/protocol";
 import type { HandCommitBundle } from "../infrastructure/persistence/repositories/hand-commit";
+import { sha256Checksum } from "../infrastructure/persistence/checksum";
 import { recoverActiveTournaments, type RecoveryDeps } from "./recovery";
 
 /** 记录型 Fake TournamentManager：捕获 create/createRecovered 输入。 */
@@ -197,6 +198,62 @@ describe("recoverActiveTournaments（崩溃恢复编排）", () => {
     expect(summary.unrecovered).toHaveLength(1);
     expect(reasons).toHaveLength(1);
     expect(reasons[0]).toContain("no committed snapshot");
+  });
+
+  it("旧格式快照（缺 serverTimeBank）在 Time Bank 启用时被拒绝，不回退满余额（P1-C）", async () => {
+    // 版本 1 旧格式（修复前生成、同 SCHEMA_VERSION=1 时代）：启用 Time Bank 但无 companion → 隔离。
+    const { manager: m1, recovered: rec1 } = fakeManager();
+    const repo1 = createFakeRecoveryRepository();
+    const fresh1 = snapshotRecordFromBundle(makeBundle("t1", 2, 7n, 4));
+    const noCompanion1 = { ...(fresh1.state as Record<string, unknown>) };
+    delete noCompanion1.serverTimeBank;
+    const v1Old = {
+      ...fresh1,
+      schemaVersion: 1,
+      state: noCompanion1,
+      stateChecksum: sha256Checksum(noCompanion1),
+    };
+    repo1.setActive([makeActiveTournament("t1", "r1", 10n)]);
+    repo1.setSnapshots([v1Old]);
+    repo1.eventCount = 10n;
+    const s1 = await recoverActiveTournaments(recoveryDeps({ recoveryRepo: repo1, manager: m1 }));
+    expect(s1.unrecovered).toHaveLength(1); // 隔离，不把已消耗 Time Bank 重置为满
+    expect(rec1).toHaveLength(0);
+
+    // 版本 2 但缺 serverTimeBank（checksum 与无 companion 的 state 一致）→ 防御性拒绝。
+    const { manager: m2, recovered: rec2 } = fakeManager();
+    const repo2 = createFakeRecoveryRepository();
+    const fresh2 = snapshotRecordFromBundle(makeBundle("t1", 2, 7n, 4));
+    const noCompanion2 = { ...(fresh2.state as Record<string, unknown>) };
+    delete noCompanion2.serverTimeBank;
+    const v2Missing = {
+      ...fresh2,
+      schemaVersion: 2,
+      state: noCompanion2,
+      stateChecksum: sha256Checksum(noCompanion2),
+    };
+    repo2.setActive([makeActiveTournament("t1", "r1", 10n)]);
+    repo2.setSnapshots([v2Missing]);
+    repo2.eventCount = 10n;
+    const s2 = await recoverActiveTournaments(recoveryDeps({ recoveryRepo: repo2, manager: m2 }));
+    expect(s2.unrecovered).toHaveLength(1);
+    expect(rec2).toHaveLength(0);
+
+    // 未启用 Time Bank（timeBank=0）的 v2 快照即使无 companion 也可恢复（检查是定向的）。
+    const { manager: m3, recovered: rec3 } = fakeManager();
+    const repo3 = createFakeRecoveryRepository();
+    const fresh3 = snapshotRecordFromBundle(makeBundle("t1", 2, 7n, 4));
+    const state3 = { ...(fresh3.state as Record<string, unknown>) } as Record<string, unknown>;
+    state3.config = { ...(state3.config as Record<string, unknown>), timeBank: 0 };
+    delete state3.serverTimeBank;
+    repo3.setActive([makeActiveTournament("t1", "r1", 10n)]);
+    repo3.setSnapshots([
+      { ...fresh3, schemaVersion: 2, state: state3, stateChecksum: sha256Checksum(state3) },
+    ]);
+    repo3.eventCount = 10n;
+    const s3 = await recoverActiveTournaments(recoveryDeps({ recoveryRepo: repo3, manager: m3 }));
+    expect(s3.recovered).toHaveLength(1);
+    expect(rec3).toHaveLength(1);
   });
 });
 
