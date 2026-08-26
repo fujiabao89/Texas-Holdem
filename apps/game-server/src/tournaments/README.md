@@ -8,10 +8,10 @@
 | --- | --- |
 | `tournament-commands.ts` | Tournament 串行队列命令联合类型（Action / Time Bank / Timer 回调 / 撤回 / 连接变化 / 升盲 / 关停）。`receivedAt`/`ingressOrdinal` 是服务端入口元数据，不是 wire 字段。 |
 | `tournament-errors.ts` | `TournamentDomainError`（稳定 ErrorCode + 白名单 details，02 §11）。 |
-| `tournament-runtime.ts` | 运行时状态（Engine + 玩家映射 + Time Bank + 计时 generation）；`createTournamentRuntimeState` 创建 Engine 权威状态；`runtimeView` 输出不可变只读视图。 |
-| `tournament-executor.ts` | **核心**：唯一串行执行器。真队列 + 截止点 look-ahead（§7.2）；幂等/sequence/身份/Engine 校验（§7.3）；权威 Action Timer / Time Bank / 断线宽限 / 定时升盲（§8）；无真人关房（§6.5）；撤回流程（§6.6）；手末 Commit Bundle（§12）。 |
-| `tournament-persistence.ts` | 手末 Commit Bundle 构造（事件 sequence 对齐、Snapshot 对齐、结果更新），交 `TournamentOutputSink.enqueueCommitBundles`（DB Writer 属 TEX-22）。 |
-| `tournament-manager.ts` | Tournament 集合管理：`create`/`submit`/`getView`/`setConnection`（断线/重连入口，供 TEX-21 WS 层调用）。 |
+| `tournament-runtime.ts` | 运行时状态（Engine + 玩家映射 + Time Bank + 计时 generation）；`createTournamentRuntimeState` 创建 Engine 权威状态；`createRecoveredTournamentRuntimeState` 从恢复引擎重建（崩溃恢复，TEX-22）；`engineEventBase` 支持恢复后 wire 序列延续；`runtimeView` 输出不可变只读视图。 |
+| `tournament-executor.ts` | **核心**：唯一串行执行器。真队列 + 截止点 look-ahead（§7.2）；幂等/sequence/身份/Engine 校验（§7.3）；权威 Action Timer / Time Bank / 断线宽限 / 定时升盲（§8）；无真人关房（§6.5）；撤回流程（§6.6）；手末 Commit Bundle（§12）；`PAUSE_AFTER_HAND` 背压手间边界（§12.2）。 |
+| `tournament-persistence.ts` | 手末 Commit Bundle 构造（事件 sequence 对齐、Snapshot 对齐、结果更新），交 `TournamentOutputSink.enqueueCommitBundles`（TEX-22 Writer 消费）；`stateChecksum` 对解析后状态对象计算（恢复侧可等价复算）。 |
+| `tournament-manager.ts` | Tournament 集合管理：`create`/`createRecovered`（崩溃恢复）/`submit`/`getView`/`setConnection`（断线/重连入口，供 TEX-21 WS 层调用）/`pauseAll`（背压暂停）/`activeTournamentIds`（优雅关停轮询）。 |
 
 ## 关键设计
 

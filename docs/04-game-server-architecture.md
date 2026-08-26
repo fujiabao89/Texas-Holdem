@@ -19,6 +19,8 @@
 > - **手间事件边界**：两手之间的 `PLAYER_WITHDRAWN` 作为下一手 bundle 的前导事件落入同一原子提交（其 sequence 仍在手 N 之后、手 N+1 之前，快照边界「Withdraw 均已应用、下一手 HAND_STARTED 尚未发生」成立）；TEX-22 Writer 需据此验证。
 > - **连接管理（TEX-21）**：`GET /api/v1/ws` 首帧只接受 v1 `AUTHENTICATE`，5 秒认证时限；成功先发 `RECONNECT_RESULT`（含 Room 与按接收者投影的 Game Snapshot），再接收命令。Runtime 输出经内部 Event Bus 进入这条唯一 Gateway；`REQUEST_SNAPSHOT` 从当前内存 Runtime 重新投影。连接 epoch 在 Tournament 执行器执行点校验，旧 Socket 已排队的 Action/Time Bank 也会被拒绝。每 15 秒 Ping，45 秒无 Pong/有效帧终止；时钟可注入测试。
 > - **未覆盖**：§9.5 的事件积压/Fast Forward 阈值与 Close 1013、§13.1 优雅关停完整流程（仅实现 `SHUTDOWN` 队列命令）、§13 崩溃恢复读取路径（TEX-22）、P1 AI 接入（§14）。
+
+> **【实现核对 · TEX-22，2026-08-25】** §12 持久化编排（Writer：按 Tournament 串行 + 8 路并发、指数退避重试、幂等、soft/hard watermark、flush）、§12.2 背压手间边界（`PAUSE_AFTER_HAND`）、§13 崩溃恢复读取路径（校验版本/checksum/事件连续性/序列对齐 → `TournamentEngine.restore` 重建 → 向前退回/隔离）与 §13.1 优雅关停最小正确路径（`pauseAll` → 手间等待 → Writer flush 30s）已落地于 `apps/game-server/src/persistence/` 与 `main.ts`。**边界**：§13 的 Room/Lobby 内存态恢复（成员/Host/配置 → RoomManager）未实现（rooms 表数据已保留，属后续任务）；§9.5 Fast Forward、§13.1 的完整 90 秒 Hand drain 仅按最小路径（轮询手间边界）实现；§13.2 终局卸载与 §5.10 清理仍为设计意图。
 > - **Engine 序列映射**：Engine 内部 sequence 为 0 基；wire/持久化 sequence 由执行器分配为 1 基跨手全局递增（`engineSeq + 1`，02 §7.1），与 03 §7.3 水位线咬合。
 
 ## 1. Purpose

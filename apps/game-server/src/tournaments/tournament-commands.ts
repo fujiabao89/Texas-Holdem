@@ -87,6 +87,12 @@ export interface ShutdownInput {
   readonly type: "SHUTDOWN";
 }
 
+/** 背压暂停/恢复：hard watermark 时当前手结束后停在手间边界，回落到 soft 以下再继续（§12.2）。 */
+export interface PauseAfterHandInput {
+  readonly type: "PAUSE_AFTER_HAND";
+  readonly paused: boolean;
+}
+
 /** 驱动首手（创建 Tournament 后由 starter 投递）。 */
 export interface StartInput {
   readonly type: "START";
@@ -101,4 +107,5 @@ export type TournamentCommand =
   | WithdrawPlayerInput
   | ConnectionChangedInput
   | RecordElapsedTimeInput
-  | ShutdownInput;
+  | ShutdownInput
+  | PauseAfterHandInput;

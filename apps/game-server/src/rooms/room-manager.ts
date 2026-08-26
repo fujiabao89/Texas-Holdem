@@ -32,6 +32,8 @@ export interface RoomManagerDeps {
   readonly tokenKeyId: string;
   /** Optional WS authority guard; only transport-originated commands carry an epoch. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
+  /** 持久化降级门控：soft watermark 后停止创建新 Room（docs/04 §12.2）。 */
+  readonly isPersistenceAvailable?: () => boolean;
 }
 
 export interface PlayerSession {
@@ -87,6 +89,10 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
 
   return {
     async createRoom(input) {
+      // soft watermark 后停止创建新 Room（docs/04 §12.2）；已开始的 Hand 不受影响。
+      if (deps.isPersistenceAvailable !== undefined && !deps.isPersistenceAvailable()) {
+        throw new RoomDomainError("GAME_UNAVAILABLE");
+      }
       const roomId = deps.ids.uuid();
       const playerId = deps.ids.uuid();
       const inviteCode = generateUniqueInviteCode(deps.ids.randomBytes, (code) => inviteByCode.has(code));
@@ -156,6 +162,15 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       const runtime = rooms.get(roomId);
       if (runtime === undefined) {
         throw new RoomDomainError("ROOM_NOT_FOUND");
+      }
+      // 持久化降级（soft/hard watermark）或优雅关停期间拒绝新开局（docs/04 §12.2/§13.1）：
+      // 不新增 Tournament，避免在积压/关停窗口继续产生待提交 Bundle。
+      if (
+        command.type === "START_TOURNAMENT" &&
+        deps.isPersistenceAvailable !== undefined &&
+        !deps.isPersistenceAvailable()
+      ) {
+        throw new RoomDomainError("GAME_UNAVAILABLE");
       }
       const result = await runtime.submit(command);
       publish(projectRoomSnapshot(result.state));

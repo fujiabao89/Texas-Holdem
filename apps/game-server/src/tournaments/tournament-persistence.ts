@@ -28,7 +28,13 @@ import type { TournamentRuntimeState } from "./tournament-runtime";
 /** 生成该 Snapshot 的 Engine 版本标识（规则升级可追溯性，03 §5.7）。 */
 export const ENGINE_VERSION = "0.1.0";
 /** Event/Snapshot 序列化格式版本（03 §5.6）。 */
-export const SCHEMA_VERSION = 1;
+/**
+ * 持久化 Snapshot/Event 的 Schema 版本（docs/03 §5.6/§5.7）。
+ * v1：初始格式。v2：快照 state 携带服务端权威的每玩家剩余 Time Bank（`serverTimeBank`，
+ * P1-B/P1-C）；v1 快照缺少该 companion state，若被接受会把已消耗 Time Bank 重置为满值，
+ * 因此恢复侧拒绝 schemaVersion !== SCHEMA_VERSION 的旧格式快照（见 recovery.ts tryValidate）。
+ */
+export const SCHEMA_VERSION = 2;
 
 export interface HandCommitContext {
   readonly state: TournamentRuntimeState;
@@ -62,7 +68,14 @@ export function buildHandCommitBundle(
     schemaVersion: SCHEMA_VERSION,
   }));
   const lastSequence = BigInt(firstSequence + ctx.events.length - 1);
-  const snapshotState = stableStringify(ctx.engineState);
+  // 服务端权威的每玩家剩余 Time Bank（docs/04 §8.4「余额由 server 权威维护」）：
+  // 崩溃恢复需还原，否则重启会把已消耗余额重置为满（P1-B）。
+  const serverTimeBank: Record<string, number> = {};
+  for (const [playerId, record] of ctx.state.players) {
+    serverTimeBank[playerId] = record.timeBank.secondsRemaining;
+  }
+  const snapshotPayload = { ...ctx.engineState, serverTimeBank };
+  const snapshotState = stableStringify(snapshotPayload);
   const playerUpdates = buildPlayerUpdates(ctx, handId);
   const handMeta = {
     id: handId,
@@ -97,7 +110,9 @@ export function buildHandCommitBundle(
       state: snapshotState,
       schemaVersion: SCHEMA_VERSION,
       engineVersion: ENGINE_VERSION,
-      stateChecksum: sha256Checksum(snapshotState),
+      // state 以 jsonb 落库、读取时是解析后的对象；state_checksum 必须对解析后状态
+      // 的 canonical 序列化计算，恢复侧才能等价复算（docs/03 §5.7「稳定序列化结果」）。
+      stateChecksum: sha256Checksum(snapshotPayload),
       commitChecksum: sha256Checksum(commitChecksumInput),
     },
     playerUpdates,
