@@ -73,6 +73,92 @@ export const zhCN = {
     pendingDescription: "此页面将在后续任务中完成。",
     backHome: "返回首页",
   },
+  settings: {
+    title: "设置与规则",
+    soundTitle: "音效",
+    soundEnabled: "开启全局音效",
+    soundDisabled: "已关闭全局音效",
+    rulesTitle: "规则说明",
+    rules: [
+      "德州扑克是一场 2–10 人的淘汰制锦标赛：每人以相同的初始筹码开始，盲注按房间配置的盲注结构逐级上升，筹码输光的玩家被淘汰，坚持到最后的玩家获得冠军。",
+      "每手牌由小盲位与大盲位强制下注开始，随后每位玩家按顺时针行动，可以选择弃牌、过牌、跟注、下注、加注或全下。",
+      "牌局依次经过翻牌前、翻牌（3 张公共牌）、转牌（1 张公共牌）与河牌（1 张公共牌）；未弃牌的玩家在最后用底牌与公共牌组成最佳五张牌型比大小。",
+      "所有玩家在限定行动时间内完成决策；时间用尽后系统自动代打（能过牌则过牌，否则弃牌）。延时储备可在关键时刻申请额外时间。",
+      "下注进入边池规则：筹码不足全下时，多余的下注会退还或进入单独的边池，各底池只由有资格的玩家竞争。",
+      "比赛结束后展示最终排名；并列名次由服务端裁决并在结果页展示。",
+      "所有牌局结果均由服务端权威判定；断线重连后以服务端状态为准。",
+    ],
+  },
+  result: {
+    title: "比赛结果",
+    champion: "冠军",
+    finalChips: "最终筹码",
+    playAgain: "再来一局",
+    backToLobby: "返回大厅",
+    backHome: "返回首页",
+    loading: "正在获取比赛结果…",
+    missingSession: "未找到此房间的身份凭证，请重新加入。",
+    roomClosed: "房间已关闭。",
+    notFound: "未找到该场比赛的结果。",
+    tiedRank: "并列第 {position} 名",
+    view: "查看比赛结果",
+  },
+  history: {
+    open: "牌局记录",
+    title: "牌局记录",
+    close: "关闭",
+    handNumber: "第 {number} 手",
+    endedAt: "结束时间",
+    blinds: "盲注 {small}/{big}",
+    potTotal: "总底池 {amount}",
+    winner: "赢家",
+    endReason: "结束原因",
+    loading: "正在加载牌局记录…",
+    loadingMore: "正在加载更多…",
+    empty: "还没有已归档的手牌。",
+    loadFailed: "牌局记录加载失败。",
+    retry: "重试",
+    currentHand: "本手进行中",
+    currentHandHint: "暂存内容，结算后由服务端归档。",
+    backToList: "返回列表",
+    detailLoadFailed: "手牌详情加载失败。",
+    stages: {
+      PREFLOP: "翻牌前",
+      FLOP: "翻牌",
+      TURN: "转牌",
+      RIVER: "河牌",
+      SHOWDOWN: "摊牌",
+      RESULT: "结算",
+    },
+    entries: {
+      handStart: "第 {number} 手开始，庄家座位 {dealer}",
+      smallBlind: "小盲 {amount}",
+      bigBlind: "大盲 {amount}",
+      ante: "前注 {amount}",
+      dealHole: "发出底牌",
+      streetCards: "公共牌",
+      check: "过牌",
+      call: "跟注 {amount}",
+      bet: "下注 {amount}",
+      raise: "加注至 {amount}",
+      allIn: "全下至 {amount}",
+      fold: "弃牌",
+      reveal: "亮出底牌",
+      handRank: "牌型：{label}",
+      uncalledReturn: "未被跟注的下注退回 {amount}",
+      potAwarded: "底池 {index}（{amount}）",
+      award: "{name} 获得 {amount}",
+      winningHandRank: "获胜牌型：{label}",
+      eliminated: "{name} 被淘汰，{rank}",
+      tournamentEnd: "比赛结束，冠军：{name}",
+      withdrawn: "{name} 已退出比赛",
+    },
+    seatOf: "座位 {seat}",
+  },
+  spectator: {
+    banner: "你已被淘汰，正在以观众身份观看牌局。",
+    exit: "退出观看",
+  },
   transport: {
     syncing: "正在同步最新牌局状态",
     disconnected: "连接已中断",
@@ -194,12 +280,25 @@ type DotPath<T, Prefix extends string = ""> = T extends string
   ? Prefix
   : { [K in keyof T & string]: DotPath<T[K], `${Prefix}${Prefix extends "" ? "" : "."}${K}`> }[keyof T & string];
 
+/** Keys that resolve to a readonly string list (e.g. the static rule paragraphs). */
+export type MessageListKey = DotPathList<typeof zhCN>;
+
+type DotPathList<T, Prefix extends string = ""> = T extends readonly string[]
+  ? Prefix
+  : T extends string
+    ? never
+    : { [K in keyof T & string]: DotPathList<T[K], `${Prefix}${Prefix extends "" ? "" : "."}${K}`> }[keyof T & string];
+
 function lookup(key: MessageKey): string {
   return key.split(".").reduce<unknown>((value, segment) => (value as Record<string, unknown>)[segment], zhCN) as string;
 }
 
 export function message(key: MessageKey): string {
   return lookup(key);
+}
+
+export function messageList(key: MessageListKey): readonly string[] {
+  return key.split(".").reduce<unknown>((value, segment) => (value as Record<string, unknown>)[segment], zhCN) as readonly string[];
 }
 
 export function errorMessage(code: ErrorCode): string {

@@ -1,13 +1,15 @@
 # 工程文档总索引
 
 > 状态：草稿
-> 更新：2026-08-25
+> 更新：2026-08-26
 
 本目录是工程文档的唯一入口。规范：**一个事实只有一个权威来源**，其他文档链接引用而不是重写；产品层文档（规划书）留在仓库根目录，在本索引链接并标注"产品意图，非实现事实"。
 
 > **2026-08-25 增量核对（TEX-21）**：既有 WebSocket Gateway/Transport 已接入 v1 首帧认证、Room/Game 权威 Snapshot、Tournament Runtime 事件扇出、15/45 心跳、同玩家接管 epoch、Token 恢复与客户端有序重同步。牌桌 UI/动画/音效/赛果/历史仍待 TEX-25+；Writer 与崩溃恢复读取仍待 TEX-22。下方 2026-08-24 段落为历史核对记录，其“Tournament 运行时未实现”的表述已由 TEX-20/TEX-21 更新。
 
 > **2026-08-25 增量核对（TEX-22）**：持久化异步 Writer（队列/指数退避/soft-hard watermark/幂等/数据损坏隔离/flush）与崩溃恢复（校验版本/checksum/事件连续性/序列对齐 → `TournamentEngine.restore` 重建 → 向前退回/隔离）已落地；优雅关停最小路径（`pauseAll` → 手间等待 → Writer flush 30s）已接线。仍待后续任务：Hand History 投影读取、Room/Lobby 内存态恢复、保留期清理、完整 90 秒 Hand drain 与 §9.5 Fast Forward（TEX-25+）。
+
+> **2026-08-26 增量核对（TEX-27）**：`apps/web` 业务页面扩展至赛果（`/room/[roomId]/result/[tournamentId]`：服务端权威排名/冠军/最终筹码，房主"再来一局"仅经既有 `startTournament` 权威流程）、设置与规则（`/settings`：全局音效开关与静态规则说明）、当前玩家视角 Hand History（牌桌 Drawer、cursor 分页、Pre-Flop～Result 时间线详情、"本手进行中"暂存）与淘汰观战横幅；`HttpTransport` 新增 History 端点客户端。已知缺口：Hand History 服务端投影读取端点（`GET /api/v1/tournaments/{tournamentId}/hands` 与 `/hands/{handId}`）尚未实现——TEX-22 仅交付协议 Schema，归档历史请求当前全部 404——已按用户决策立独立 Linear 缺陷跟踪补齐；端点合入后 TEX-27 rebase 并以 Fake HTTP 与受控端到端测试验收归档列表、详情、重连后的权威覆盖与隐私隔离。
 
 > 项目现状（2026-08-24 核对）：TEX-11 已建立 pnpm monorepo 工程地基——`apps/web` 与 `apps/game-server` 可安装、可 lint / typecheck / build / test（见 [docs/03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md)）；TEX-13 已实现扑克规则中的 `cards/` 子域（标准 52 张牌堆、随机源、七选五 Hand Evaluator，见 [01-engine-spec.md](./01-engine-spec.md) §7/§10/§15/§17）；TEX-14 已实现下注 / Pot / 手状态机；TEX-15 已实现 Tournament（淘汰 / 排名 / 冠军 / 撤回）、锦标赛级 Game Events 与 timer/；TEX-17 已实现协议包的严格 Schema、推导类型、消息/错误信封及纯投影；TEX-18 已实现持久化层（Drizzle Schema、版本化迁移、最小权限与控制面/手末 Commit Bundle 仓储，含真实 PostgreSQL 集成测试，见 [03-data-model.md](./03-data-model.md) §5/§15 与 `apps/game-server/src/infrastructure/persistence/`）；TEX-23 已实现 Web 路由壳、中文文案、客户端投影状态和 HTTP/WS Transport 基础（不含业务页面）；TEX-16 已落地 Headless Simulator 长跑（加权场景、不变量断言、Watchdog、Smoke/Nightly/RC 三档与失败产物，见 [06-testing-strategy.md](./06-testing-strategy.md) §5 与 `tests/simulator/`）。服务端 Room/Lobby 低频 HTTP 运行时（TEX-19：Room/Lobby 状态机、串行执行器与 HTTP 入口）已实现；Tournament 运行时与前端业务逻辑仍未实现。本文档体系内的工程规格（01–06）中，01 的 `cards/`、下注 / Pot / 状态机、Tournament、Game Events 与 timer，02 的 Schema/投影契约，03 的表结构与仓储部分，05 的 §4/§5、§14.1、§15 与 §17 中与 TEX-23 基础边界对应的部分，以及 06 的 Simulator（§5 与 §11 Simulator CI）已实现；04 的 §4/§5/§10 已实现（TEX-19）；其余章节仍为**设计意图**。
 
@@ -19,7 +21,7 @@
 | 02 | [02-protocol-spec.md](./02-protocol-spec.md) | 联机协议规格（`packages/protocol`） | HTTP/WS 通道分工、身份与凭证、消息信封与 Snapshot + Event Stream、sequence 与幂等（actionId/expectedSequence/receivedAt）、超时竞争裁决、消息目录、PlayerView/BotView 投影契约、ErrorCode 码表 | Schema / 投影契约已实现（TEX-17）；运行时接入仍为设计意图 |
 | 03 | [03-data-model.md](./03-data-model.md) | 数据模型与持久化规格（`apps/game-server` / Supabase Postgres） | 内存 vs 持久化边界、核心表（rooms/tournaments/tournament_players/hands/hand_events/game_snapshots/ai_requests）字段与约束、写入节奏与失败语义、敏感数据存放与暴露规则 | 草稿（表结构/迁移/仓储已实现 · TEX-18；运行时写入编排与恢复仍为设计意图） |
 | 04 | [04-game-server-architecture.md](./04-game-server-architecture.md) | Game Server 运行时工程设计（`apps/game-server`） | Room/Tournament 运行时、单桌串行执行器与超时裁决、Scheduler/Timer、连接管理与接管、投影执行、持久化编排、崩溃恢复、无真人关房、P1 AI 接入点 | 草稿（§4/§5/§10 已实现 · TEX-19；其余设计意图） |
-| 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | 草稿（TEX-23 前端基础/Transport 已实现；业务页面待 TEX-24+） |
+| 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | 草稿（TEX-23 基础、TEX-24 Lobby、TEX-25 牌桌、TEX-27 赛果/设置/历史已实现；动画/音效待 TEX-26） |
 | 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 草稿（Simulator 长跑 · TEX-16 已实现；其余设计意图） |
 | 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 提交前本地审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略、输出契约与提交/推送门禁 | 治理基线 |
 | 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
