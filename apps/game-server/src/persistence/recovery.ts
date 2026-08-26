@@ -129,7 +129,12 @@ async function recoverOne(
   let fallback: ValidatedSnapshot | null = null;
   for (const snapshot of snapshots) {
     if (snapshot.sequence > lastCommittedSequence) continue; // 不应出现；防御性跳过
-    const validated = await tryValidate(deps, tournamentId, snapshot);
+    const validated = await tryValidate(
+      deps,
+      tournamentId,
+      snapshot,
+      players.map((p) => p.playerId),
+    );
     if (validated !== null) {
       fallback = validated;
       break;
@@ -181,6 +186,7 @@ async function tryValidate(
   deps: RecoveryDeps,
   tournamentId: string,
   snapshot: CommittedSnapshotRecord,
+  lockedPlayerIds: readonly string[],
 ): Promise<ValidatedSnapshot | null> {
   // Schema/Engine 版本兼容（§5.6/§5.7）：未知版本拒绝猜测恢复。
   // SCHEMA_VERSION=2 起快照 state 必须携带 serverTimeBank companion；v1 旧格式
@@ -190,8 +196,9 @@ async function tryValidate(
   // 结构校验：state 必须是手末边界内部 GameState。
   const state = snapshot.state;
   if (!isHandBoundaryState(state)) return null;
-  // 防御性：声称 v2 的 Time Bank 启用快照若仍缺少/为空 serverTimeBank → 拒绝，不回退满余额。
-  if (isTimeBankEnabled(state) && extractServerTimeBank(state) === undefined) return null;
+  // Time Bank 启用时，serverTimeBank 必须为**每个锁定参赛者**提供有限非负整数余额；
+  // 缺失或部分覆盖（遗漏玩家）→ 拒绝，遗漏玩家不得恢复为满余额（P1-D）。
+  if (!hasCompleteServerTimeBank(state, lockedPlayerIds)) return null;
   // state_checksum 与 state 一致（canonical JSON 往返稳定，§5.7）。
   const recomputed = sha256Checksum(state);
   if (Buffer.compare(recomputed, snapshot.stateChecksum) !== 0) return null;
@@ -222,6 +229,22 @@ function isHandBoundaryState(value: unknown): value is TournamentState {
 /** 快照配置是否启用 Time Bank（timeBank > 0）——启用时缺少 serverTimeBank 即不可恢复。 */
 function isTimeBankEnabled(state: TournamentState): boolean {
   return typeof state.config?.timeBank === "number" && state.config.timeBank > 0;
+}
+
+/**
+ * Time Bank 启用时，serverTimeBank 必须为每个锁定参赛者提供有限、非负、整数余额；
+ * 否则（整体缺失或部分覆盖）拒绝该快照（P1-C/P1-D），防止遗漏玩家恢复为满余额。
+ */
+function hasCompleteServerTimeBank(state: TournamentState, lockedPlayerIds: readonly string[]): boolean {
+  if (!isTimeBankEnabled(state)) return true;
+  const map = extractServerTimeBank(state);
+  if (map === undefined) return false;
+  return lockedPlayerIds.every(
+    (playerId) =>
+      typeof map[playerId] === "number" &&
+      Number.isInteger(map[playerId]) &&
+      map[playerId] >= 0,
+  );
 }
 
 /** 从快照 state 提取服务端权威的每玩家剩余 Time Bank（P1-B）；旧快照无该键 → undefined（满余额回退）。 */

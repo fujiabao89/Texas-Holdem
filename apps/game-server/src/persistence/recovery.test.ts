@@ -255,6 +255,22 @@ describe("recoverActiveTournaments（崩溃恢复编排）", () => {
     expect(s3.recovered).toHaveLength(1);
     expect(rec3).toHaveLength(1);
   });
+
+  it("部分 serverTimeBank（遗漏锁定玩家）在 Time Bank 启用时被拒绝（P1-D）", async () => {
+    const { manager, recovered } = fakeManager();
+    const repo = createFakeRecoveryRepository();
+    const fresh = snapshotRecordFromBundle(makeBundle("t1", 2, 7n, 4));
+    const partial = { ...(fresh.state as Record<string, unknown>) } as Record<string, unknown>;
+    const partialTb = { ...(partial.serverTimeBank as Record<string, number>) };
+    delete partialTb["t1-p1"]; // 保留 t1-p0/t1-p2，遗漏 t1-p1（锁定参赛者 3 人）
+    partial.serverTimeBank = partialTb;
+    repo.setActive([makeActiveTournament("t1", "r1", 10n)]);
+    repo.setSnapshots([{ ...fresh, state: partial, stateChecksum: sha256Checksum(partial) }]);
+    repo.eventCount = 10n;
+    const summary = await recoverActiveTournaments(recoveryDeps({ recoveryRepo: repo, manager }));
+    expect(summary.unrecovered).toHaveLength(1); // 隔离：遗漏玩家不得恢复为满余额
+    expect(recovered).toHaveLength(0);
+  });
 });
 
 // ---- 端到端：真实执行器跑 2 手 → 崩溃恢复 → 下一手序列无缝衔接 ----

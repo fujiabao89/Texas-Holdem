@@ -71,8 +71,13 @@ export function makeBundle(
     elapsedSeconds: 0,
     nextSequence: Number(lastSequence), // 与快照水位一致（恢复校验要求 state.nextSequence == snapshot.sequence）
     hand: null,
-    // v2 companion state：服务端权威的每玩家剩余 Time Bank（config.timeBank=60 启用时不可缺）。
-    serverTimeBank: { p0: 60, p1: 60, p2: 60 },
+    // v2 companion state：服务端权威的每玩家剩余 Time Bank（config.timeBank=60 启用时
+    // 必须覆盖每个锁定参赛者，键 = playerId，与 makeActiveTournament 的 playerId 对齐）。
+    serverTimeBank: {
+      [`${tournamentId}-p0`]: 60,
+      [`${tournamentId}-p1`]: 60,
+      [`${tournamentId}-p2`]: 60,
+    },
   });
   const snapshot = {
     id: `snapshot-${tournamentId}-${handNumber}`,
