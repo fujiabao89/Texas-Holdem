@@ -134,6 +134,13 @@ describe("protocol wire contracts", () => {
     expect(GameEventSchema.safeParse({ ...payload, payload: { ...payload.payload, awards: [{ playerId: "alice", amount: 99 }] } }).success).toBe(false);
   });
 
+  it("requires server-projected bestFiveCards for a public showdown reveal", () => {
+    const payload = { type: "PLAYER_REVEALED", payload: { playerId: "alice", seat: 0, cards: [aliceCard, bobCard], handRank: { category: "STRAIGHT", tiebreakRanks: ["A"], label: "Straight", bestFiveCards: [aliceCard, bobCard, aliceCard, bobCard, aliceCard] } } };
+    expect(GameEventSchema.safeParse(payload).success).toBe(true);
+    const { bestFiveCards: _bestFiveCards, ...withoutBestFive } = payload.payload.handRank;
+    expect(GameEventSchema.safeParse({ ...payload, payload: { ...payload.payload, handRank: withoutBestFive } }).success).toBe(false);
+  });
+
   it("accepts withdrawal and tournament finish event catalog entries", () => {
     expect(GameEventSchema.safeParse({ type: "PLAYER_WITHDRAWN", payload: { playerId: "alice", seat: 0, forfeitedChips: 250 } }).success).toBe(true);
     expect(GameEventSchema.safeParse({ type: "TOURNAMENT_FINISHED", payload: { winnerPlayerId: "alice", rankings: [{ playerId: "alice", finishPosition: 1, tied: false }, { playerId: "bob", finishPosition: 2, tied: false }] } }).success).toBe(true);

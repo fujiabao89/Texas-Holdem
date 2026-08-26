@@ -54,6 +54,8 @@ export const HandRankSchema = z.strictObject({
     "STRAIGHT_FLUSH",
   ]),
   tiebreakRanks: z.array(CardSchema.shape.rank).min(1).max(5),
+  /** Server-adjudicated public cards; web clients must never derive these. */
+  bestFiveCards: z.array(CardSchema).length(5),
   label: z.string().min(1).max(100),
 });
 

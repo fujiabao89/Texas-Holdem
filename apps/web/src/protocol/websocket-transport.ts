@@ -49,6 +49,8 @@ export interface WebSocketTransportOptions {
   readonly onCommandResult?: (pending: PendingCommand) => void;
   readonly onProtocolError?: (code: ErrorCode) => void;
   readonly clock?: WebSocketClock;
+  /** Injectable so reconnect jitter remains deterministic in tests. */
+  readonly random?: () => number;
 }
 
 export type CommandResultListener = (pending: PendingCommand, result: CommandResultPayload) => void;
@@ -155,6 +157,20 @@ export class WebSocketTransport {
     if (this.state !== "CONNECTED" && this.state !== "RESYNCING") throw new Error("WebSocket is not authenticated");
     this.socket?.send(command.serialized);
     this.pending.set(command.requestId, command);
+  }
+
+  /** Presentation-only recovery request; it cannot send an Action command. */
+  requestAuthoritativeSnapshot(reason: ResyncReason = "MANUAL"): boolean {
+    this.options.projectionStore.requestResync(reason);
+    this.transition("RESYNCING");
+    return this.requestSnapshot(reason);
+  }
+
+  /** Browser online/visibility hints may advance an existing retry, never fork one. */
+  reconnectNow(): void {
+    if (this.state === "STOPPED" || this.roomId === null || this.playerToken === null) return;
+    this.cancelRetry();
+    if (this.state === "CLOSED") this.openConnection(this.roomId, this.playerToken);
   }
 
   private handleMessage(raw: string): void {
@@ -330,8 +346,10 @@ export class WebSocketTransport {
 
   private scheduleReconnect(): void {
     if (this.retryTimer !== null || this.roomId === null || this.playerToken === null) return;
-    const delays = [500, 1_000, 2_000, 4_000, 8_000, 10_000] as const;
-    const delay = delays[Math.min(this.retryAttempt, delays.length - 1)]!;
+    const delays = [0, 500, 1_000, 2_000, 4_000, 8_000, 10_000] as const;
+    const baseDelay = delays[Math.min(this.retryAttempt, delays.length - 1)]!;
+    const jitter = 0.8 + (this.options.random?.() ?? Math.random()) * 0.4;
+    const delay = Math.round(baseDelay * jitter);
     this.retryAttempt += 1;
     this.retryTimer = (this.options.clock ?? browserClock).setTimeout(() => {
       this.retryTimer = null;

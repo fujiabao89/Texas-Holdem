@@ -13,8 +13,7 @@
  * - Engine Card（数值 rank、小写 suit）→ wire Card（字符串 rank、UPPER_SNAKE suit）。
  * - `isFullRaise`：Engine 只允许完整加注进入 `PLAYER_RAISED`（短全下走 `ALL_IN`），恒为 true。
  * - `HAND_STARTED.blindLevel` 由执行器在 WireContext 提供。
- * - `POT_AWARDED.winningHandRank` 本版固定为 `null`（schema 合法）：获胜牌型可由
- *   `PLAYER_REVEALED` 事件推导；计算侧待后续在 WireContext 传入赢家底牌与公共牌后补齐。
+ * - `PLAYER_REVEALED.handRank.bestFiveCards` 由服务端 evaluator 公开；Web 端只能展示。
  */
 
 import { evaluateHand, handRankName } from "@texas-holdem/poker-engine";
@@ -394,20 +393,16 @@ const CATEGORY_BY_RANK: Record<number, HandRankView["category"]> = {
   5: "FLUSH", 6: "FULL_HOUSE", 7: "FOUR_OF_A_KIND", 8: "STRAIGHT_FLUSH",
 };
 
-/** 由 5–7 张 Engine 牌计算 wire HandRankView；牌数不足时退化为 High Card（对局正常揭示时 board 已补满 5 张）。 */
+/** 由已公开的 5–7 张 Engine 牌计算 wire HandRankView。 */
 function handRankViewOf(cards: readonly Card[]): HandRankView {
   if (cards.length >= 5) {
     const evaluation = evaluateHand(cards);
     return {
       category: CATEGORY_BY_RANK[evaluation.rank] ?? "HIGH_CARD",
       tiebreakRanks: evaluation.comparisonKey.slice(1).map(wireRank),
+      bestFiveCards: evaluation.bestFiveCards.map(wireCard),
       label: handRankName(evaluation.rank),
     };
   }
-  const highest = [...cards].sort((a, b) => b.rank - a.rank)[0];
-  return {
-    category: "HIGH_CARD",
-    tiebreakRanks: highest !== undefined ? [wireRank(highest.rank)] : ["A"],
-    label: "High Card",
-  };
+  throw new Error("PLAYER_REVEALED requires five public cards for bestFiveCards");
 }

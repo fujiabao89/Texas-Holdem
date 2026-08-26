@@ -1,0 +1,175 @@
+import type { Card, GameEvent, GameEventMessage, GameSnapshot } from "@texas-holdem/protocol";
+
+import { animationTimings, hardForwardBacklogMs, hardForwardEvents, softCatchUpBacklogMs, softCatchUpRate, softCatchUpTasks } from "./timings";
+
+export type AnimationKind = "DEAL" | "BURN" | "BOARD" | "WAGER" | "FOLD" | "SHOWDOWN" | "POT_AWARD" | "ELIMINATION" | "FINISH";
+
+export interface PresentationOverlay {
+  readonly kind: AnimationKind;
+  readonly event: GameEvent;
+  /** BURN_CARD contains no face value, and presentation never manufactures one. */
+  readonly burnCardBackOnly: boolean;
+  /** Copied directly from the server-projected PLAYER_REVEALED payload. */
+  readonly bestFiveCards: readonly Card[];
+}
+
+export interface PresentationState {
+  readonly game: GameSnapshot | null;
+  readonly overlay: PresentationOverlay | null;
+  readonly mode: "NORMAL" | "SOFT_CATCH_UP" | "HARD_FORWARD";
+}
+
+export interface AnimationClock {
+  now(): number;
+  setTimeout(callback: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+export interface AnimationQueueOptions {
+  readonly clock?: AnimationClock;
+  readonly onHardForward?: () => void;
+  readonly onEventStarted?: (event: GameEvent) => void;
+}
+
+type Listener = () => void;
+interface QueueItem {
+  readonly message: GameEventMessage;
+  readonly beforePresentation: GameSnapshot | null;
+  readonly afterCanonical: GameSnapshot;
+  readonly durationMs: number;
+}
+
+const browserClock: AnimationClock = {
+  now: () => performance.now(),
+  setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+/**
+ * Serializes visual work from already accepted server events. It has no
+ * Transport or command dependency, so presentation can never delay a hand.
+ */
+export class AnimationQueue {
+  private readonly clock: AnimationClock;
+  private readonly listeners = new Set<Listener>();
+  private readonly queue: QueueItem[] = [];
+  private active: QueueItem | null = null;
+  private timer: unknown | null = null;
+  private tailTarget: GameSnapshot | null = null;
+  private reducedMotion = false;
+  private state: PresentationState = { game: null, overlay: null, mode: "NORMAL" };
+
+  constructor(private readonly options: AnimationQueueOptions = {}) { this.clock = options.clock ?? browserClock; }
+
+  getSnapshot = (): PresentationState => this.state;
+  subscribe = (listener: Listener): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
+
+  setReducedMotion(reducedMotion: boolean): void {
+    this.reducedMotion = reducedMotion;
+    if (reducedMotion) this.commitAllFinalFrames();
+  }
+
+  /** Snapshot and reconnect are barriers: discard old work and never replay it. */
+  alignToSnapshot(game: GameSnapshot | null): void {
+    this.clearTimer();
+    this.active = null;
+    this.queue.splice(0);
+    this.tailTarget = game;
+    this.replace({ game, overlay: null, mode: "NORMAL" });
+  }
+
+  enqueue(message: GameEventMessage, afterCanonical: GameSnapshot): void {
+    const item: QueueItem = {
+      message,
+      beforePresentation: this.tailTarget ?? this.state.game,
+      afterCanonical,
+      durationMs: durationFor(message.payload.event),
+    };
+    this.tailTarget = afterCanonical;
+    if (this.reducedMotion) { this.commitFinalFrame(item); return; }
+    this.queue.push(item);
+    if (this.shouldHardForward()) { this.hardForward(); return; }
+    this.pump();
+  }
+
+  /** Cancellation is also a final-frame path, never a stale partial frame. */
+  cancel(): void { this.commitAllFinalFrames(); }
+
+  private pump(): void {
+    if (this.active !== null) return;
+    const item = this.queue.shift();
+    if (item === undefined) { this.replace({ ...this.state, mode: "NORMAL" }); return; }
+    this.active = item;
+    const soft = this.shouldSoftCatchUp();
+    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event), mode: soft ? "SOFT_CATCH_UP" : "NORMAL" });
+    try { this.options.onEventStarted?.(item.message.payload.event); }
+    catch { this.finishActive(); return; }
+    this.timer = this.clock.setTimeout(() => this.finishActive(), Math.round(item.durationMs / (soft ? softCatchUpRate : 1)));
+  }
+
+  private finishActive(): void {
+    this.timer = null;
+    const item = this.active;
+    this.active = null;
+    if (item !== null) this.commitFinalFrame(item);
+    this.pump();
+  }
+
+  private commitFinalFrame(item: QueueItem): void {
+    if (this.state.game?.sequence === item.afterCanonical.sequence && this.state.overlay === null) return;
+    this.replace({ game: item.afterCanonical, overlay: null, mode: this.state.mode });
+  }
+
+  private commitAllFinalFrames(): void {
+    this.clearTimer();
+    if (this.active !== null) this.commitFinalFrame(this.active);
+    for (const item of this.queue) this.commitFinalFrame(item);
+    this.active = null;
+    this.queue.splice(0);
+    this.tailTarget = this.state.game;
+    this.replace({ ...this.state, overlay: null, mode: "NORMAL" });
+  }
+
+  private hardForward(): void {
+    const latest = this.tailTarget;
+    this.clearTimer();
+    this.active = null;
+    this.queue.splice(0);
+    this.replace({ game: latest, overlay: null, mode: "HARD_FORWARD" });
+    this.options.onHardForward?.();
+    this.replace({ game: latest, overlay: null, mode: "NORMAL" });
+  }
+
+  private clearTimer(): void { if (this.timer !== null) this.clock.clearTimeout(this.timer); this.timer = null; }
+  private shouldSoftCatchUp(): boolean { return this.estimatedBacklogMs() > softCatchUpBacklogMs || this.queue.length > softCatchUpTasks; }
+  private shouldHardForward(): boolean { return this.estimatedBacklogMs() > hardForwardBacklogMs || this.queue.length > hardForwardEvents; }
+  private estimatedBacklogMs(): number { return (this.active?.durationMs ?? 0) + this.queue.reduce((sum, item) => sum + item.durationMs, 0); }
+  private replace(next: PresentationState): void { this.state = next; for (const listener of this.listeners) listener(); }
+}
+
+function durationFor(event: GameEvent): number {
+  switch (event.type) {
+    case "DEAL_HOLE_CARD": return animationTimings.deal + (event.payload.card === undefined ? 0 : animationTimings.ownCardReveal);
+    case "BURN_CARD": return animationTimings.burn;
+    case "FLOP_DEALT": return animationTimings.flopCard * 3 + animationTimings.flopInterval * 2;
+    case "TURN_DEALT": case "RIVER_DEALT": return animationTimings.turnRiver;
+    case "BLIND_POSTED": case "PLAYER_CALLED": case "PLAYER_BET": case "PLAYER_RAISED": return animationTimings.wager;
+    case "PLAYER_CHECKED": return animationTimings.check;
+    case "PLAYER_FOLDED": return animationTimings.fold;
+    case "PLAYER_ALL_IN": return animationTimings.allIn;
+    case "SHOWDOWN_STARTED": case "PLAYER_REVEALED": return animationTimings.showdownReveal + animationTimings.bestFive;
+    case "POT_AWARDED": return animationTimings.winner + animationTimings.potAward;
+    case "PLAYER_ELIMINATED": case "PLAYER_WITHDRAWN": return animationTimings.fold;
+    case "TOURNAMENT_FINISHED": return animationTimings.handEnd;
+    case "HAND_STARTED": case "UNCALLED_BET_RETURNED": return 0;
+  }
+}
+
+function overlayFor(event: GameEvent): PresentationOverlay {
+  const kind: AnimationKind = event.type === "DEAL_HOLE_CARD" ? "DEAL" : event.type === "BURN_CARD" ? "BURN"
+    : event.type === "FLOP_DEALT" || event.type === "TURN_DEALT" || event.type === "RIVER_DEALT" ? "BOARD"
+      : event.type === "PLAYER_FOLDED" ? "FOLD" : event.type === "SHOWDOWN_STARTED" || event.type === "PLAYER_REVEALED" ? "SHOWDOWN"
+        : event.type === "POT_AWARDED" ? "POT_AWARD" : event.type === "PLAYER_ELIMINATED" || event.type === "PLAYER_WITHDRAWN" ? "ELIMINATION"
+          : event.type === "TOURNAMENT_FINISHED" ? "FINISH" : "WAGER";
+  return { kind, event, burnCardBackOnly: event.type === "BURN_CARD", bestFiveCards: event.type === "PLAYER_REVEALED" ? event.payload.handRank.bestFiveCards : [] };
+}

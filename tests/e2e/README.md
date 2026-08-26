@@ -11,7 +11,7 @@ pnpm test:e2e -- --grep "创建房间"   # 按标题过滤（业务用例落地�
 
 - 配置：[playwright.config.ts](./playwright.config.ts)；**禁用重试（含 CI）**——docs/06 §2.1 规定重试只可用于诊断，不得把"重试后通过"记为门禁通过（`tests/meta` 有防回归断言）。
 - 端口默认 `3100`，可用 `TEX_E2E_PORT` / `TEX_E2E_BASE_URL` 覆盖；本地已运行的服务会被复用。
-- 业务场景（创建房间、下注、重连等）按目录组织：[all-in/](./all-in)、[betting/](./betting)、[create-room/](./create-room)、[full-hand/](./full-hand)、[join-table/](./join-table)、[reconnect/](./reconnect)、[side-pot/](./side-pot)。TEX-25 的 [betting/table.spec.ts](./betting/table.spec.ts) 通过 Playwright WebSocket mock 注入合法投影，覆盖键盘跟注、All-in 两步、房间关闭、被移出与 Session Replaced；它不依赖真实 game-server 或 sleep。
+- 业务场景（创建房间、下注、重连等）按目录组织：[all-in/](./all-in)、[betting/](./betting)、[create-room/](./create-room)、[full-hand/](./full-hand)、[join-table/](./join-table)、[reconnect/](./reconnect)、[side-pot/](./side-pot)。TEX-25 的 [betting/table.spec.ts](./betting/table.spec.ts) 通过 Playwright WebSocket mock 注入合法投影，覆盖键盘跟注、All-in 两步、房间关闭、被移出与 Session Replaced；TEX-26 的 [reconnect/tex-26.spec.ts](./reconnect/tex-26.spec.ts) 仅覆盖新增的接管对话框可访问性。两者均不依赖真实 game-server 或 sleep。
 
 ## 失败产物保留策略（TEX-12）
 

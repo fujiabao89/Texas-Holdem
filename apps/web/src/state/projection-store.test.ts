@@ -41,6 +41,20 @@ describe("ProjectionStore", () => {
     expect(store.getSnapshot().game?.currentActorPlayerId).toBe("player-2");
   });
 
+  it("notifies presentation only after a continuous event commits, while snapshots are barriers", () => {
+    const store = new ProjectionStore();
+    const accepted: string[] = [];
+    const barriers: string[] = [];
+    store.subscribeAcceptedGameEvents((next) => accepted.push(`${next.message.payload.sequence}:${next.afterCanonical.sequence}`));
+    store.subscribeBarriers((next) => barriers.push(`${next.kind}:${next.game?.sequence ?? "none"}`));
+    store.acceptGameSnapshot(gameSnapshot());
+    expect(store.acceptGameEvent(event("9007199254740992"))).toBe("APPLIED");
+    expect(store.acceptGameEvent(event("9007199254740992"))).toBe("IGNORED");
+    store.acceptReconnectResult(roomSnapshot(), gameSnapshot({ sequence: "9007199254741000" }));
+    expect(accepted).toEqual(["9007199254740992:9007199254740992"]);
+    expect(barriers).toEqual(["GAME_SNAPSHOT:9007199254740991", "RECONNECT_RESULT:9007199254741000"]);
+  });
+
   it("ignores duplicate events and pauses actions on gaps, disorder, and a mismatched tournament", () => {
     const store = new ProjectionStore();
     store.acceptGameSnapshot(gameSnapshot());

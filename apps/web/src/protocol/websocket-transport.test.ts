@@ -38,6 +38,7 @@ function setup(clock?: ReturnType<typeof createFakeClock>) {
     projectionStore: store,
     tokenStore: new PlayerTokenStore(),
     clock,
+    random: () => 0.5,
     onConnectionState: (state) => states.push(state),
     onCommandResult: (pending) => commandResults.push(pending.requestId),
   });
@@ -173,6 +174,7 @@ describe("WebSocketTransport", () => {
       projectionStore: store,
       tokenStore: new PlayerTokenStore(),
       clock,
+      random: () => 0.5,
       onConnectionState: (state) => states.push(state),
     });
 
@@ -221,14 +223,13 @@ describe("WebSocketTransport", () => {
     socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
 
     socket.close();
-    clock.advance(500);
+    clock.advance(0);
     socket.open();
     socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
 
     socket.close();
-    clock.advance(499);
     expect(clock.pendingTimers()).toBe(1);
-    clock.advance(1);
+    clock.advance(0);
     expect(clock.pendingTimers()).toBe(0);
   });
 
@@ -241,7 +242,7 @@ describe("WebSocketTransport", () => {
     const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
     transport.send(pending);
     socket.close();
-    clock.advance(500);
+    clock.advance(0);
     socket.open();
     socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
     expect(socket.sent.at(-1)).toBe(pending.serialized);
@@ -260,7 +261,7 @@ describe("WebSocketTransport", () => {
 
     const sentBeforeReconnect = socket.sent.length;
     socket.close();
-    clock.advance(500);
+    clock.advance(0);
     socket.open();
     socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 3, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
 
