@@ -196,12 +196,12 @@ function CardRow({ cards, hiddenCount = 0, variant = "seat" }: { readonly cards:
 function CardFace({ card, variant, className = "" }: { readonly card: Card; readonly variant: "board" | "seat" | "hole"; readonly className?: string }) {
   const red = card.suit === "DIAMONDS" || card.suit === "HEARTS";
   const dimensions = cardDimensions(variant);
-  const cornerText = variant === "seat" ? "text-[8px] sm:text-sm" : "text-xs sm:text-lg";
-  const pipText = variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl";
+  const cornerText = variant === "seat" ? "text-[8px] sm:text-sm" : "text-xs sm:text-base";
+  const pipText = variant === "seat" ? "text-xl sm:text-3xl" : "text-3xl sm:text-5xl";
   const color = red ? "text-rose-600" : "text-slate-900";
   return <span className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#ffffff,#f6f8fb)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
-    <span aria-hidden="true" className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${pipText}`}>{cardSuit(card)}</span>
+    <span aria-hidden="true" className={`absolute left-1/2 top-[46%] -translate-x-1/2 -translate-y-1/2 leading-none ${pipText}`}>{cardSuit(card)}</span>
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
   </span>;
 }
@@ -214,7 +214,7 @@ function CardBack({ variant, className = "" }: { readonly variant: "seat" | "hol
 }
 
 function CardCorner({ rank, suit, className }: { readonly rank: Card["rank"]; readonly suit: string; readonly className: string }) {
-  return <span aria-hidden="true" className={`absolute grid justify-items-center leading-[0.8] ${className}`}><span>{rank}</span><span>{suit}</span></span>;
+  return <span aria-hidden="true" className={`absolute grid justify-items-center gap-px leading-[0.95] ${className}`}><span>{rank}</span><span>{suit}</span></span>;
 }
 
 function cardDimensions(variant: "board" | "seat" | "hole"): string {
