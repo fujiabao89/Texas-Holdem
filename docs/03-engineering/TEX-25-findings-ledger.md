@@ -16,14 +16,17 @@
 | F-07 | CodeRabbit `#discussion_r3860123654`：Session Replaced E2E 未先加载活跃牌桌后再关闭 4001 | 部分成立，但不构成运行时缺陷。现有 E2E 只验证阻断提示；可更贴近协议时序。 | Transport 单元测试已在真实 projection 后发送 `SESSION_REPLACED`，断言 `STOPPED`、最后投影不变；页面在 `STOPPED` 时移除操作区。 | P3 | 不修改：建议属于覆盖深度提升，现有 Transport + 页面 E2E 已覆盖实际终态，不增加额外非阻断 E2E。 |
 | F-08 | Greptile `#discussion_r3860183908`：普通下注达到 `allInTo` 绕过两步全下 | 确认。Slider/精确金额到达 `allInTo` 时，`submitAmount()` 直接发送 `BET`/`RAISE`，违反 05 §8.2/§8.5 的命令语义与二次确认。 | 既有 E2E 仅覆盖独立 All-in 按钮，不覆盖普通下注区间终点等于 `allInTo`。 | P1 | 已修正：该端点进入 All-in 确认态，第二次点击只提交 `ALL_IN`；新增 E2E。 |
 | F-09 | Greptile `#discussion_r3860265739`：Time Bank 可用性陈旧 | 重复，当前代码不成立。`BettingControls` 已接收 `state.clock` 派生的 `actionDeadline` 与 `timeBankRemainingMs`，不再读取陈旧 `game` 字段。 | F-03 新增的 `CLOCK_UPDATED` → 余额为 0 → 按钮消失 E2E 已通过。 | P3 | 不修改：与 F-03 为同一问题，已由 `1b6199d8` 修正；仅登记并关闭重复线程。 |
+| F-10 | CodeRabbit `#discussion_r3861204815`：重连重发测试可能匹配历史发送记录 | 确认。Fake WebSocket 会保留断线前的 `sent`；仅断言最后一条等于原命令，若重连后没有重发而旧记录恰好仍在末尾，测试可误通过。 | 原测试覆盖了重连流程，但没有记录重连前发送边界。 | P2 | 已修正：在断线前保存发送数，断言重连后有新增记录且新增记录包含原始序列化命令。 |
+| F-11 | Greptile `#discussion_r3861249297`：改选普通下注后全下确认态残留 | 确认。先点击 All-in 后改选 Bet/Raise 或调整金额，`allInConfirmSequence` 保持当前序列；再次点击 All-in 会直接提交 `ALL_IN`，无视新选择的普通下注。 | 原 All-in E2E 只覆盖两次点击和普通端点转全下，未覆盖确认态后改选金额。 | P1 | 已修正：选择普通 Bet/Raise 模式或任何普通金额时清除确认态；新增 E2E 断言随后提交 `RAISE` 而非 `ALL_IN`。 |
 
 ## 验证记录
 
 已执行并通过：
 
 - `pnpm exec vitest run --project unit apps/web/src/features/poker-table/table-state.test.ts apps/web/src/protocol/websocket-transport.test.ts apps/web/src/state/projection-store.test.ts apps/web/src/protocol/token-store.test.ts`（29 项）；
+- `pnpm exec vitest run --project unit apps/web/src/protocol/websocket-transport.test.ts`（13 项，F-10）；
 - `pnpm test:unit`（48 文件、430 项）；
-- `pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/betting/table.spec.ts`（10 项）；
+- `pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/betting/table.spec.ts`（11 项，含 F-11）；
 - `pnpm lint`、`pnpm typecheck`、`pnpm build` 与 `git diff --check`。
 
 所有已修正项均以当前分支代码、Fake WebSocket/Fake Clock 单元测试或直接相关 E2E 验证；没有引入平行投影、连接或协议 DTO。

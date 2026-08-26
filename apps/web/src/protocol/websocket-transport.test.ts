@@ -258,11 +258,13 @@ describe("WebSocketTransport", () => {
     socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "REJECTED", duplicate: false, error: { code: "GAME_UNAVAILABLE", message: "ignored", retryable: true, traceId: "trace-1" } } });
     transport.send({ ...pending, status: "SENDING" });
 
+    const sentBeforeReconnect = socket.sent.length;
     socket.close();
     clock.advance(500);
     socket.open();
     socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 3, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
 
-    expect(socket.sent.at(-1)).toBe(pending.serialized);
+    expect(socket.sent.length).toBeGreaterThan(sentBeforeReconnect);
+    expect(socket.sent.slice(sentBeforeReconnect)).toContain(pending.serialized);
   });
 });
