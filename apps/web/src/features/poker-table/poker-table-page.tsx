@@ -182,7 +182,7 @@ function SeatCard({ game, room, player, seat, slot }: { readonly game: GameSnaps
 function CommunityCards({ cards }: { readonly cards: readonly Card[] }) {
   return <div className="grid grid-cols-5 gap-1.5 sm:gap-2">{Array.from({ length: 5 }, (_, index) => {
     const card = cards[index];
-    return card === undefined ? <span aria-hidden="true" className="h-16 w-11 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-24 sm:w-16" key={`empty-${index}`} /> : <CardFace card={card} variant="board" key={`${card.rank}-${card.suit}-${index}`} />;
+    return card === undefined ? <span aria-hidden="true" className="h-16 w-12 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-24 sm:w-[4.3rem]" key={`empty-${index}`} /> : <CardFace card={card} variant="board" key={`${card.rank}-${card.suit}-${index}`} />;
   })}</div>;
 }
 
@@ -197,11 +197,10 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
   const red = card.suit === "DIAMONDS" || card.suit === "HEARTS";
   const dimensions = cardDimensions(variant);
   const cornerText = variant === "seat" ? "text-[8px] sm:text-sm" : "text-xs sm:text-base";
-  const pipText = variant === "seat" ? "text-xl sm:text-3xl" : "text-3xl sm:text-5xl";
   const color = red ? "text-rose-600" : "text-slate-900";
   return <span className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#ffffff,#f6f8fb)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
-    <span aria-hidden="true" className={`absolute left-1/2 top-[46%] -translate-x-1/2 -translate-y-1/2 leading-none ${pipText}`}>{cardSuit(card)}</span>
+    <CardPips card={card} variant={variant} />
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
   </span>;
 }
@@ -217,9 +216,31 @@ function CardCorner({ rank, suit, className }: { readonly rank: Card["rank"]; re
   return <span aria-hidden="true" className={`absolute grid justify-items-center gap-px leading-[0.95] ${className}`}><span>{rank}</span><span>{suit}</span></span>;
 }
 
-function cardDimensions(variant: "board" | "seat" | "hole"): string {
-  return variant === "board" ? "h-16 w-11 sm:h-24 sm:w-16" : variant === "hole" ? "h-[4.5rem] w-12 sm:h-24 sm:w-16" : "h-10 w-7 sm:h-16 sm:w-11";
+function CardPips({ card, variant }: { readonly card: Card; readonly variant: "board" | "seat" | "hole" }) {
+  const suit = cardSuit(card);
+  const pipText = variant === "seat" ? "text-[0.82rem] sm:text-[1.25rem]" : "text-base sm:text-2xl";
+  const layout = pipLayouts[card.rank];
+  if (layout !== undefined) return <>{layout.map((pip, index) => <span aria-hidden="true" className={`absolute -translate-x-1/2 -translate-y-1/2 leading-none ${pip.inverted ? "rotate-180" : ""} ${pipText}`} style={{ left: `${pip.x}%`, top: `${pip.y}%` }} key={index}>{suit}</span>)}</>;
+  if (card.rank === "A") return <span aria-hidden="true" className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl"}`}>{suit}</span>;
+  return <span aria-hidden="true" className={`absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 justify-items-center rounded-md border border-current/15 bg-white/45 px-1 leading-none ${variant === "seat" ? "text-base sm:text-2xl" : "text-2xl sm:text-4xl"}`}><span>{card.rank}</span><span className={variant === "seat" ? "text-xs sm:text-base" : "text-sm sm:text-xl"}>{suit}</span></span>;
 }
+
+function cardDimensions(variant: "board" | "seat" | "hole"): string {
+  return variant === "board" ? "h-16 w-12 sm:h-24 sm:w-[4.3rem]" : variant === "hole" ? "h-[4.5rem] w-[3.2rem] sm:h-24 sm:w-[4.3rem]" : "h-10 w-[1.875rem] sm:h-16 sm:w-[2.875rem]";
+}
+
+type PipPosition = { readonly x: number; readonly y: number; readonly inverted?: boolean };
+const pipLayouts: Readonly<Partial<Record<Card["rank"], readonly PipPosition[]>>> = {
+  "2": [{ x: 50, y: 27 }, { x: 50, y: 73, inverted: true }],
+  "3": [{ x: 50, y: 23 }, { x: 50, y: 50 }, { x: 50, y: 77, inverted: true }],
+  "4": [{ x: 29, y: 25 }, { x: 71, y: 25 }, { x: 29, y: 75, inverted: true }, { x: 71, y: 75, inverted: true }],
+  "5": [{ x: 29, y: 23 }, { x: 71, y: 23 }, { x: 50, y: 50 }, { x: 29, y: 77, inverted: true }, { x: 71, y: 77, inverted: true }],
+  "6": [{ x: 29, y: 20 }, { x: 71, y: 20 }, { x: 29, y: 50 }, { x: 71, y: 50 }, { x: 29, y: 80, inverted: true }, { x: 71, y: 80, inverted: true }],
+  "7": [{ x: 29, y: 17 }, { x: 71, y: 17 }, { x: 50, y: 35 }, { x: 29, y: 59 }, { x: 71, y: 59 }, { x: 29, y: 83, inverted: true }, { x: 71, y: 83, inverted: true }],
+  "8": [{ x: 29, y: 17 }, { x: 71, y: 17 }, { x: 50, y: 34 }, { x: 29, y: 50 }, { x: 71, y: 50 }, { x: 50, y: 66, inverted: true }, { x: 29, y: 83, inverted: true }, { x: 71, y: 83, inverted: true }],
+  "9": [{ x: 29, y: 18 }, { x: 71, y: 18 }, { x: 29, y: 36 }, { x: 71, y: 36 }, { x: 50, y: 50 }, { x: 29, y: 64, inverted: true }, { x: 71, y: 64, inverted: true }, { x: 29, y: 82, inverted: true }, { x: 71, y: 82, inverted: true }],
+  "10": [{ x: 29, y: 14 }, { x: 71, y: 14 }, { x: 29, y: 32 }, { x: 71, y: 32 }, { x: 29, y: 50 }, { x: 71, y: 50, inverted: true }, { x: 29, y: 68, inverted: true }, { x: 71, y: 68, inverted: true }, { x: 29, y: 86, inverted: true }, { x: 71, y: 86, inverted: true }],
+};
 
 function ClockStatus({ actionDeadline, timeBankMs }: { readonly actionDeadline: number | null; readonly timeBankMs: number }) { return <p className="text-xs text-slate-600 sm:text-sm">{actionDeadline === null ? message("table.waiting") : `${message("table.deadline")}：${new Date(actionDeadline).toLocaleTimeString("zh-CN")} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>; }
 function ConnectionStatus({ connectionState, syncing }: { readonly connectionState: string; readonly syncing: boolean }) { return <p role="status" aria-live="polite" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">{syncing ? message("table.syncing") : connectionState === "CONNECTED" ? message("table.connectionConnected") : connectionState === "STOPPED" ? message("table.connectionReplaced") : connectionState === "CONNECTING" || connectionState === "AUTHENTICATING" ? message("table.connectionConnecting") : message("table.connectionDisconnected")}</p>; }
