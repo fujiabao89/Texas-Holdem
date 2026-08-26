@@ -9,6 +9,8 @@
 
 > **【实现现状 · TEX-18，2026-08-23】** §5 全部 8 张表、枚举、复合外键（含两个 DEFERRABLE 循环外键）、CHECK、部分唯一索引与最小权限已由版本化迁移落地并经真实 PostgreSQL 集成测试核对（§15 项 1/2/3/7 达成）；控制面原子写入与手末 Commit Bundle 仓储已实现（Bundle 内参赛者结果更新按 `id + tournament_id` 匹配并断言受影响行数，拒绝跨赛修改与静默无效更新，§7.4）。**仍为设计意图**：§4.2/§7.1–7.2 的运行时写入编排（异步 Writer/队列/watermark）、§4.3/§7.5 的恢复流程、§5.10 清理任务、§7.6–7.7 失败降级（属 TEX-19～TEX-22）。各表字段表与规格一致，实现补充以"实现注记"标出。
 
+> **【实现现状 · TEX-22，2026-08-25】** 运行时写入编排与崩溃恢复已落地：异步 Writer（§7.1–7.2 顺序性/幂等重试/失败语义，§7.7 背压 soft/hard watermark）、恢复流程（§4.3/§7.5）与「向前退回」的 `rollbackToSnapshot`（§7.5 恢复回退语义注记）。恢复读取仓储在 `apps/game-server/src/infrastructure/persistence/repositories/recovery.ts`；Writer 与恢复编排在 `apps/game-server/src/persistence/`（见该目录 README）。**仍属后续任务**：§5.10 保留期清理、Hand History 投影读取、Room/Lobby 内存态恢复（成员/Host/配置 → RoomManager）、§7.6 soft watermark 下"已开房间内启动新 Tournament"的拒绝门控（当前仅拦新 Room 创建）。
+
 ## 1. Purpose
 
 P0 的持久化策略是"**内存运行 + 关键状态持久化**"（《区块6-10 v0.2》§7.19）：唯一真实 GameState 在 game-server 内存中串行演进，PostgreSQL 保存的是"能重建比赛、分析牌局或定位问题的数据"（§10.10），而不是运行时的权威状态。本文把这条边界写成可实现的契约：
@@ -315,6 +317,8 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 3. **手末原子提交**：每手结束时，在一个 PostgreSQL 事务内先锁定对应 Tournament 行（`SELECT ... FOR UPDATE`），再写入 `hands` 行 + 该手全部 `hand_events` + 一条 `game_snapshots` + 该手造成的 `tournament_players` 淘汰/名次变更 + `tournaments.last_committed_sequence`；如该手终结比赛，同事务更新 Tournament/Room 结果状态。提交前必须验证 `hand_sequence` 从 1 到 `count(*)` 无缺口、首个 Tournament `sequence = 上一水位线 + 1`、末个 `sequence = Snapshot.sequence`。任一语句或验证失败则整个事务回滚，不存在可恢复的“半手”。
 4. **幂等重试**：任务在内存中携带预先生成的 `hand_id`/`snapshot_id`与确定性 Event 序列；重试使用原 ID 和唯一约束，结果必须是“全部首次插入”或“已完整提交且 `commit_checksum` 相同”。出现部分冲突或同 ID 不同内容时不得静默 `ON CONFLICT DO NOTHING`，必须标记数据损坏并告警。
 5. **恢复顺序**：先读 `rooms`/`room_players`/`tournaments`/`tournament_players` 元数据。当 `last_committed_sequence=0` 时，从锁定配置/参赛者重新初始化；大于 0 时，读取对应 Snapshot → Schema/Engine 版本与 checksum 验证 → 构造内存 GameState。若水位线对应的 Snapshot 不可用，按 `sequence` 向前查找最近可验证 Snapshot；P0 不尝试恢复未提交的进行中 Hand。
+
+> **实现注记（TEX-22）**：恢复语义已落地——对快照校验 `schema_version`/`engine_version` 兼容、`state_checksum` 一致（对解析后状态对象的 canonical 序列化复算）、`hasCommittedEventsThrough(tournamentId, sequence)` 事件连续性、`state.nextSequence == snapshot.sequence` 序列对齐；任一失败即拒绝并向前退回。**向前退回合**语义：当最新可验证 Snapshot 的 `sequence < last_committed_sequence`（最新损坏/孤立/缺口）时，`rollbackToSnapshot` 在单事务内删除 `sequence > 回退点` 的 `hand_events`/`hands`/`game_snapshots`、复位 `last_committed_sequence`，并按快照引擎参与者重置 `tournament_players`（`pokerStatus/finalStack/rank/forfeitedChips`；`eliminatedHandId` 无法从快照精确还原置 NULL；`forfeitedChips` 从保留区域 `PLAYER_WITHDRAWN` 事件重构）。无可验证恢复根时隔离该 Tournament、拒绝其动作、记录 Critical（docs/04 §13）。
 6. **失败语义（核心）**：**单次/短暂 DB 失败不得阻塞当前 Hand**（《区块6-10 v0.2》§8.12；[02](./02-protocol-spec.md) §12）——GameState 在内存继续执行，写入任务进入有界内存队列并指数退避重试；DB 写失败不回滚内存状态、不重放 Action。长时间故障达 hard watermark 后按 §7.7 在手间边界暂停。
 7. **背压与手间暂停**：队列按任务数、估算字节数和最旧任务年龄设 soft/hard watermark。达 soft watermark 时告警、停止创建新 Room 与启动新 Tournament，已开始的 Hand 继续。达 hard watermark 时，每个受影响 Tournament 允许当前 Hand 安全结算并形成完整 Commit Bundle，然后在手间边界暂停，直到队列回落到 soft watermark 以下。Writer 不丢弃、不覆盖 Bundle；hard watermark 内存预算必须为每张活跃桌预留完成当前 Hand 的最坏情况空间。
 
@@ -400,7 +404,7 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 
 ## 15. 实现验收门槛
 
-> **状态（TEX-18，2026-08-23）**：项 1、2、3、7 已达成并有真实 PostgreSQL 集成测试证据（`apps/game-server/tests/integration/`）；项 4、5、6、8、9、10、11 依赖运行时/恢复/凭证发放/投影/清理/单人模式，属后续任务，仍为设计意图。
+> **状态（TEX-22，2026-08-25）**：项 1、2、3、7 已达成（TEX-18，真实 PostgreSQL 集成测试）；项 4（恢复）与项 5 的持久化写入/watermark 部分已由 TEX-22 达成——恢复与 Writer 行为经 Fake Persistence unit 测试覆盖（`apps/game-server/src/persistence/**/*.test.ts`），真实 PostgreSQL 恢复仓储经 `apps/game-server/tests/integration/recovery.test.ts` 覆盖（缺测试库时受控跳过）；项 5 的"soft 门控新 Tournament"与"hard 预留最坏情况空间后暂停"仅实现 Writer 侧 watermark 检测 + 手间边界 `PAUSE_AFTER_HAND` 机制。项 6（凭证）、8（投影字段级）、9（保留期清理）、10（单人模式）、11（文档同步）仍为后续任务。
 
 本文不在“创建了表”时完成，而在以下条件全部满足后才能由“设计意图”改为“实现现状”：
 

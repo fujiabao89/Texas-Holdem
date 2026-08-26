@@ -16,12 +16,13 @@ import {
 } from "./tournament-executor";
 import type { TournamentCommand } from "./tournament-commands";
 import {
+  createRecoveredTournamentRuntimeState,
   createTournamentRuntimeState,
   type PlayerSeed,
   type TournamentRuntimeDeps,
   type TournamentRuntimeView,
 } from "./tournament-runtime";
-import type { RandomSource, TournamentEngineOptions } from "@texas-holdem/poker-engine";
+import type { RandomSource, TournamentEngine, TournamentEngineOptions } from "@texas-holdem/poker-engine";
 import type { TournamentConfig } from "@texas-holdem/protocol";
 
 export interface TournamentCreateInput {
@@ -38,13 +39,46 @@ export interface TournamentManagerDeps extends TournamentRuntimeDeps {
   readonly executorDeps: Omit<TournamentExecutorDeps, "output">;
 }
 
+/** 崩溃恢复注册输入：由 `TournamentEngine.restore` 重建的权威引擎 + 恢复时点 wire 水位。 */
+export interface TournamentRecoverInput {
+  readonly tournamentId: string;
+  readonly roomId: string;
+  readonly players: readonly PlayerSeed[];
+  readonly engine: TournamentEngine;
+  readonly recovered: {
+    lastWireSequence: number;
+    committedThroughHand: number;
+    engineEventBase: number;
+    /** 每玩家剩余 Time Bank（来自快照 serverTimeBank；旧快照无 → 满余额回退）。 */
+    timeBank?: Record<string, number>;
+  };
+}
+
+/** 水位 0 重初始化（恢复感知）：首手尚未提交时从配置+参赛者重建，同样按 §13 视为断开并启动宽限。 */
+export interface TournamentRecoverFreshInput {
+  readonly tournamentId: string;
+  readonly roomId: string;
+  readonly config: TournamentConfig;
+  readonly players: readonly PlayerSeed[];
+  readonly rng: RandomSource;
+  readonly engineOptions?: TournamentEngineOptions;
+}
+
 export interface TournamentManager {
   /** 创建并注册一场 Tournament 的串行执行器；随后投递 START 驱动首手。 */
   create(input: TournamentCreateInput): void;
+  /** 从权威手末快照恢复并注册一场 Tournament（崩溃恢复，docs/04 §13）；随后投递 START 驱动下一手。 */
+  createRecovered(input: TournamentRecoverInput): void;
+  /** 水位 0 恢复感知重初始化（首手未提交）：标记断开 + 启动宽限，随后投递 START（§13）。 */
+  createRecoveredFresh(input: TournamentRecoverFreshInput): void;
   submit(tournamentId: string, command: TournamentCommand): Promise<unknown>;
   getView(tournamentId: string): TournamentRuntimeView | undefined;
   /** 断线/重连（WS 层上报；仅 HUMAN，幂等）。 */
   setConnection(tournamentId: string, playerId: string, connected: boolean): Promise<unknown>;
+  /** 背压暂停/恢复全部活跃 Tournament（当前手结束后停在手间边界，docs/04 §12.2）。 */
+  pauseAll(paused: boolean): Promise<unknown>;
+  /** 活跃 Tournament id 列表（优雅关停轮询当前手是否结束，§13.1）。 */
+  activeTournamentIds(): readonly string[];
 }
 
 export function createTournamentManager(deps: TournamentManagerDeps): TournamentManager {
@@ -74,6 +108,64 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
       });
     },
 
+    createRecovered(input) {
+      const runtime = createRecoveredTournamentRuntimeState(
+        {
+          tournamentId: input.tournamentId,
+          roomId: input.roomId,
+          players: input.players,
+          engine: input.engine,
+          recovered: input.recovered,
+        },
+        deps,
+      );
+      const executor = new TournamentExecutor(runtime, {
+        ...deps.executorDeps,
+        output: deps.output,
+      });
+      runtimes.set(input.tournamentId, executor);
+      // 恢复后所有连接视为断开（docs/04 §13）：对每个 HUMAN 投递断线以启动 10 分钟
+      // 宽限计时（不重连的缺席玩家到期转 WITHDRAWN，避免无限行动阻塞）。
+      for (const player of input.players) {
+        if (player.kind === "HUMAN") {
+          void executor.submit({ type: "CONNECTION_CHANGED", playerId: player.playerId, connected: false });
+        }
+      }
+      // 驱动下一手为 fire-and-forget；恢复后事件从快照水位继续（sequence 无缝衔接）。
+      void executor.submit({ type: "START" }).catch(() => {
+        runtimes.delete(input.tournamentId);
+      });
+    },
+
+    createRecoveredFresh(input) {
+      const runtime = createTournamentRuntimeState(
+        {
+          tournamentId: input.tournamentId,
+          roomId: input.roomId,
+          config: input.config,
+          players: input.players,
+          rng: input.rng,
+          engineOptions: input.engineOptions,
+          recoveredDisconnected: true,
+        },
+        deps,
+      );
+      const executor = new TournamentExecutor(runtime, {
+        ...deps.executorDeps,
+        output: deps.output,
+      });
+      runtimes.set(input.tournamentId, executor);
+      // 恢复感知：所有连接视为断开（§13），对每个 HUMAN 投递断线以启动宽限计时。
+      for (const player of input.players) {
+        if (player.kind === "HUMAN") {
+          void executor.submit({ type: "CONNECTION_CHANGED", playerId: player.playerId, connected: false });
+        }
+      }
+      void executor.submit({ type: "START" }).catch(() => {
+        runtimes.delete(input.tournamentId);
+      });
+    },
+
     submit(tournamentId, command) {
       const executor = runtimes.get(tournamentId);
       if (executor === undefined) {
@@ -93,6 +185,20 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         return Promise.reject(new TournamentDomainError("TOURNAMENT_NOT_ACTIVE"));
       }
       return executor.submit({ type: "CONNECTION_CHANGED", playerId, connected });
+    },
+
+    pauseAll(paused) {
+      const submissions: Promise<unknown>[] = [];
+      for (const executor of runtimes.values()) {
+        submissions.push(
+          executor.submit({ type: "PAUSE_AFTER_HAND", paused }).catch(() => undefined),
+        );
+      }
+      return Promise.all(submissions);
+    },
+
+    activeTournamentIds() {
+      return [...runtimes.keys()];
     },
   };
 }

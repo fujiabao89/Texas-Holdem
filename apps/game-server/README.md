@@ -39,7 +39,8 @@ pnpm --filter @texas-holdem/game-server db:migrate   # 对 DATABASE_SCHEMA 执�
 - `src/config.ts` — 运行时配置解析（`TOKEN_HMAC_SECRET` / `CORS_ALLOWED_ORIGINS` 等，启动校验）。
 - `src/http/` — HTTP 入口与安全中间件（routes/rooms.ts、auth/idempotency/rate-limit、错误→ErrorEnvelope 映射），见 [src/http/README.md](./src/http/README.md)。
 - `src/rooms/` — Room/Lobby 权威状态机、串行执行器、集合管理、凭证生成与 TournamentStarter port（`createRuntimeTournamentStarter` 在开局时注入 TEX-20 运行时），见 [src/rooms/README.md](./src/rooms/README.md)。
-- `src/tournaments/` — Tournament 运行时、单桌串行执行器（`receivedAt` 截止裁决、幂等/sequence、权威计时）、手末 Commit Bundle 构造（TEX-20），见 [src/tournaments/README.md](./src/tournaments/README.md)。
+- `src/tournaments/` — Tournament 运行时、单桌串行执行器（`receivedAt` 截止裁决、幂等/sequence、权威计时）、手末 Commit Bundle 构造与崩溃恢复运行时重建（TEX-20/TEX-22），见 [src/tournaments/README.md](./src/tournaments/README.md)。
+- `src/persistence/` — 持久化运行时编排（TEX-22）：异步 Writer（队列/退避/watermark/flush）与崩溃恢复（校验/重建/向前退回），见 [src/persistence/README.md](./src/persistence/README.md)。
 - `src/scheduler/` — 可注入 Timer Scheduler（行动超时 / Time Bank / 断线宽限 / 定时升盲；测试注入 Fake Clock），见 [src/scheduler/README.md](./src/scheduler/README.md)。
 - `src/projection/` — `PlayerView` / wire `GameEvent` / Patch 投影（字段级私有信息隔离，TEX-20），见 [src/projection/README.md](./src/projection/README.md)。
 - `src/infrastructure/persistence/` — Supabase PostgreSQL 持久化（Drizzle ORM + `pg`；Schema/迁移/连接/仓储，TEX-18），见 [src/infrastructure/persistence/README.md](./src/infrastructure/persistence/README.md)。

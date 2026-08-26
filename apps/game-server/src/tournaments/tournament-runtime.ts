@@ -65,10 +65,19 @@ export interface TournamentRuntimeState {
   currentHandStartedAt: number;
   /** 已提交到 Writer 的手号（用于检测新手结算）。 */
   committedThroughHand: number;
-  /** 已纳入 Commit Bundle 的 Engine 事件数（用于按手切分事件）。 */
+  /** 已纳入 Commit Bundle 的 Engine 事件数（wire 水位：首序列 = 水位 + 1）。 */
   committedEventCount: number;
+  /**
+   * 引擎事件数组首个事件的内部 sequence（崩溃恢复用，docs/03 §4.3/§7.5）。
+   * 正常开局为 0；恢复后 = 快照水位，使 wire 序列从快照处无缝延续。emit/commit 的
+   * 数组切片基 = `lastWireSequence/committedEventCount - engineEventBase`（正常恒为 0）。
+   */
+  engineEventBase: number;
   currentLegalActions: LegalActions | null;
+  /** 优雅关停 / 完整性隔离：当前手结束后停止，不再恢复（§13.1；§13 隔离）。 */
   stopAfterCurrentHand: boolean;
+  /** 背压暂停（hard watermark，§12.2）：当前手结束后停在手间边界；回落 soft/ok 可恢复推进。 */
+  backpressurePaused: boolean;
   /** Engine Critical Error 诊断（§7.4 冻结）；非冻结为 null。 */
   criticalDiagnostic: string | null;
   /** 幂等账本：`playerId:request:requestId` / `playerId:action:actionId` → Payload 摘要 + 结果（§7.3）。 */
@@ -100,6 +109,8 @@ export function createTournamentRuntimeState(
     players: readonly PlayerSeed[];
     rng: RandomSource;
     engineOptions?: TournamentEngineOptions;
+    /** 崩溃恢复水位 0 重初始化：标记所有玩家断开（§13），宽限计时由 createRecoveredFresh 启动。 */
+    recoveredDisconnected?: boolean;
   },
   deps: TournamentRuntimeDeps,
 ): TournamentRuntimeState {
@@ -113,26 +124,100 @@ export function createTournamentRuntimeState(
     })),
     seed.engineOptions,
   );
+  return buildRuntimeState(
+    { tournamentId: seed.tournamentId, roomId: seed.roomId, players: seed.players },
+    deps,
+    engine,
+    seed.config,
+    { lastWireSequence: 0, committedEventCount: 0, committedThroughHand: 0, engineEventBase: 0 },
+    seed.recoveredDisconnected === true,
+  );
+}
+
+/** 从权威手末 Snapshot 重建运行时（崩溃恢复，docs/04 §13；docs/03 §7.5）。 */
+export function createRecoveredTournamentRuntimeState(
+  seed: {
+    tournamentId: string;
+    roomId: string;
+    players: readonly PlayerSeed[];
+    /** 由 `TournamentEngine.restore` 从快照重建的引擎权威状态。 */
+    engine: TournamentEngine;
+    /** 恢复时点恢复给运行时的 wire 状态：`lastWireSequence` == `committedEventCount` == 快照 sequence。 */
+    recovered: {
+      lastWireSequence: number;
+      committedThroughHand: number;
+      engineEventBase: number;
+      /** 每玩家剩余 Time Bank（来自快照 serverTimeBank；旧快照无 → 满余额回退）。 */
+      timeBank?: Record<string, number>;
+    };
+  },
+  deps: TournamentRuntimeDeps,
+): TournamentRuntimeState {
+  // 引擎 config 的 blindStructure 为 readonly；协议 TournamentConfig 需要可变副本。
+  const engineConfig = seed.engine.getState().config;
+  const config: TournamentConfig = {
+    maxPlayers: engineConfig.maxPlayers,
+    startingStack: engineConfig.startingStack,
+    smallBlind: engineConfig.smallBlind,
+    bigBlind: engineConfig.bigBlind,
+    blindMode: engineConfig.blindMode,
+    blindStructure: [...engineConfig.blindStructure],
+    actionTime: engineConfig.actionTime,
+    timeBank: engineConfig.timeBank,
+  };
+  return buildRuntimeState(
+    { tournamentId: seed.tournamentId, roomId: seed.roomId, players: seed.players },
+    deps,
+    seed.engine,
+    config,
+    {
+      lastWireSequence: seed.recovered.lastWireSequence,
+      committedEventCount: seed.recovered.lastWireSequence,
+      committedThroughHand: seed.recovered.committedThroughHand,
+      engineEventBase: seed.recovered.engineEventBase,
+      timeBankByPlayer: seed.recovered.timeBank,
+    },
+    true, // 恢复后所有连接视为断开（§13），宽限计时由 createRecovered 启动
+  );
+}
+
+/** 共享运行时初始化：建立 seat ↔ player 映射并组装不可变状态。 */
+function buildRuntimeState(
+  seed: { tournamentId: string; roomId: string; players: readonly PlayerSeed[] },
+  deps: TournamentRuntimeDeps,
+  engine: TournamentEngine,
+  config: TournamentConfig,
+  wire: { lastWireSequence: number; committedEventCount: number; committedThroughHand: number; engineEventBase: number; timeBankByPlayer?: Record<string, number> },
+  playersDisconnected: boolean,
+): TournamentRuntimeState {
   const players = new Map<string, PlayerRuntimeRecord>();
   const seatToPlayer = new Map<number, string>();
   for (const player of seed.players) {
+    const baseTimeBank = initialTimeBankState(config.timeBank);
+    // 恢复时还原已持久化的剩余余额（P1-B）；旧快照无该字段 → 按满余额回退。
+    const restored = wire.timeBankByPlayer?.[player.playerId];
     players.set(player.playerId, {
       playerId: player.playerId,
       tournamentPlayerId: player.tournamentPlayerId,
       seatIndex: player.seatIndex,
       kind: player.kind,
       displayName: player.displayName,
-      connected: true,
+      // 崩溃恢复后所有连接视为断开（docs/04 §13「所有连接均视为断开」）：恢复玩家
+      // 初始为 disconnected，由 createRecovered 经 CONNECTION_CHANGED(false) 启动宽限计时。
+      connected: playersDisconnected ? false : true,
       graceHandle: null,
       graceGeneration: 0,
-      timeBank: initialTimeBankState(seed.config.timeBank),
+      timeBank:
+        restored !== undefined
+          ? { ...baseTimeBank, secondsRemaining: restored }
+          : baseTimeBank,
     });
     seatToPlayer.set(player.seatIndex, player.playerId);
   }
   return {
     tournamentId: seed.tournamentId,
     roomId: seed.roomId,
-    config: seed.config,
+    config,
     engine,
     players,
     seatToPlayer,
@@ -140,7 +225,7 @@ export function createTournamentRuntimeState(
     ids: deps.ids,
     scheduler: deps.scheduler,
     status: "RUNNING",
-    lastWireSequence: 0,
+    lastWireSequence: wire.lastWireSequence,
     actionDeadline: null,
     actionTimerGeneration: 0,
     actionTimerHandle: null,
@@ -149,10 +234,12 @@ export function createTournamentRuntimeState(
     blindTimerGeneration: 0,
     currentHandId: null,
     currentHandStartedAt: 0,
-    committedThroughHand: 0,
-    committedEventCount: 0,
+    committedThroughHand: wire.committedThroughHand,
+    committedEventCount: wire.committedEventCount,
+    engineEventBase: wire.engineEventBase,
     currentLegalActions: null,
     stopAfterCurrentHand: false,
+    backpressurePaused: false,
     criticalDiagnostic: null,
     idempotency: new Map(),
   };

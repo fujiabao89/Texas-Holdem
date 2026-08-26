@@ -22,12 +22,16 @@ export type Database = {
   end(): Promise<void>;
 };
 
+/** 单次 DB 语句超时（docs/04 §12.1「单次 DB 尝试 5 秒超时」）：PostgreSQL 服务端执行超时并取消，而非仅调用方等待。 */
+const DATABASE_STATEMENT_TIMEOUT_MS = 5_000;
+
 export function createDatabase(config: DatabaseConfig): Database {
   assertValidSchemaName(config.schema);
   const pool = new Pool({
     connectionString: config.url,
     max: config.pool.max,
     idleTimeoutMillis: config.pool.idleTimeoutMillis,
+    statement_timeout: DATABASE_STATEMENT_TIMEOUT_MS,
     connectionTimeoutMillis: config.pool.connectionTimeoutMillis,
   });
   // 新连接建立时先设置 search_path，再被业务查询使用（同连接内按调用顺序执行）。

@@ -72,6 +72,12 @@ export interface TournamentExecutorDeps {
   readonly output: TournamentOutputSink;
   /** Optional transport authority check. Internal timers and tests do not need it. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
+  /**
+   * 同步背压检查（§12.2）：hard watermark 命中时，即使 PAUSE_AFTER_HAND 尚未经队列
+   * 处理（例如手末 bundle 自身触达 hard 的同步回调），执行器也在手间边界停下、
+   * 不启动下一手。由组合根注入 backpressure latch 的 `isHardPaused()`。
+   */
+  readonly isBackpressurePaused?: () => boolean;
 }
 
 interface QueueItem {
@@ -189,6 +195,15 @@ export class TournamentExecutor {
       case "SHUTDOWN":
         this.state.stopAfterCurrentHand = true;
         return null;
+      case "PAUSE_AFTER_HAND":
+        // 背压暂停：当前手结束后停在手间边界（docs/04 §12.2）。恢复（paused=false）时仅
+        // 在已停在边界（无进行中手）时推进下一手——mid-hand 不打断当前行动；与
+        // stopAfterCurrentHand（优雅关停/完整性隔离）互不影响，恢复不解除 SHUTDOWN。
+        this.state.backpressurePaused = command.paused;
+        if (!command.paused && !this.state.engine.getState().handInProgress) {
+          this.afterEngineTransition();
+        }
+        return null;
     }
   }
 
@@ -224,7 +239,16 @@ export class TournamentExecutor {
       if (engineState.handNumber > this.state.committedThroughHand) {
         this.commitCurrentHand(engineState);
       }
-      if (this.state.stopAfterCurrentHand) return;
+      // stopAfterCurrentHand（优雅关停/完整性隔离，不可恢复）、backpressurePaused（背压，可恢复）
+      // 或同步 hard 背压（isBackpressurePaused）都停在此边界——同步检查覆盖「手末 bundle 自身
+      // 触达 hard、PAUSE_AFTER_HAND 尚未入队」的窗口，避免越过 hard 后仍启动下一手（§12.2）。
+      if (
+        this.state.stopAfterCurrentHand ||
+        this.state.backpressurePaused ||
+        (this.deps.isBackpressurePaused !== undefined && this.deps.isBackpressurePaused())
+      ) {
+        return;
+      }
       this.state.currentHandId = this.state.ids.uuid();
       this.state.currentHandStartedAt = this.state.clock();
       try {
@@ -641,7 +665,9 @@ export class TournamentExecutor {
     if (this.state.status === "FROZEN") return; // 冻结后不再发射（状态已污染）
     const engineEvents = this.state.engine.getEvents();
     const eventStates = this.state.engine.getEventStates();
-    const emittedCount = this.state.lastWireSequence;
+    // 数组切片基 = lastWireSequence - engineEventBase（崩溃恢复后 wire 从快照水位延续、
+    // 引擎事件数组从空开始，恢复后首个新事件数组下标为 0；正常开局 engineEventBase=0）。
+    const emittedCount = this.state.lastWireSequence - this.state.engineEventBase;
     const newEvents = engineEvents.slice(emittedCount);
     if (newEvents.length === 0) return;
     const blindLevelIndex = this.state.engine.getState().blindLevel;
@@ -713,8 +739,11 @@ export class TournamentExecutor {
     tournamentFinish?: TournamentFinishUpdate,
   ): void {
     const allEvents = this.state.engine.getEvents();
-    if (this.state.committedEventCount >= allEvents.length) return;
-    const events = allEvents.slice(this.state.committedEventCount);
+    // 数组切片基 = committedEventCount - engineEventBase（恢复后首 bundle 从快照水位 + 1
+    // 开始、不重放已提交事件；正常开局 engineEventBase=0）。
+    const sliceFrom = this.state.committedEventCount - this.state.engineEventBase;
+    if (sliceFrom >= allEvents.length) return;
+    const events = allEvents.slice(sliceFrom);
     const bundle = buildHandCommitBundle(
       {
         state: this.state,
@@ -726,7 +755,7 @@ export class TournamentExecutor {
       tournamentFinish,
     );
     this.deps.output.enqueueCommitBundles([bundle]);
-    this.state.committedEventCount = allEvents.length;
+    this.state.committedEventCount += events.length;
     this.state.committedThroughHand = engineState.handNumber;
   }
 

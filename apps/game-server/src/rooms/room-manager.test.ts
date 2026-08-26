@@ -131,3 +131,32 @@ describe("RoomManager", () => {
     expect(snapshots).toEqual([joined.playerId]);
   });
 });
+
+  it("持久化降级（soft/hard watermark / 关停）时 START_TOURNAMENT 被拒绝，其他命令不受门控", async () => {
+    let available = true;
+    const manager = createRoomManager({
+      persistence: fakePersistence(),
+      roomRepository: fakeRoomRepository(),
+      ids: fakeIds(),
+      tokenSecret: TOKEN_SECRET,
+      tokenKeyId: TOKEN_KEY_ID,
+      isPersistenceAvailable: () => available,
+    });
+    const host = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config: makeConfig() });
+    available = false; // 降级
+    await expect(
+      manager.submitCommand(host.roomId, {
+        type: "START_TOURNAMENT",
+        actorPlayerId: host.playerId,
+        expectedRevision: 1,
+        tournamentId: "t-x",
+      }),
+    ).rejects.toMatchObject({ code: "GAME_UNAVAILABLE" });
+    // 非开局命令不被门控（加入成员仍可用）。
+    const joined = await manager.joinRoom({
+      inviteCode: host.roomSnapshot.inviteCode!,
+      displayName: "Alice",
+      displayNameKey: "alice",
+    });
+    expect(joined.playerId).toBeDefined();
+  });

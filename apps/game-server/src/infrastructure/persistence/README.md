@@ -26,8 +26,13 @@
 - 手末 Commit Bundle 原子提交（FOR UPDATE 行锁 + 序列完整性验证 + 幂等重试）。
 - 最小权限迁移：`anon`/`authenticated` 对所有原始表默认拒绝；`game_server` 专用角色最小授权。
 
+## 已实现（TEX-22 补充）
+
+- 恢复读取/回退仓储 [repositories/recovery.ts](./repositories/recovery.ts)：`listActiveTournaments` / `listSnapshots` / `hasCommittedEventsThrough` / `listWithdrawnForfeited` / `rollbackToSnapshot`（向前退回单事务）。
+- 异步 Writer 与恢复编排在 [src/persistence](../../persistence/README.md)（队列/退避/watermark/flush，docs/04 §12/§13）。
+
 ## 未实现（后续任务）
 
-- 异步写入队列、退避与 watermark（TEX-20/TEX-22，见 docs/04 §12/§16）。
-- 崩溃恢复编排、Hand History 投影读取（TEX-22）。
+- Hand History 投影读取（docs/03 §6，读时投影）。
 - 保留期清理任务（docs/03 §5.10）。
+- Room/Lobby 内存态恢复（成员/Host/配置 → RoomManager）。
