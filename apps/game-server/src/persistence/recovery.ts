@@ -108,9 +108,9 @@ async function recoverOne(
   lastCommittedSequence: bigint,
   players: readonly ActiveTournamentPlayers[],
 ): Promise<RecoverOutcome> {
-  // §4.3：首手尚未完整提交 → 从配置 + 锁定参赛者重新初始化（等价正常开局）。
+  // §4.3：首手尚未完整提交 → 从配置 + 锁定参赛者重新初始化（恢复感知：断开 + 宽限，§13）。
   if (lastCommittedSequence === 0n) {
-    deps.manager.create({
+    deps.manager.createRecoveredFresh({
       tournamentId,
       roomId,
       config: configJson as TournamentConfig,
@@ -169,6 +169,8 @@ async function recoverOne(
       lastWireSequence: Number(fallback.snapshot.sequence),
       committedThroughHand: fallback.state.handNumber,
       engineEventBase: Number(fallback.snapshot.sequence),
+      // 还原每玩家剩余 Time Bank（P1-B）；旧快照无 serverTimeBank → 满余额回退。
+      timeBank: extractServerTimeBank(fallback.state),
     },
   });
   return { kind: "recovered", fromSequence: fallback.snapshot.sequence };
@@ -211,6 +213,19 @@ function isHandBoundaryState(value: unknown): value is TournamentState {
     typeof s.phase === "string" &&
     Array.isArray(s.participants)
   );
+}
+
+/** 从快照 state 提取服务端权威的每玩家剩余 Time Bank（P1-B）；旧快照无该键 → undefined（满余额回退）。 */
+function extractServerTimeBank(state: TournamentState): Record<string, number> | undefined {
+  const server = (state as TournamentState & { serverTimeBank?: unknown }).serverTimeBank;
+  if (server === undefined || server === null || typeof server !== "object") return undefined;
+  const result: Record<string, number> = {};
+  for (const [playerId, seconds] of Object.entries(server as Record<string, unknown>)) {
+    if (typeof seconds === "number" && Number.isInteger(seconds) && seconds >= 0) {
+      result[playerId] = seconds;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function toPlayerSeeds(players: readonly ActiveTournamentPlayers[]): PlayerSeed[] {

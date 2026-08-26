@@ -103,15 +103,17 @@ describe("PersistenceWriter", () => {
     });
     commit.alwaysFail = true;
     writer.enqueue([makeBundle("t1", 1, 1n, 3)]);
+    // 退避重试延迟（排除 age watermark timer：其延迟在 softAgeMs 附近，重试退避 ≤ 30000）。
+    const retryDelays = () => delays.filter((d) => d < 30_000);
     // 逐次推进：每次退避到期触发重试，重试异步完成后再调度下一次。
-    await until(() => delays.length === 1);
-    expect(delays[0]).toBe(250);
+    await until(() => retryDelays().length === 1);
+    expect(retryDelays()[0]).toBe(250);
     clock.advance(250);
-    await until(() => delays.length === 2);
-    expect(delays[1]).toBe(500);
+    await until(() => retryDelays().length === 2);
+    expect(retryDelays()[1]).toBe(500);
     clock.advance(500);
-    await until(() => delays.length === 3);
-    expect(delays[2]).toBe(1000);
+    await until(() => retryDelays().length === 3);
+    expect(retryDelays()[2]).toBe(1000);
   });
 
   it("不同 Tournament 乱序完成：每桌内部顺序严格保持", async () => {
@@ -166,6 +168,23 @@ describe("PersistenceWriter", () => {
     writer.enqueue([makeBundle("t1", 2, 2n, 1)]);
     await until(() => levels.includes("hard"));
     expect(writer.backpressureLevel()).toBe("hard");
+  });
+
+  it("挂起的提交也触发年龄 watermark（age timer，soft/hard）", async () => {
+    const { writer, commit, clock, levels } = setup({
+      softItems: 500, softBytes: Number.MAX_SAFE_INTEGER, softAgeMs: 1_000,
+      hardItems: 2_000, hardBytes: Number.MAX_SAFE_INTEGER, hardAgeMs: 2_000,
+      maxConcurrent: 1, backoffBaseMs: 250, backoffMaxMs: 30_000, backoffJitter: 0.2,
+    });
+    commit.hangForever = true; // commitHandBundle 永不 resolve → 无失败重试可驱动 watermark
+    writer.enqueue([makeBundle("t1", 1, 1n, 3)]);
+    expect(writer.backpressureLevel()).toBe("ok");
+    clock.advance(1_000); // 到达 soft 年龄阈值 → age timer 触发 evaluateWatermark
+    await until(() => levels.includes("soft"));
+    clock.advance(1_000); // 到达 hard 年龄阈值
+    await until(() => levels.includes("hard"));
+    expect(writer.backpressureLevel()).toBe("hard");
+    expect(writer.pendingCount()).toBe(1); // 挂起的 bundle 未丢失
   });
 
   it("age watermark：最旧任务年龄达到阈值升级", async () => {

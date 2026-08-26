@@ -12,6 +12,7 @@ import type { RecoveryRepository } from "../infrastructure/persistence/repositor
 import type {
   TournamentCreateInput,
   TournamentManager,
+  TournamentRecoverFreshInput,
   TournamentRecoverInput,
 } from "../tournaments/tournament-manager";
 import { createTournamentManager } from "../tournaments/tournament-manager";
@@ -26,15 +27,20 @@ function fakeManager(): {
   manager: TournamentManager;
   created: TournamentCreateInput[];
   recovered: TournamentRecoverInput[];
+  recoveredFresh: TournamentRecoverFreshInput[];
 } {
   const created: TournamentCreateInput[] = [];
   const recovered: TournamentRecoverInput[] = [];
+  const recoveredFresh: TournamentRecoverFreshInput[] = [];
   const manager: TournamentManager = {
     create(input) {
       created.push(input);
     },
     createRecovered(input) {
       recovered.push(input);
+    },
+    createRecoveredFresh(input) {
+      recoveredFresh.push(input);
     },
     async submit() {
       return null;
@@ -52,7 +58,7 @@ function fakeManager(): {
       return [];
     },
   };
-  return { manager, created, recovered };
+  return { manager, created, recovered, recoveredFresh };
 }
 
 function fakeIds(clock: FakeClock): IdSource {
@@ -99,8 +105,8 @@ describe("recoverActiveTournaments（崩溃恢复编排）", () => {
     expect(recovered[0]!.recovered.committedThroughHand).toBe(2);
   });
 
-  it("首手尚未完整提交（水位 0）：从配置与锁定参赛者重新初始化", async () => {
-    const { manager, recovered, created } = fakeManager();
+  it("首手尚未完整提交（水位 0）：从配置与锁定参赛者以恢复感知方式重新初始化", async () => {
+    const { manager, recovered, recoveredFresh, created } = fakeManager();
     const repo = createFakeRecoveryRepository();
     repo.setActive([makeActiveTournament("t1", "r1", 0n)]);
     repo.setSnapshots([]);
@@ -109,9 +115,10 @@ describe("recoverActiveTournaments（崩溃恢复编排）", () => {
 
     expect(summary.reinitialized).toEqual([{ tournamentId: "t1" }]);
     expect(recovered).toHaveLength(0);
-    expect(created).toHaveLength(1);
-    expect(created[0]!.tournamentId).toBe("t1");
-    expect(created[0]!.players.map((p) => p.playerId)).toEqual(["t1-p0", "t1-p1", "t1-p2"]);
+    expect(created).toHaveLength(0); // 不走普通 create（恢复感知路径）
+    expect(recoveredFresh).toHaveLength(1);
+    expect(recoveredFresh[0]!.tournamentId).toBe("t1");
+    expect(recoveredFresh[0]!.players.map((p) => p.playerId)).toEqual(["t1-p0", "t1-p1", "t1-p2"]);
   });
 
   it("最新快照 checksum 损坏：向前退回上一个可验证快照并执行恢复回退", async () => {
@@ -302,6 +309,86 @@ async function untilIdle(maxYields = 20): Promise<void> {
     await new Promise<void>((resolve) => queueMicrotask(resolve));
   }
 }
+
+describe("崩溃恢复 Time Bank 保留（P1-B）", () => {
+  it("消耗 Time Bank → 完成并提交一手 → 恢复后余额不增加", async () => {
+    const clock = createFakeClock({ now: 1000 });
+    const ids = fakeIds(clock);
+    const sink = makeSink();
+
+    // Phase 1：真实执行器，当前行动者使用 Time Bank（60→30）后完成手 1。
+    const players = makePlayers();
+    const runtime = createTournamentRuntimeState(
+      { tournamentId: "t1", roomId: "r1", config: makeConfig(), players, rng: new SeededRandomSource(1) },
+      { clock: () => clock.now(), ids, scheduler: clock },
+    );
+    const executor = new TournamentExecutor(runtime, { output: sink });
+    await executor.submit({ type: "START" });
+    const state = executor.getEngineState();
+    const actorSeat = state.hand?.currentActor;
+    expect(actorSeat).not.toBeNull();
+    const actorPlayerId = executor.getView().seatToPlayer.get(actorSeat!)!;
+    const before = executor.getView().timeBankRemainingMs.get(actorPlayerId)!;
+    expect(before).toBe(60_000); // 满余额
+    const tbResult = (await executor.submit({
+      type: "USE_TIME_BANK",
+      requestId: "tb-1",
+      playerId: actorPlayerId,
+      expectedSequence: String(executor.getView().lastWireSequence),
+      receivedAt: clock.now(),
+    })) as { status: string };
+    expect(tbResult.status).toBe("APPLIED");
+    expect(executor.getView().timeBankRemainingMs.get(actorPlayerId)).toBe(30_000); // 消耗 30s
+
+    await playHandThroughExecutor(executor, clock); // 完成手 1 → bundle 提交
+    expect(sink.bundles).toHaveLength(1);
+    const bundle = sink.bundles[0]!;
+    const parsedState = JSON.parse(String(bundle.snapshot.state)) as {
+      serverTimeBank?: Record<string, number>;
+    };
+    // 快照已持久化剩余余额（P1-B）。
+    expect(parsedState.serverTimeBank?.[actorPlayerId]).toBe(30);
+
+    // Phase 2：从 bundle 恢复。
+    const repo = createFakeRecoveryRepository();
+    repo.setActive([
+      makeActiveTournament("t1", "r1", bundle.snapshot.sequence, {
+        players: players.map((p) => ({
+          id: p.tournamentPlayerId,
+          playerId: p.playerId,
+          displayName: p.displayName,
+          seatIndex: p.seatIndex,
+          kind: p.kind,
+          startingStack: BigInt(p.startingStack),
+        })),
+      }),
+    ]);
+    repo.setSnapshots([snapshotRecordFromBundle(bundle)]);
+    repo.eventCount = bundle.snapshot.sequence;
+
+    const manager = createTournamentManager({
+      clock: () => clock.now(),
+      ids,
+      scheduler: clock,
+      output: sink,
+      executorDeps: {},
+    });
+    const summary = await recoverActiveTournaments({
+      recoveryRepo: repo,
+      manager,
+      clock: () => clock.now(),
+      ids,
+      scheduler: clock,
+      rngFactory: () => new SeededRandomSource(1),
+    });
+    expect(summary.recovered).toHaveLength(1);
+
+    // Phase 3：恢复后余额为 30s，不重置为满。
+    await untilIdle();
+    const recoveredRemaining = manager.getView("t1")!.timeBankRemainingMs.get(actorPlayerId)!;
+    expect(recoveredRemaining).toBe(30_000);
+  });
+});
 
 describe("崩溃恢复端到端序列连续性", () => {
   it("恢复到最近手末后，下一手 bundle 首序列 = 快照水位 + 1，且不重放已提交事件", async () => {

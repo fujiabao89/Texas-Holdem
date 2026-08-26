@@ -138,6 +138,7 @@ async function setupTournamentGateway() {
   const tournaments: TournamentManager = {
     create() {},
     createRecovered() {},
+    createRecoveredFresh() {},
     async submit(_tournamentId, command) {
       submitted.push(command);
       if (command.type === "USE_TIME_BANK" && rejectTimeBank) throw new TournamentDomainError("NOT_YOUR_TURN");
@@ -295,6 +296,7 @@ describe("LobbyGateway", () => {
     const tournaments: TournamentManager = {
       create() {},
       createRecovered() {},
+    createRecoveredFresh() {},
       async submit() { return null; },
       getView() { return undefined; },
       async setConnection() {},

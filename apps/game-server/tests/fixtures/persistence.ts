@@ -116,6 +116,8 @@ export interface FakeCommitRepository extends HandCommitRepository {
   transientError: Error | null;
   /** 是否处于拒绝状态（一直抛瞬态错误）。 */
   alwaysFail: boolean;
+  /** 是否挂起：commitHandBundle 永不 resolve（模拟未取消的 in-flight 查询）。 */
+  hangForever: boolean;
   /** 重复投递的手 id（同一 hand id 再次提交返回 already-committed，不重复记录）。 */
   readonly duplicated: readonly string[];
   reset(): void;
@@ -130,6 +132,7 @@ export function createFakeCommitRepository(): FakeCommitRepository {
     failIntegrityOnce: false,
     transientError: null as Error | null,
     alwaysFail: false,
+    hangForever: false,
   };
   return {
     get committed() {
@@ -159,6 +162,12 @@ export function createFakeCommitRepository(): FakeCommitRepository {
     set alwaysFail(v: boolean) {
       state.alwaysFail = v;
     },
+    get hangForever() {
+      return state.hangForever;
+    },
+    set hangForever(v: boolean) {
+      state.hangForever = v;
+    },
     get duplicated() {
       return duplicated;
     },
@@ -169,8 +178,12 @@ export function createFakeCommitRepository(): FakeCommitRepository {
       state.failIntegrityOnce = false;
       state.transientError = null;
       state.alwaysFail = false;
+      state.hangForever = false;
     },
     async commitHandBundle(bundle: HandCommitBundle): Promise<HandCommitOutcome> {
+      if (state.hangForever) {
+        return new Promise<HandCommitOutcome>(() => {}); // 永不 resolve
+      }
       if (state.failIntegrityOnce) {
         state.failIntegrityOnce = false;
         throw new SequenceIntegrityError("fake integrity failure");

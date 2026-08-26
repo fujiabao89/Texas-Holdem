@@ -45,7 +45,23 @@ export interface TournamentRecoverInput {
   readonly roomId: string;
   readonly players: readonly PlayerSeed[];
   readonly engine: TournamentEngine;
-  readonly recovered: { lastWireSequence: number; committedThroughHand: number; engineEventBase: number };
+  readonly recovered: {
+    lastWireSequence: number;
+    committedThroughHand: number;
+    engineEventBase: number;
+    /** 每玩家剩余 Time Bank（来自快照 serverTimeBank；旧快照无 → 满余额回退）。 */
+    timeBank?: Record<string, number>;
+  };
+}
+
+/** 水位 0 重初始化（恢复感知）：首手尚未提交时从配置+参赛者重建，同样按 §13 视为断开并启动宽限。 */
+export interface TournamentRecoverFreshInput {
+  readonly tournamentId: string;
+  readonly roomId: string;
+  readonly config: TournamentConfig;
+  readonly players: readonly PlayerSeed[];
+  readonly rng: RandomSource;
+  readonly engineOptions?: TournamentEngineOptions;
 }
 
 export interface TournamentManager {
@@ -53,6 +69,8 @@ export interface TournamentManager {
   create(input: TournamentCreateInput): void;
   /** 从权威手末快照恢复并注册一场 Tournament（崩溃恢复，docs/04 §13）；随后投递 START 驱动下一手。 */
   createRecovered(input: TournamentRecoverInput): void;
+  /** 水位 0 恢复感知重初始化（首手未提交）：标记断开 + 启动宽限，随后投递 START（§13）。 */
+  createRecoveredFresh(input: TournamentRecoverFreshInput): void;
   submit(tournamentId: string, command: TournamentCommand): Promise<unknown>;
   getView(tournamentId: string): TournamentRuntimeView | undefined;
   /** 断线/重连（WS 层上报；仅 HUMAN，幂等）。 */
@@ -114,6 +132,35 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         }
       }
       // 驱动下一手为 fire-and-forget；恢复后事件从快照水位继续（sequence 无缝衔接）。
+      void executor.submit({ type: "START" }).catch(() => {
+        runtimes.delete(input.tournamentId);
+      });
+    },
+
+    createRecoveredFresh(input) {
+      const runtime = createTournamentRuntimeState(
+        {
+          tournamentId: input.tournamentId,
+          roomId: input.roomId,
+          config: input.config,
+          players: input.players,
+          rng: input.rng,
+          engineOptions: input.engineOptions,
+          recoveredDisconnected: true,
+        },
+        deps,
+      );
+      const executor = new TournamentExecutor(runtime, {
+        ...deps.executorDeps,
+        output: deps.output,
+      });
+      runtimes.set(input.tournamentId, executor);
+      // 恢复感知：所有连接视为断开（§13），对每个 HUMAN 投递断线以启动宽限计时。
+      for (const player of input.players) {
+        if (player.kind === "HUMAN") {
+          void executor.submit({ type: "CONNECTION_CHANGED", playerId: player.playerId, connected: false });
+        }
+      }
       void executor.submit({ type: "START" }).catch(() => {
         runtimes.delete(input.tournamentId);
       });

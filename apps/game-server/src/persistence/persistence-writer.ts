@@ -144,6 +144,8 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
   let flushing = false;
   let flushDeadline = Infinity;
   let flushResolvers: (() => void)[] = [];
+  /** 最旧 pending bundle 的下一 soft/hard 年龄阈值定时器（挂起的 in-flight 提交也会触发 evaluateWatermark）。 */
+  let ageTimer: TimerHandle | null = null;
 
   function queueFor(tournamentId: string): TournamentQueue {
     let queue = queues.get(tournamentId);
@@ -216,6 +218,34 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
   }
 
   /**
+   * 为最旧 pending bundle 的下一个 soft/hard 年龄阈值维护定时器（§12.2 年龄维度）。
+   * 触发时调用 evaluateWatermark（并续排到下一阈值）——**即使提交 Promise 挂起**（如
+   * 测试替身或未取消的 in-flight 查询），队列年龄仍能跨过 soft/hard 并触发背压回调。
+   * 队列变化（入队/提交/失败/隔离）时重排或取消。
+   */
+  function scheduleAgeTimer(): void {
+    if (ageTimer !== null) {
+      deps.scheduler.clearTimeout(ageTimer);
+      ageTimer = null;
+    }
+    const oldest = oldestPendingAt();
+    if (oldest === null) return;
+    const now = deps.clock();
+    const age = Math.max(0, now - oldest);
+    const nextCrossing = Math.min(
+      age < limits.softAgeMs ? oldest + limits.softAgeMs : Number.POSITIVE_INFINITY,
+      age < limits.hardAgeMs ? oldest + limits.hardAgeMs : Number.POSITIVE_INFINITY,
+    );
+    if (!Number.isFinite(nextCrossing)) return;
+    const delay = Math.max(0, nextCrossing - now);
+    ageTimer = deps.scheduler.setTimeout(() => {
+      ageTimer = null;
+      evaluateWatermark();
+      scheduleAgeTimer(); // 续排到下一阈值
+    }, delay);
+  }
+
+  /**
    * 状态变化通知：空闲（无 in-flight）与 flush 完成条件（排空 / 到达 deadline）统一在此结算，
    * 避免 flush 在「有退避 timer 但无 in-flight」时空转。
    */
@@ -234,6 +264,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     if (head === undefined) {
       inflight.delete(tournamentId);
       notifyStateChanged();
+      scheduleAgeTimer();
       return;
     }
     const startedAt = deps.clock();
@@ -251,6 +282,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
         evaluateWatermark();
         inflight.delete(tournamentId);
         notifyStateChanged();
+        scheduleAgeTimer();
         return;
       }
       // 瞬态失败：指数退避后重试队头；bundle 不丢弃、不覆盖。
@@ -270,6 +302,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
       evaluateWatermark(); // 退避中任务仍占用队列 → 年龄/字节持续计入 watermark
       inflight.delete(tournamentId);
       notifyStateChanged();
+      scheduleAgeTimer();
       return;
     }
     // 成功（首次提交或幂等 already-committed）：推进队头与水位。
@@ -284,6 +317,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     evaluateWatermark();
     inflight.delete(tournamentId);
     notifyStateChanged();
+    scheduleAgeTimer();
     kick();
   }
 
@@ -311,6 +345,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
       });
     }
     evaluateWatermark();
+    scheduleAgeTimer();
     notifyStateChanged();
     kick();
   }

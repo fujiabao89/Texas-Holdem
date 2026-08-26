@@ -109,6 +109,8 @@ export function createTournamentRuntimeState(
     players: readonly PlayerSeed[];
     rng: RandomSource;
     engineOptions?: TournamentEngineOptions;
+    /** 崩溃恢复水位 0 重初始化：标记所有玩家断开（§13），宽限计时由 createRecoveredFresh 启动。 */
+    recoveredDisconnected?: boolean;
   },
   deps: TournamentRuntimeDeps,
 ): TournamentRuntimeState {
@@ -128,7 +130,7 @@ export function createTournamentRuntimeState(
     engine,
     seed.config,
     { lastWireSequence: 0, committedEventCount: 0, committedThroughHand: 0, engineEventBase: 0 },
-    false,
+    seed.recoveredDisconnected === true,
   );
 }
 
@@ -141,7 +143,13 @@ export function createRecoveredTournamentRuntimeState(
     /** 由 `TournamentEngine.restore` 从快照重建的引擎权威状态。 */
     engine: TournamentEngine;
     /** 恢复时点恢复给运行时的 wire 状态：`lastWireSequence` == `committedEventCount` == 快照 sequence。 */
-    recovered: { lastWireSequence: number; committedThroughHand: number; engineEventBase: number };
+    recovered: {
+      lastWireSequence: number;
+      committedThroughHand: number;
+      engineEventBase: number;
+      /** 每玩家剩余 Time Bank（来自快照 serverTimeBank；旧快照无 → 满余额回退）。 */
+      timeBank?: Record<string, number>;
+    };
   },
   deps: TournamentRuntimeDeps,
 ): TournamentRuntimeState {
@@ -167,6 +175,7 @@ export function createRecoveredTournamentRuntimeState(
       committedEventCount: seed.recovered.lastWireSequence,
       committedThroughHand: seed.recovered.committedThroughHand,
       engineEventBase: seed.recovered.engineEventBase,
+      timeBankByPlayer: seed.recovered.timeBank,
     },
     true, // 恢复后所有连接视为断开（§13），宽限计时由 createRecovered 启动
   );
@@ -178,12 +187,15 @@ function buildRuntimeState(
   deps: TournamentRuntimeDeps,
   engine: TournamentEngine,
   config: TournamentConfig,
-  wire: { lastWireSequence: number; committedEventCount: number; committedThroughHand: number; engineEventBase: number },
+  wire: { lastWireSequence: number; committedEventCount: number; committedThroughHand: number; engineEventBase: number; timeBankByPlayer?: Record<string, number> },
   playersDisconnected: boolean,
 ): TournamentRuntimeState {
   const players = new Map<string, PlayerRuntimeRecord>();
   const seatToPlayer = new Map<number, string>();
   for (const player of seed.players) {
+    const baseTimeBank = initialTimeBankState(config.timeBank);
+    // 恢复时还原已持久化的剩余余额（P1-B）；旧快照无该字段 → 按满余额回退。
+    const restored = wire.timeBankByPlayer?.[player.playerId];
     players.set(player.playerId, {
       playerId: player.playerId,
       tournamentPlayerId: player.tournamentPlayerId,
@@ -195,7 +207,10 @@ function buildRuntimeState(
       connected: playersDisconnected ? false : true,
       graceHandle: null,
       graceGeneration: 0,
-      timeBank: initialTimeBankState(config.timeBank),
+      timeBank:
+        restored !== undefined
+          ? { ...baseTimeBank, secondsRemaining: restored }
+          : baseTimeBank,
     });
     seatToPlayer.set(player.seatIndex, player.playerId);
   }

@@ -62,7 +62,14 @@ export function buildHandCommitBundle(
     schemaVersion: SCHEMA_VERSION,
   }));
   const lastSequence = BigInt(firstSequence + ctx.events.length - 1);
-  const snapshotState = stableStringify(ctx.engineState);
+  // 服务端权威的每玩家剩余 Time Bank（docs/04 §8.4「余额由 server 权威维护」）：
+  // 崩溃恢复需还原，否则重启会把已消耗余额重置为满（P1-B）。
+  const serverTimeBank: Record<string, number> = {};
+  for (const [playerId, record] of ctx.state.players) {
+    serverTimeBank[playerId] = record.timeBank.secondsRemaining;
+  }
+  const snapshotPayload = { ...ctx.engineState, serverTimeBank };
+  const snapshotState = stableStringify(snapshotPayload);
   const playerUpdates = buildPlayerUpdates(ctx, handId);
   const handMeta = {
     id: handId,
@@ -99,7 +106,7 @@ export function buildHandCommitBundle(
       engineVersion: ENGINE_VERSION,
       // state 以 jsonb 落库、读取时是解析后的对象；state_checksum 必须对解析后状态
       // 的 canonical 序列化计算，恢复侧才能等价复算（docs/03 §5.7「稳定序列化结果」）。
-      stateChecksum: sha256Checksum(ctx.engineState),
+      stateChecksum: sha256Checksum(snapshotPayload),
       commitChecksum: sha256Checksum(commitChecksumInput),
     },
     playerUpdates,
