@@ -182,21 +182,43 @@ function SeatCard({ game, room, player, seat, slot }: { readonly game: GameSnaps
 function CommunityCards({ cards }: { readonly cards: readonly Card[] }) {
   return <div className="grid grid-cols-5 gap-1.5 sm:gap-2">{Array.from({ length: 5 }, (_, index) => {
     const card = cards[index];
-    return card === undefined ? <span aria-hidden="true" className="h-12 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-20 sm:w-14" key={`empty-${index}`} /> : <CardFace card={card} variant="board" key={`${card.rank}-${card.suit}-${index}`} />;
+    return card === undefined ? <span aria-hidden="true" className="h-16 w-11 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-24 sm:w-16" key={`empty-${index}`} /> : <CardFace card={card} variant="board" key={`${card.rank}-${card.suit}-${index}`} />;
   })}</div>;
 }
 
 function CardRow({ cards, hiddenCount = 0, variant = "seat" }: { readonly cards: readonly Card[]; readonly hiddenCount?: number; readonly variant?: "seat" | "hole" }) {
   if (cards.length === 0 && hiddenCount === 0) return null;
   const fan = variant === "hole" ? "first:-rotate-6 last:rotate-6" : "first:-rotate-3 last:rotate-3";
-  return <div className={`flex justify-center ${variant === "hole" ? "-space-x-3 sm:-space-x-5" : "-space-x-2 sm:-space-x-4"}`}>{cards.map((card, index) => <CardFace card={card} variant={variant} className={fan} key={`${card.rank}-${card.suit}-${index}`} />)}{Array.from({ length: hiddenCount }, (_, index) => <span className={`grid place-items-center rounded-md border border-blue-200/45 bg-[linear-gradient(135deg,#25499b,#10245e)] text-transparent shadow-md ${fan} ${variant === "hole" ? "h-12 w-8 sm:h-20 sm:w-14" : "h-8 w-6 sm:h-14 sm:w-10"}`} aria-label={message("table.hiddenCard")} key={`hidden-${index}`}>🂠</span>)}</div>;
+  const spacing = variant === "hole" ? "-space-x-5 sm:-space-x-7" : "-space-x-3 sm:-space-x-5";
+  return <div className={`flex justify-center ${spacing}`}>{cards.map((card, index) => <CardFace card={card} variant={variant} className={fan} key={`${card.rank}-${card.suit}-${index}`} />)}{Array.from({ length: hiddenCount }, (_, index) => <CardBack variant={variant} className={fan} key={`hidden-${index}`} />)}</div>;
 }
 
 function CardFace({ card, variant, className = "" }: { readonly card: Card; readonly variant: "board" | "seat" | "hole"; readonly className?: string }) {
   const red = card.suit === "DIAMONDS" || card.suit === "HEARTS";
-  const dimensions = variant === "board" ? "h-12 sm:h-20 sm:w-14" : variant === "hole" ? "h-12 w-8 sm:h-20 sm:w-14" : "h-8 w-6 sm:h-14 sm:w-10";
-  const text = variant === "board" ? "text-base sm:text-2xl" : variant === "hole" ? "text-sm sm:text-xl" : "text-[9px] sm:text-base";
-  return <span className={`grid ${dimensions} ${className} shrink-0 place-items-center rounded-md bg-white font-bold shadow-md ${text} ${red ? "text-rose-600" : "text-slate-900"}`} aria-label={cardName(card)}>{card.rank}{cardSuit(card)}</span>;
+  const dimensions = cardDimensions(variant);
+  const cornerText = variant === "seat" ? "text-[8px] sm:text-sm" : "text-xs sm:text-lg";
+  const pipText = variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl";
+  const color = red ? "text-rose-600" : "text-slate-900";
+  return <span className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#ffffff,#f6f8fb)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
+    <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
+    <span aria-hidden="true" className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${pipText}`}>{cardSuit(card)}</span>
+    <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
+  </span>;
+}
+
+function CardBack({ variant, className = "" }: { readonly variant: "seat" | "hole"; readonly className?: string }) {
+  return <span className={`relative grid ${cardDimensions(variant)} ${className} shrink-0 place-items-center overflow-hidden rounded-[0.45rem] border border-blue-100/70 bg-[#1f4698] shadow-[0_3px_7px_rgba(15,23,42,0.24)]`} aria-label={message("table.hiddenCard")}>
+    <span aria-hidden="true" className="absolute inset-1 rounded-[0.28rem] border border-blue-200/60 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.13)_0_1px,transparent_1px_5px)]" />
+    <span aria-hidden="true" className="relative h-1/3 w-1/2 rounded-full border border-blue-100/70 bg-blue-200/20" />
+  </span>;
+}
+
+function CardCorner({ rank, suit, className }: { readonly rank: Card["rank"]; readonly suit: string; readonly className: string }) {
+  return <span aria-hidden="true" className={`absolute grid justify-items-center leading-[0.8] ${className}`}><span>{rank}</span><span>{suit}</span></span>;
+}
+
+function cardDimensions(variant: "board" | "seat" | "hole"): string {
+  return variant === "board" ? "h-16 w-11 sm:h-24 sm:w-16" : variant === "hole" ? "h-[4.5rem] w-12 sm:h-24 sm:w-16" : "h-10 w-7 sm:h-16 sm:w-11";
 }
 
 function ClockStatus({ actionDeadline, timeBankMs }: { readonly actionDeadline: number | null; readonly timeBankMs: number }) { return <p className="text-xs text-slate-600 sm:text-sm">{actionDeadline === null ? message("table.waiting") : `${message("table.deadline")}：${new Date(actionDeadline).toLocaleTimeString("zh-CN")} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>; }
