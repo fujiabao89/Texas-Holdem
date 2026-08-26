@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFakeClock } from "../../../../tests/support/fake-clock";
 
+import { boardCardAudioCueDelayMs, flopCardAudioCueSpacingMs } from "../animations/timings";
 import { AudioController, soundFor, type AudioAdapter } from "./audio-controller";
 
 function fakeAdapter(overrides: Partial<AudioAdapter> = {}) {
@@ -42,14 +43,17 @@ describe("AudioController", () => {
       { rank: "A", suit: "SPADES" }, { rank: "K", suit: "HEARTS" }, { rank: "Q", suit: "CLUBS" },
     ] } });
     await Promise.resolve();
-    expect(played).toHaveLength(1);
-    clock.advance(649);
+    expect(played).toHaveLength(0);
+    clock.advance(boardCardAudioCueDelayMs - 1);
     await Promise.resolve();
-    expect(played).toHaveLength(1);
+    expect(played).toHaveLength(0);
     clock.advance(1);
     await Promise.resolve();
+    expect(played).toHaveLength(1);
+    clock.advance(flopCardAudioCueSpacingMs);
+    await Promise.resolve();
     expect(played).toHaveLength(2);
-    clock.advance(650);
+    clock.advance(flopCardAudioCueSpacingMs);
     await Promise.resolve();
     expect(played).toHaveLength(3);
   });
@@ -64,6 +68,20 @@ describe("AudioController", () => {
     ] } });
     audio.setEnabled(false);
     clock.advance(2_000);
+    await Promise.resolve();
+    expect(played).toHaveLength(0);
+  });
+
+  it("plays a turn cue at the same landing point as its visual card", async () => {
+    const clock = createFakeClock();
+    const { adapter, played } = fakeAdapter();
+    const audio = new AudioController(adapter, clock);
+    await audio.unlock();
+    audio.playEvent({ type: "TURN_DEALT", payload: { card: { rank: "A", suit: "SPADES" } } });
+    clock.advance(boardCardAudioCueDelayMs - 1);
+    await Promise.resolve();
+    expect(played).toHaveLength(0);
+    clock.advance(1);
     await Promise.resolve();
     expect(played).toHaveLength(1);
   });

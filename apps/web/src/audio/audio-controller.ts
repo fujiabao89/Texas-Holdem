@@ -1,5 +1,7 @@
 import type { GameEvent } from "@texas-holdem/protocol";
 
+import { boardCardAudioCueDelayMs, flopCardAudioCueSpacingMs } from "../animations/timings";
+
 export type SoundName = "deal" | "board" | "check" | "bet" | "fold" | "allIn" | "pot" | "turn" | "finish";
 
 export interface AudioAdapter {
@@ -56,13 +58,20 @@ export class AudioController {
   playEvent(event: GameEvent): void {
     const sound = soundFor(event);
     if (!this.enabled || !this.unlocked || sound === null) return;
-    this.play(sound);
-    // A flop is one authoritative event, but its three cards have separate
-    // visual arrivals. Schedule two quiet local cues to match those arrivals.
+    // Card sounds land with the in-slot flip, not when a queued Event starts.
+    // A flop remains one authoritative event; the three local cues only follow
+    // the presentation timing of its three cards.
     if (event.type === "FLOP_DEALT") {
-      this.schedule("board", 650, { volume: 0.78, playbackRate: 1.03 });
-      this.schedule("board", 1_300, { volume: 0.72, playbackRate: 1.06 });
+      this.schedule("board", boardCardAudioCueDelayMs);
+      this.schedule("board", boardCardAudioCueDelayMs + flopCardAudioCueSpacingMs, { volume: 0.78, playbackRate: 1.03 });
+      this.schedule("board", boardCardAudioCueDelayMs + flopCardAudioCueSpacingMs * 2, { volume: 0.72, playbackRate: 1.06 });
+      return;
     }
+    if (event.type === "TURN_DEALT" || event.type === "RIVER_DEALT") {
+      this.schedule("board", boardCardAudioCueDelayMs);
+      return;
+    }
+    this.play(sound);
   }
 
   cancelPending(): void {

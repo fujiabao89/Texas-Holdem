@@ -5,6 +5,7 @@ import type { GameEventMessage } from "@texas-holdem/protocol";
 import { createFakeClock } from "../../../../tests/support/fake-clock";
 import { gameSnapshot } from "../testing-fixtures";
 import { AnimationQueue } from "./animation-queue";
+import { animationTimings, hardForwardBacklogMs } from "./timings";
 
 function event(sequence: string, type: "PLAYER_CHECKED" | "BURN_CARD" = "PLAYER_CHECKED") {
   return {
@@ -104,5 +105,17 @@ describe("AnimationQueue", () => {
     }
     expect(hardForwards).toBe(0);
     expect(queue.getSnapshot()).toMatchObject({ overlay: { kind: "SHOWDOWN" } });
+  });
+
+  it("budgets Hard Fast Forward above a readable two-player all-in showdown", () => {
+    const normalTwoPlayerAllInBurst = animationTimings.allIn + animationTimings.wager
+      + animationTimings.burn * 3
+      + animationTimings.flopCard * 3 + animationTimings.flopInterval * 2
+      + animationTimings.turnRiver * 2
+      + animationTimings.check
+      + (animationTimings.showdownReveal + animationTimings.bestFive) * 2
+      + animationTimings.winner + animationTimings.potAward
+      + animationTimings.fold + animationTimings.handEnd;
+    expect(hardForwardBacklogMs).toBeGreaterThan(normalTwoPlayerAllInBurst);
   });
 });
