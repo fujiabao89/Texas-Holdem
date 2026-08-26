@@ -78,6 +78,87 @@ test("全下需要第二次确认，且不会伪装成普通下注", async ({ pa
   expect(submitted[0]).toMatchObject({ type: "SUBMIT_ACTION", payload: { action: { type: "ALL_IN" } } });
 });
 
+test("普通加注达到全下目标时仍需二次确认", async ({ page }) => {
+  const submitted: unknown[] = [];
+  await seedTableSession(page);
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      const command = JSON.parse(raw.toString()) as { type: string };
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ viewer: { ...gameSnapshot().viewer, legalActions: { ...gameSnapshot().viewer.legalActions!, maxRaiseTo: 1000, allInTo: 1000 } } }) } }));
+      if (command.type === "SUBMIT_ACTION") submitted.push(command);
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await page.getByRole("button", { name: "加注" }).click();
+  await page.getByRole("slider", { name: "下注总额" }).press("End");
+  await page.getByRole("button", { name: "确认加注至 1000" }).click();
+  expect(submitted).toEqual([]);
+  await page.getByRole("button", { name: "再次点击确认全下至 1000" }).click();
+  await expect.poll(() => submitted.length).toBe(1);
+  expect(submitted[0]).toMatchObject({ type: "SUBMIT_ACTION", payload: { action: { type: "ALL_IN" } } });
+});
+
+test("ClockUpdated 的权威 Time Bank 余额会收起操作按钮", async ({ page }) => {
+  await seedTableSession(page);
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      if ((JSON.parse(raw.toString()) as { type: string }).type !== "AUTHENTICATE") return;
+      socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      socket.send(JSON.stringify({ type: "CLOCK_UPDATED", protocolVersion: 1, serverTime: 2, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 55_000, timeBankRemainingMs: 0 } }));
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await expect(page.getByRole("button", { name: "使用延时" })).toHaveCount(0);
+});
+
+test("已有待发送命令时不能重试已拒绝的旧命令", async ({ page }) => {
+  const submitted: { type: string; requestId: string; payload?: { action?: { type: string }; actionId?: string } }[] = [];
+  let timeBankUses = 0;
+  await seedTableSession(page);
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      const command = JSON.parse(raw.toString()) as { type: string; requestId: string; payload?: { action?: { type: string }; actionId?: string } };
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "SUBMIT_ACTION") {
+        submitted.push(command);
+        if (command.payload?.action?.type === "CALL") socket.send(JSON.stringify({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: command.requestId, actionId: command.payload.actionId, status: "REJECTED", duplicate: false, error: { code: "GAME_UNAVAILABLE", message: "ignored", retryable: true, traceId: "trace-1" } } }));
+      }
+      if (command.type === "USE_TIME_BANK") timeBankUses += 1;
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await page.getByRole("button", { name: "跟注 5" }).click();
+  const retry = page.getByRole("button", { name: "重试操作" });
+  await expect(retry).toBeEnabled();
+  await page.getByRole("button", { name: "使用延时" }).click();
+  await expect(retry).toBeDisabled();
+  await expect.poll(() => timeBankUses).toBe(1);
+  expect(submitted).toHaveLength(1);
+});
+
+test("AUTH_FAILED 会清除 Token 并引导重新加入", async ({ page }) => {
+  await seedTableSession(page);
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "ERROR", protocolVersion: 1, serverTime: 1, payload: { code: "AUTH_FAILED", message: "ignored", retryable: false, traceId: "trace-1" } }));
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await expect(page.getByRole("alert").filter({ hasText: "未找到此房间的身份凭证" })).toBeVisible();
+});
+
+test("UNSUPPORTED_PROTOCOL_VERSION 会显示刷新入口", async ({ page }) => {
+  await seedTableSession(page);
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "ERROR", protocolVersion: 1, serverTime: 2, payload: { code: "UNSUPPORTED_PROTOCOL_VERSION", message: "ignored", retryable: false, traceId: "trace-2" } }));
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await expect(page.getByRole("alert").filter({ hasText: "当前页面版本过旧" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "刷新页面" })).toBeVisible();
+});
+
 test("房间关闭会以服务端 RoomSnapshot 覆盖牌桌", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {

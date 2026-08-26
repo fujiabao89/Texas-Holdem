@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
-import type { Card, GameSnapshot, SubmitAction } from "@texas-holdem/protocol";
+import type { Card, ErrorCode, GameSnapshot, SubmitAction } from "@texas-holdem/protocol";
 
 import { clampWager, quickAmounts, wagerRange, wagerStep, type WagerRange } from "../betting/amounts";
 import { errorMessage, formatMessage, message } from "../../messages/zh-CN";
 import type { PendingCommand as TransportPendingCommand } from "../../protocol/websocket-transport";
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
-import { canSubmitTableAction, tableSeats } from "./table-state";
+import { canSubmitTableAction, remainingTimeMs, tableSeats } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
+type TerminalError = Extract<ErrorCode, "AUTH_FAILED" | "UNSUPPORTED_PROTOCOL_VERSION" | "SESSION_REPLACED">;
 
 export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const { projection, tokens, websocket, connectionState } = useRoomClient();
@@ -25,6 +26,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const [showExactInput, setShowExactInput] = useState(false);
   const [exactAmount, setExactAmount] = useState("");
   const [allInConfirmSequence, setAllInConfirmSequence] = useState<string | null>(null);
+  const [terminalError, setTerminalError] = useState<TerminalError | null>(null);
   // sessionStorage is deliberately client-only. Keep SSR and hydration output
   // identical until React has switched to the browser snapshot.
   const isBrowser = useSyncExternalStore(subscribeNever, () => true, () => false);
@@ -42,7 +44,10 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     }
   }), [pending?.requestId, websocket]);
 
-  useEffect(() => websocket.subscribeProtocolErrors((code) => setFeedback(errorMessage(code))), [websocket]);
+  useEffect(() => websocket.subscribeProtocolErrors((code) => {
+    setFeedback(errorMessage(code));
+    if (code === "AUTH_FAILED" || code === "UNSUPPORTED_PROTOCOL_VERSION" || code === "SESSION_REPLACED") setTerminalError(code);
+  }), [websocket]);
 
   const game = state.game;
   const hasPendingCommand = pending !== null && (pending.status === "SENDING" || (pending.status === "APPLIED_AWAITING_STATE" && (pending.appliedSequence === undefined || state.lastSequence === null || BigInt(state.lastSequence) < BigInt(pending.appliedSequence))));
@@ -64,10 +69,11 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     }
   };
   const retry = () => {
-    if (retryCommand === null || connectionState !== "CONNECTED") return;
+    if (retryCommand === null || connectionState !== "CONNECTED" || hasPendingCommand) return;
     try {
-      websocket.send(retryCommand);
-      setPending(retryCommand);
+      const command = { ...retryCommand, status: "SENDING" as const, appliedSequence: undefined };
+      websocket.send(command);
+      setPending(command);
       setRetryCommand(null);
       setFeedback(message("table.actionPending"));
     } catch {
@@ -84,8 +90,11 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
 
   if (!isBrowser) return <TableFrame><p aria-live="polite">{message("table.loading")}</p></TableFrame>;
   if (state.room?.status === "CLOSED") return <TableFrame><p role="alert">{message("table.roomClosed")}</p><Link className="underline" href="/">{message("room.back")}</Link></TableFrame>;
-  if (connectionState === "STOPPED") return <TableFrame><p role="alert">{message("table.connectionReplaced")}</p><Link className="underline" href="/">{message("room.back")}</Link></TableFrame>;
   if (tokens.get(roomId) === null) return <TableFrame><p role="alert">{message("table.missingSession")}</p><Link className="underline" href="/join">{message("room.joinTitle")}</Link></TableFrame>;
+  if (connectionState === "STOPPED") {
+    if (terminalError === "UNSUPPORTED_PROTOCOL_VERSION") return <TableFrame><p role="alert">{errorMessage(terminalError)}</p><a className="underline" href={`/room/${roomId}/table`}>{message("table.refresh")}</a></TableFrame>;
+    return <TableFrame><p role="alert">{terminalError === "SESSION_REPLACED" ? errorMessage(terminalError) : message("table.connectionReplaced")}</p><Link className="underline" href="/">{message("room.back")}</Link></TableFrame>;
+  }
   if (state.room !== null && state.room.roomId === roomId && !state.room.players.some((player) => player.playerId === tokens.getPlayerId(roomId))) return <TableFrame><p role="alert">{message("table.removed")}</p><Link className="underline" href="/">{message("room.back")}</Link></TableFrame>;
   if (game === null || state.room?.roomId !== roomId) return <TableFrame><p aria-live="polite">{message("table.loading")}</p></TableFrame>;
 
@@ -116,17 +125,17 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         </div>
       </div>
     </section>
-    <section className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-center shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus actionDeadline={state.clock?.actionDeadline ?? game.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? game.viewer.timeBankRemainingMs} /></section>
+    <section className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-center shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus actionDeadline={state.clock?.actionDeadline ?? game.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? game.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${game.handId}:${game.currentActorPlayerId ?? "none"}`} /></section>
     {state.actionsDisabled && <p className="rounded bg-amber-50 p-3 text-sm" role="status">{message("table.syncing")}</p>}
-    {legal !== null && <BettingControls game={game} legal={legal} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === game.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); }} onChooseAmount={chooseAmount} onExactChange={setExactAmount} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? game.sequence : null)} onUseTimeBank={() => { const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: game.tournamentId, expectedSequence: game.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />}
+    {legal !== null && <BettingControls game={game} legal={legal} actionDeadline={state.clock?.actionDeadline ?? game.actionDeadline} timeBankRemainingMs={state.clock?.timeBankRemainingMs ?? game.viewer.timeBankRemainingMs} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === game.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); }} onChooseAmount={chooseAmount} onExactChange={setExactAmount} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? game.sequence : null)} onUseTimeBank={() => { const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: game.tournamentId, expectedSequence: game.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />}
     {hasPendingCommand && <p aria-live="polite" className="text-sm text-neutral-600">{message("table.actionPending")}</p>}
     {feedback !== null && <p role="status" aria-live="polite" className="rounded border border-neutral-300 bg-neutral-50 p-3 text-sm">{feedback}</p>}
-    {retryCommand !== null && <button className={buttonClass} disabled={connectionState !== "CONNECTED"} onClick={retry}>{message("table.retry")}</button>}
+    {retryCommand !== null && <button className={buttonClass} disabled={connectionState !== "CONNECTED" || hasPendingCommand} onClick={retry}>{message("table.retry")}</button>}
     {game.tournamentStatus === "FINISHED" && <RankingSummary game={game} />}
   </TableFrame>;
 }
 
-function BettingControls({ game, legal, rangeForMode, amount, showExactInput, exactAmount, allInConfirm, onAction, onSelectMode, onChooseAmount, onExactChange, onToggleExact, onSetAllInConfirm, onUseTimeBank }: { readonly game: GameSnapshot; readonly legal: NonNullable<GameSnapshot["viewer"]["legalActions"]>; readonly rangeForMode: WagerRange | null; readonly amount: number | null; readonly showExactInput: boolean; readonly exactAmount: string; readonly allInConfirm: boolean; readonly onAction: (action: SubmitAction) => void; readonly onSelectMode: (mode: AmountMode) => void; readonly onChooseAmount: (amount: number, mode?: AmountMode) => void; readonly onExactChange: (value: string) => void; readonly onToggleExact: () => void; readonly onSetAllInConfirm: (value: boolean) => void; readonly onUseTimeBank: () => void }) {
+function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, rangeForMode, amount, showExactInput, exactAmount, allInConfirm, onAction, onSelectMode, onChooseAmount, onExactChange, onToggleExact, onSetAllInConfirm, onUseTimeBank }: { readonly game: GameSnapshot; readonly legal: NonNullable<GameSnapshot["viewer"]["legalActions"]>; readonly actionDeadline: number | null; readonly timeBankRemainingMs: number; readonly rangeForMode: WagerRange | null; readonly amount: number | null; readonly showExactInput: boolean; readonly exactAmount: string; readonly allInConfirm: boolean; readonly onAction: (action: SubmitAction) => void; readonly onSelectMode: (mode: AmountMode) => void; readonly onChooseAmount: (amount: number, mode?: AmountMode) => void; readonly onExactChange: (value: string) => void; readonly onToggleExact: () => void; readonly onSetAllInConfirm: (value: boolean) => void; readonly onUseTimeBank: () => void }) {
   const currentRange = rangeForMode;
   const step = wagerStep(game.blindLevel.bigBlind);
   const displayedAmount = currentRange === null ? 0 : clampWager(amount ?? currentRange.min, currentRange);
@@ -135,6 +144,10 @@ function BettingControls({ game, legal, rangeForMode, amount, showExactInput, ex
   const quick = useMemo(() => currentRange === null ? [] : quickAmounts(game, currentRange), [currentRange, game]);
   const submitAmount = () => {
     if (currentRange === null) return;
+    if (legal.canAllIn && displayedAmount === legal.allInTo) {
+      onSetAllInConfirm(true);
+      return;
+    }
     onAction(currentRange.kind === "BET" ? { type: "BET", betTo: displayedAmount } : { type: "RAISE", raiseTo: displayedAmount });
   };
   return <section className="relative z-20 mx-auto -mt-1 grid w-full max-w-xl gap-3 rounded-3xl border border-white/80 bg-white/95 p-3 shadow-[0_16px_35px_rgba(15,23,42,0.16)] backdrop-blur sm:p-4" aria-labelledby="actions-heading">
@@ -146,7 +159,7 @@ function BettingControls({ game, legal, rangeForMode, amount, showExactInput, ex
       {legal.canBet && <ActionButton tone="bet" label={message("betting.bet")} onClick={() => onSelectMode("BET")} />}
       {legal.canRaise && <ActionButton tone="bet" label={message("betting.raise")} onClick={() => onSelectMode("RAISE")} />}
       {legal.canAllIn && <ActionButton tone="allIn" label={allInConfirm ? formatMessage("betting.confirmAllIn", { amount: legal.allInTo }) : formatMessage("betting.allIn", { amount: legal.allInTo })} onClick={() => allInConfirm ? onAction({ type: "ALL_IN" }) : onSetAllInConfirm(true)} />}
-      {game.actionDeadline !== null && game.viewer.timeBankRemainingMs > 0 && <ActionButton tone="neutral" label={message("table.useTimeBank")} onClick={onUseTimeBank} />}
+      {actionDeadline !== null && timeBankRemainingMs > 0 && <ActionButton tone="neutral" label={message("table.useTimeBank")} onClick={onUseTimeBank} />}
     </div>
     {currentRange !== null && <div className="grid gap-3 rounded-2xl bg-slate-50 p-3">
       <p className="text-sm text-slate-600">{formatMessage("betting.range", { min: currentRange.min, max: currentRange.max })}</p>
@@ -243,7 +256,24 @@ const pipLayouts: Readonly<Partial<Record<Card["rank"], readonly PipPosition[]>>
   "10": [{ x: 38, y: 26 }, { x: 62, y: 26 }, { x: 38, y: 38 }, { x: 62, y: 38 }, { x: 38, y: 50 }, { x: 62, y: 50, inverted: true }, { x: 38, y: 62, inverted: true }, { x: 62, y: 62, inverted: true }, { x: 38, y: 74, inverted: true }, { x: 62, y: 74, inverted: true }],
 };
 
-function ClockStatus({ actionDeadline, timeBankMs }: { readonly actionDeadline: number | null; readonly timeBankMs: number }) { return <p className="text-xs text-slate-600 sm:text-sm">{actionDeadline === null ? message("table.waiting") : `${message("table.deadline")}：${new Date(actionDeadline).toLocaleTimeString("zh-CN")} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>; }
+function ClockStatus({ actionDeadline, timeBankMs, serverTime, clockKey }: { readonly actionDeadline: number | null; readonly timeBankMs: number; readonly serverTime: number; readonly clockKey: string }) {
+  const [countdown, setCountdown] = useState<{ readonly clockKey: string; readonly actionDeadline: number; readonly remaining: number } | null>(null);
+  useEffect(() => {
+    if (actionDeadline === null) return;
+    const performanceNowAtReceipt = performance.now();
+    const update = () => {
+      const estimated = remainingTimeMs(actionDeadline, serverTime, performanceNowAtReceipt, performance.now())!;
+      setCountdown((previous) => ({ clockKey, actionDeadline, remaining: previous !== null && previous.clockKey === clockKey && actionDeadline <= previous.actionDeadline ? Math.min(estimated, previous.remaining) : estimated }));
+    };
+    update();
+    const interval = window.setInterval(update, 250);
+    const onVisibilityChange = () => { if (document.visibilityState === "visible") update(); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisibilityChange); };
+  }, [actionDeadline, clockKey, serverTime]);
+  const remaining = actionDeadline === null ? null : (countdown?.remaining ?? null);
+  return <p className="text-xs text-slate-600 sm:text-sm">{remaining === null ? message("table.waiting") : `${message("table.remainingTime")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(remaining / 1000) })} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>;
+}
 function ConnectionStatus({ connectionState, syncing }: { readonly connectionState: string; readonly syncing: boolean }) { return <p role="status" aria-live="polite" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">{syncing ? message("table.syncing") : connectionState === "CONNECTED" ? message("table.connectionConnected") : connectionState === "STOPPED" ? message("table.connectionReplaced") : connectionState === "CONNECTING" || connectionState === "AUTHENTICATING" ? message("table.connectionConnecting") : message("table.connectionDisconnected")}</p>; }
 function RankingSummary({ game }: { readonly game: GameSnapshot }) { const players = new Map(game.players.map((player) => [player.playerId, player.displayName])); return <section aria-labelledby="rankings-heading" className="mx-auto w-full max-w-xl rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><h2 id="rankings-heading" className="font-semibold">{message("table.tournamentFinished")}</h2><ol className="mt-2 list-decimal pl-5">{game.rankings.map((ranking) => <li key={ranking.playerId}>{players.get(ranking.playerId) ?? message("table.player")} · {formatMessage("table.rank", { position: ranking.placement.from })}</li>)}</ol></section>; }
 type ButtonTone = "neutral" | "fold" | "call" | "bet" | "allIn";

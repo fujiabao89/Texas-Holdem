@@ -246,4 +246,23 @@ describe("WebSocketTransport", () => {
     socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
     expect(socket.sent.at(-1)).toBe(pending.serialized);
   });
+
+  it("retries a user-rejected command after it is restored to SENDING", () => {
+    const clock = createFakeClock();
+    const { socket, transport } = setup(clock);
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+    socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "REJECTED", duplicate: false, error: { code: "GAME_UNAVAILABLE", message: "ignored", retryable: true, traceId: "trace-1" } } });
+    transport.send({ ...pending, status: "SENDING" });
+
+    socket.close();
+    clock.advance(500);
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 3, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+
+    expect(socket.sent.at(-1)).toBe(pending.serialized);
+  });
 });

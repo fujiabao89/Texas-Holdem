@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { gameSnapshot } from "../../testing-fixtures";
-import { canSubmitTableAction, tableSeats } from "./table-state";
+import { canSubmitTableAction, remainingTimeMs, tableSeats } from "./table-state";
 
 describe("poker table presentation state", () => {
   it("only exposes the server-provided legal actions to the current actor on a live connection", () => {
@@ -19,5 +19,11 @@ describe("poker table presentation state", () => {
     expect(seats[0]?.playerId).toBe("player-1");
     expect(seats[1]?.playerId).toBe("player-2");
     expect(seats.slice(2)).toEqual([null, null, null, null, null, null, null, null]);
+  });
+
+  it("derives a display-only countdown from the latest server-time anchor", () => {
+    expect(remainingTimeMs(20_000, 10_000, 500, 2_500)).toBe(8_000);
+    expect(remainingTimeMs(20_000, 10_000, 500, 50_000)).toBe(0);
+    expect(remainingTimeMs(null, 10_000, 500, 2_500)).toBeNull();
   });
 });

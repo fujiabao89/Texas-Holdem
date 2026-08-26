@@ -99,6 +99,8 @@ export const zhCN = {
     timeBankValue: "{seconds} 秒",
     useTimeBank: "使用延时",
     deadline: "行动截止时间",
+    remainingTime: "剩余时间",
+    refresh: "刷新页面",
     player: "玩家",
     seat: "座位",
     dealer: "庄",
