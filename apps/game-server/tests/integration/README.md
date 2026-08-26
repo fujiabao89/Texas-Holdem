@@ -13,6 +13,7 @@
 | `hand-commit-bundle.test.ts` | Commit Bundle：事件顺序与 Snapshot/水位线对齐、失败整体回滚、相同 checksum 幂等重试、不同内容/部分冲突安全失败、终局同事务更新 |
 | `constraints.test.ts` | 复合 FK（跨 Room/跨 Tournament）、CHECK（枚举-null 矛盾等）、seat/player/rank 唯一、盲注与公共牌边界 |
 | `permissions.test.ts` | `anon`/`authenticated` 对所有原始表读写被拒；`game_server` 角色最小授权可用 |
+| `hand-history-read.test.ts`（TEX-36） | Hand History 投影读取端点：token 摘要数据库侧鉴权（401/403/404）、`handNumber` 倒序 cursor 分页（默认 20/上限 50）、接收者视角隐私隔离（Burn 牌面/他人底牌永不出 wire）、跨 Tournament 详情 404、损坏记录降级 500 不泄露细节 |
 
 公共基建设施见 [helpers.ts](./helpers.ts)：`setupIntegrationDatabase`（CREATE SCHEMA → 在隔离 schema 执行版本化迁移 → 交给仓储层 → 结束 DROP SCHEMA CASCADE）。
 

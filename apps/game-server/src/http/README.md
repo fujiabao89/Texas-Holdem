@@ -8,5 +8,6 @@
 - **限流**（`middleware/rate-limit.ts`）：进程内 Token Bucket；创建/Join/inviteCode/受保护变更按 docs/04 §10.3 默认额度。
 - **Body 上限与 CORS**：`app.ts` 设 64KiB body 上限；CORS 使用显式 Allowlist（不含通配来源）。
 - **比赛中离开**：生产装配注入 TournamentManager；受保护 HTTP Leave 先经 Tournament 撤回，再进入 Room 离开/Token 撤销，与 WS 语义一致。
+- **Hand History 投影读取**（`routes/hand-history.ts`，TEX-36）：`GET /api/v1/tournaments/:tournamentId/hands`（列表，`handNumber` 倒序 cursor 分页）与 `GET /api/v1/tournaments/:tournamentId/hands/:handId`（详情）。鉴权走 `room_players.token_digest` 数据库侧 HMAC 反查（归档房间/进程重启后仍可解析，不依赖内存 RoomManager）；事件逐条经 `state-projector` 接收者视角投影（Burn 牌面/他人底牌/内部 ID 永不出 wire）；无法投影或 Schema 校验失败的损坏记录返回 500 `INTERNAL_ERROR`。
 
 错误映射原则：稳定 `error.code` 分支；不泄露堆栈、SQL、Token 或内部房间状态。

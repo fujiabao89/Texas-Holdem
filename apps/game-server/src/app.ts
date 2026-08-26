@@ -8,6 +8,8 @@ import {
   type TournamentConfig,
 } from "@texas-holdem/protocol";
 import type { AppConfig } from "./config";
+import type { HandHistoryReadRepository } from "./infrastructure/persistence/repositories/hand-history";
+import { registerHandHistoryRoutes } from "./http/routes/hand-history";
 import { registerRoomRoutes } from "./http/routes/rooms";
 import { registerLobbyGateway, type LobbyGatewayClock } from "./realtime/gateway/lobby-gateway";
 import type { ConnectionEpochRegistry } from "./realtime/connection-epochs";
@@ -56,6 +58,8 @@ export interface BuildAppOptions {
   readonly tournamentManager?: TournamentManager;
   readonly tournamentEvents?: TournamentEventBus;
   readonly connectionEpochs?: ConnectionEpochRegistry;
+  /** Hand History 投影读取仓储（TEX-36）；生产装配必传，缺省时端点不注册。 */
+  readonly handHistoryRepository?: HandHistoryReadRepository;
   /** @fastify/rate-limit 全局 per-IP 额度（CodeQL 识别为 RateLimitingMiddleware）。 */
   readonly rateLimit?: { readonly max: number; readonly timeWindow: string };
 }
@@ -137,6 +141,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       now: options.now ?? Date.now,
       makeTraceId: ids.uuid,
     });
+    if (options.handHistoryRepository !== undefined) {
+      registerHandHistoryRoutes(app, {
+        repository: options.handHistoryRepository,
+        tokenSecret: options.config.token.secret,
+        rateLimit: globalRateLimit,
+        now: options.now ?? Date.now,
+        makeTraceId: ids.uuid,
+      });
+    }
     registerLobbyGateway(app, options.roomManager, {
       now: options.now ?? Date.now,
       ids,

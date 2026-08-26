@@ -6,6 +6,7 @@ import {
 } from "./infrastructure/persistence/database";
 import {
   createHandCommitRepository,
+  createHandHistoryRepository,
   createRecoveryRepository,
   createRoomRepository,
 } from "./infrastructure/persistence/repositories";
@@ -125,6 +126,9 @@ const app = buildApp({
   tournamentManager,
   tournamentEvents,
   connectionEpochs,
+  // Hand History 投影读取（TEX-36）：归档历史经 token 摘要数据库侧鉴权，
+  // 不依赖内存 RoomManager（进程重启/房间关闭后仍可读）。
+  handHistoryRepository: createHandHistoryRepository(database),
 });
 
 const rawPort = process.env.PORT ?? "3001";
