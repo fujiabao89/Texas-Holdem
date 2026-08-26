@@ -19,6 +19,7 @@
 | F-10 | CodeRabbit `#discussion_r3861204815`：重连重发测试可能匹配历史发送记录 | 确认。Fake WebSocket 会保留断线前的 `sent`；仅断言最后一条等于原命令，若重连后没有重发而旧记录恰好仍在末尾，测试可误通过。 | 原测试覆盖了重连流程，但没有记录重连前发送边界。 | P2 | 已修正：在断线前保存发送数，断言重连后有新增记录且新增记录包含原始序列化命令。 |
 | F-11 | Greptile `#discussion_r3861249297`：改选普通下注后全下确认态残留 | 确认。先点击 All-in 后改选 Bet/Raise 或调整金额，`allInConfirmSequence` 保持当前序列；再次点击 All-in 会直接提交 `ALL_IN`，无视新选择的普通下注。 | 原 All-in E2E 只覆盖两次点击和普通端点转全下，未覆盖确认态后改选金额。 | P1 | 已修正：选择普通 Bet/Raise 模式或任何普通金额时清除确认态；新增 E2E 断言随后提交 `RAISE` 而非 `ALL_IN`。 |
 | F-12 | 外部审查：仍聚焦的精确金额点击提交 | 确认。输入合法精确金额后直接点击提交，`onBlur` 先隐藏输入并更新金额，首次 click 不会发送命令；必须再次点击，且 `submitAmount()` 原先只读取旧 `displayedAmount`。 | 原 E2E 未覆盖“精确输入仍聚焦 → 直接提交”的浏览器事件顺序；新增回归在修复前稳定复现 `submitted.length = 0`。 | P1 | 已修正：失焦提交金额时保留输入控件，让 click 不被重渲染吞掉；提交优先使用合法精确草稿。新增 E2E 断言首次点击发送 `RAISE 40`。 |
+| F-13 | 外部审查：非法精确金额保留 All-in 确认 | 确认。先打开普通加注区、确认 All-in，再输入非法精确金额时，错误提示出现但确认态不变；再次点击会发送 `ALL_IN`，无视可见的未确认金额草稿。 | F-11 覆盖模式与已选择金额变化，F-12 覆盖合法精确草稿提交；二者均未覆盖非法草稿。新增 E2E 在修复前确认按钮仍为“再次点击确认全下”。 | P1 | 已修正：任何精确草稿变动都清除 All-in 确认；新增 E2E 断言非法输入后首次点击 All-in 只重新进入确认，不发送命令。 |
 
 ## 验证记录
 
@@ -27,7 +28,7 @@
 - `pnpm exec vitest run --project unit apps/web/src/features/poker-table/table-state.test.ts apps/web/src/protocol/websocket-transport.test.ts apps/web/src/state/projection-store.test.ts apps/web/src/protocol/token-store.test.ts`（29 项）；
 - `pnpm exec vitest run --project unit apps/web/src/protocol/websocket-transport.test.ts`（13 项，F-10）；
 - `pnpm test:unit`（48 文件、430 项）；
-- `pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/betting/table.spec.ts`（12 项，含 F-11/F-12）；
+- `pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/betting/table.spec.ts`（13 项，含 F-11/F-12/F-13）；
 - `pnpm lint`、`pnpm typecheck`、`pnpm build` 与 `git diff --check`。
 
 所有已修正项均以当前分支代码、Fake WebSocket/Fake Clock 单元测试或直接相关 E2E 验证；没有引入平行投影、连接或协议 DTO。

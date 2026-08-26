@@ -136,6 +136,27 @@ test("点击提交会采用仍聚焦的精确加注额", async ({ page }) => {
   expect(submitted[0]).toMatchObject({ type: "SUBMIT_ACTION", payload: { action: { type: "RAISE", raiseTo: 40 } } });
 });
 
+test("输入非法精确金额会取消全下确认", async ({ page }) => {
+  const submitted: unknown[] = [];
+  await seedTableSession(page);
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      const command = JSON.parse(raw.toString()) as { type: string };
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "SUBMIT_ACTION") submitted.push(command);
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await page.getByRole("button", { name: "加注" }).click();
+  await page.getByRole("button", { name: "全下至 1000" }).click();
+  await page.getByRole("button", { name: "输入精确金额" }).click();
+  await page.getByRole("textbox", { name: "输入精确下注额" }).fill("19");
+  await expect(page.getByText("请输入合法范围内的整数金额。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "全下至 1000" })).toBeVisible();
+  await page.getByRole("button", { name: "全下至 1000" }).click();
+  expect(submitted).toEqual([]);
+});
+
 test("ClockUpdated 的权威 Time Bank 余额会收起操作按钮", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {

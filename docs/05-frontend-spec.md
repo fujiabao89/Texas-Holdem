@@ -298,7 +298,7 @@ apps/web/
 
 ### 8.5 All-in 两步（《区块1-5 v0.1》§5.9）
 
-- **不弹确认 Modal**：点击 All-in 快捷项后进入确认态，显示服务端给出的目标总投入 `allInTo`（例如 `ALL-IN · TO 7200`）；用户再次点击才提交 `{ type: "ALL_IN" }`。若确认前 `sequence`、当前 Actor 或 `canAllIn/allInTo` 改变，或用户改选普通 Bet/Raise 模式或金额，立即取消确认态——天然两步确认且不复用陈旧金额。
+- **不弹确认 Modal**：点击 All-in 快捷项后进入确认态，显示服务端给出的目标总投入 `allInTo`（例如 `ALL-IN · TO 7200`）；用户再次点击才提交 `{ type: "ALL_IN" }`。若确认前 `sequence`、当前 Actor 或 `canAllIn/allInTo` 改变，或用户改选普通 Bet/Raise 模式或金额（包括尚未提交的精确金额草稿），立即取消确认态——天然两步确认且不复用陈旧金额。
 
 ### 8.6 Time Bank 按钮
 
