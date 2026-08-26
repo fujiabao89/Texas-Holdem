@@ -15,6 +15,7 @@
 | F-06 | CodeRabbit `#discussion_r3860123650`：E2E 未完整断言命令信封且反馈/Event 同回调 | 部分成立，但不构成运行时缺陷。若页面绕过 `prepareSubmitAction`，该 E2E 可能漏报信封字段；同回调也降低“Event 才推进投影”的 E2E 证明力。 | `WebSocketTransport` 单元测试已断言 `requestId`、`actionId`、`expectedSequence`，且 `COMMAND_RESULT` 不写入 canonical game state。 | P3 | 不修改：这是重复的测试强化建议，未发现当前实现未受覆盖的失败行为；保持本 PR 最小变更。 |
 | F-07 | CodeRabbit `#discussion_r3860123654`：Session Replaced E2E 未先加载活跃牌桌后再关闭 4001 | 部分成立，但不构成运行时缺陷。现有 E2E 只验证阻断提示；可更贴近协议时序。 | Transport 单元测试已在真实 projection 后发送 `SESSION_REPLACED`，断言 `STOPPED`、最后投影不变；页面在 `STOPPED` 时移除操作区。 | P3 | 不修改：建议属于覆盖深度提升，现有 Transport + 页面 E2E 已覆盖实际终态，不增加额外非阻断 E2E。 |
 | F-08 | Greptile `#discussion_r3860183908`：普通下注达到 `allInTo` 绕过两步全下 | 确认。Slider/精确金额到达 `allInTo` 时，`submitAmount()` 直接发送 `BET`/`RAISE`，违反 05 §8.2/§8.5 的命令语义与二次确认。 | 既有 E2E 仅覆盖独立 All-in 按钮，不覆盖普通下注区间终点等于 `allInTo`。 | P1 | 已修正：该端点进入 All-in 确认态，第二次点击只提交 `ALL_IN`；新增 E2E。 |
+| F-09 | Greptile `#discussion_r3860265739`：Time Bank 可用性陈旧 | 重复，当前代码不成立。`BettingControls` 已接收 `state.clock` 派生的 `actionDeadline` 与 `timeBankRemainingMs`，不再读取陈旧 `game` 字段。 | F-03 新增的 `CLOCK_UPDATED` → 余额为 0 → 按钮消失 E2E 已通过。 | P3 | 不修改：与 F-03 为同一问题，已由 `1b6199d8` 修正；仅登记并关闭重复线程。 |
 
 ## 验证记录
 
