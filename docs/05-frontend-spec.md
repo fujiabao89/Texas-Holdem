@@ -1,13 +1,13 @@
 # 05 · Web 前端工程规格（`apps/web`）
 
-> 状态：设计定稿（TEX-23 前端基础、TEX-24 Lobby、TEX-21 WebSocket 认证/同步/重连已核对；牌桌等后续业务页面待实现）
-> 实现核对：2026-08-24（TEX-23、TEX-24）——`apps/web` 已实现 App Router 路由、类型安全 `zh-CN` 文案、Jotai 纯 UI 状态、HTTP/WS Transport、创建/加入表单、邀请码预填/复制与基于 `RoomSnapshot` 的 Lobby；牌桌、动画、音效、赛果和历史仍为**设计意图**
+> 状态：设计定稿（TEX-23 前端基础、TEX-24 Lobby、TEX-21 WebSocket 认证/同步/重连、TEX-25 牌桌视觉与下注已核对；动画、音效、赛果与历史待后续任务）
+> 实现核对：2026-08-25（TEX-25）——`apps/web` 已实现 App Router 路由、类型安全 `zh-CN` 文案、Jotai 纯 UI 状态、HTTP/WS Transport、创建/加入/Lobby、基于 `RoomSnapshot`/`GameSnapshot`/连续 Event Patch 的响应式牌桌，以及 `LegalActions` 驱动的下注、All-in 两步确认、Time Bank、pending/重试与连接反馈；动画、音效、独立赛果页和历史仍为**设计意图**
 > 权威范围：本文是 Web 前端（`apps/web`）工程设计的唯一权威来源——页面与路由、客户端状态与投影消费（Snapshot + Event Stream）、横向 Seat 牌桌与响应式布局、下注交互（快捷下注 / Slider / ± 调整 / 精确输入 / All-in 两步 / Time Bank）、AnimationQueue 与事件动画、音效、计时与连接状态展示、重连 UX、错误码展示、Lobby 与房间流、淘汰观战 / 赛果 / Hand History UI、可访问性与验收标准。范围之外的事实见 [工程文档总索引](./README.md)：Engine 规则语义属 [01](./01-engine-spec.md)，wire 契约与 `PlayerView` 投影属 [02](./02-protocol-spec.md)，服务端执行与计时属 [04](./04-game-server-architecture.md)，持久化属 [03](./03-data-model.md)，AI 推理属 P1 `server/ai`。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§3.1/§5/§6/§7/§9/§10）；《德州扑克项目规划_区块1-5_v0.1.docx》§1.5/§2.8–2.10/§4/§5（仅在《总规划》未覆盖处补充）；《德州扑克项目规划_区块6-10_v0.2.docx》§6.6/§7.10/§8.2/§8.13/§9.16–9.18/§10.3/§10.11（仅在《总规划》未覆盖处补充）；规则语义与事件目录见 [01](./01-engine-spec.md)，wire 契约见 [02](./02-protocol-spec.md)，服务端执行见 [04](./04-game-server-architecture.md)
 > 对应代码：`apps/web/`（TEX-23 已建立 `src/app` 路由壳、`messages/`、`protocol/` 与 `state/`；《总规划》§6 的 Next.js 16 + React 19 + TypeScript + Tailwind CSS 4、Jotai、Radix UI、Framer Motion 依赖已配置。Seat Layout、AnimationQueue 与业务 UI 待 TEX-24+）
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【部分已实现】** TEX-23 已落地路由壳、投影与命令状态边界；TEX-24 已落地 §6.1–§6.4 的 Home/Create/Join/Lobby、授权 HTTP 控制面与 Lobby WS 投影消费；TEX-21 在同一 Transport 上落地 Token 恢复、认证、断线退避、权威 Room/Game 快照屏障、连续 Event/Clock 消费和旧会话停止。HTTP 超时/取消、受限 sessionStorage 降级和按 `appliedSequence` 回收 pending 已测试。牌桌、动画、音效、赛果和历史仍待后续任务逐项回填。
+> **【部分已实现】** TEX-23 已落地路由壳、投影与命令状态边界；TEX-24 已落地 §6.1–§6.4 的 Home/Create/Join/Lobby、授权 HTTP 控制面与 Lobby WS 投影消费；TEX-21 在同一 Transport 上落地 Token 恢复、认证、断线退避、权威 Room/Game 快照屏障、连续 Event/Clock 消费和旧会话停止。TEX-25 已落地 §7/§8 的基础牌桌、响应式 Seat、Board/Pot、服务端 LegalActions 操作区、普通下注金额控件、All-in 两步确认、Time Bank 和连接/命令反馈；HTTP 超时/取消、受限 sessionStorage 降级和按 `appliedSequence` 回收 pending 已测试。动画、音效、独立赛果页和历史仍待后续任务逐项回填。
 
 ## 1. Purpose
 
@@ -216,7 +216,8 @@ apps/web/
 
 ### 7.1 视觉定位（《区块1-5 v0.1》§5.1）
 
-- 极简、明亮、白色主体；牌桌用低饱和中性色或轻微层次与白色背景区分；**不赌场化**（无霓虹、金币、VIP、宝箱、重绿赌桌视觉）。
+- 极简、明亮、白色主体；牌桌可使用深青绿色椭圆毛毡面与深色桌沿作为唯一强色块，页面留白、状态条与操作面板保持白色；**不赌场化**（无霓虹、金币、VIP、宝箱或高饱和装饰）。
+- TEX-25 桌面视觉顺序固定为：顶部轻量状态条、中央椭圆牌桌（底池与公共牌居中、玩家环绕）、底部本人 Seat 与悬浮操作区。深青绿色仅表达牌桌实体，不能扩展为整页深色背景。
 
 ### 7.2 Seat Layout（《总规划》§7.1；《区块6-10 v0.2》§10.3）
 
@@ -224,6 +225,7 @@ apps/web/
 - 桌面端牌桌横向展开，优先适配 16:9 / 16:10。
 - 基于 Seat 坐标的 absolute positioning / transform，不依赖普通文档流（《区块6-10 v0.2》§10.3）。
 - **自身 Seat 无论真实编号，视觉上始终位于屏幕下方偏中央；其他座位相对旋转**（《总规划》§7.1）。
+- 根据实际入座人数将其余 Seat 均匀分布于顶部及左右；空 Seat 只保留无障碍语义，不以普通文档流占位破坏椭圆牌桌。
 - Dealer Button、SB/BB 标识随每手位置移动（[01](./01-engine-spec.md) §11）。
 
 ### 7.3 信息层级（《区块1-5 v0.1》§5.4）
@@ -288,7 +290,7 @@ apps/web/
 - 普通候选按下述 step 四舍五入（恰好一半向上），再夹取到对应 `[minBetTo|minRaiseTo, maxRaiseTo]`。多个档位得到相同目标额时只保留一个；被夹到下限的首项显示“最小 {amount}”，到达 `allInTo` 的项统一转换为独立 All-in 确认态并提交 `ALL_IN`。
 - 金额 step 固定为 `max(1, round(currentBigBlind / 10))` 个筹码；Slider 与 `±` 共用该 step，长按 `±` 在 400ms 后以每 100ms 一次连续变化。合法边界值即使不是 step 的整数倍也必须可精确到达；`callAmount`、`min*To`、`maxRaiseTo`、`allInTo` 永不自行舍入。
 - Slider 拖动改变下注额，快捷档位产生轻微吸附；吸附不得阻止用户选择其他合法整数目标额。
-- 精确输入：**点击金额数字后才打开数字键盘**；键盘不是默认方式（§1 Purpose 硬门槛）。输入过程中保留用户原值；非整数或越界时显示提示并禁用提交，不静默改值。失焦时可以将草稿夹取到当前普通 Bet/Raise 合法区间，并以可见文案告知调整结果。
+- 精确输入：**点击金额数字后才打开数字键盘**；键盘不是默认方式（§1 Purpose 硬门槛）。输入过程中保留用户原值；非整数或越界时显示提示并禁用提交，不静默改值。仍聚焦的合法草稿点击提交时必须在同一次交互中作为提交金额，失焦不得吞掉该点击。失焦时可以将草稿夹取到当前普通 Bet/Raise 合法区间，并以可见文案告知调整结果。
 
 ### 8.4 键盘不是默认方式（《区块1-5 v0.1》§5.8）
 
@@ -296,7 +298,7 @@ apps/web/
 
 ### 8.5 All-in 两步（《区块1-5 v0.1》§5.9）
 
-- **不弹确认 Modal**：点击 All-in 快捷项后进入确认态，显示服务端给出的目标总投入 `allInTo`（例如 `ALL-IN · TO 7200`）；用户再次点击才提交 `{ type: "ALL_IN" }`。若确认前 `sequence`、当前 Actor 或 `canAllIn/allInTo` 改变，立即取消确认态——天然两步确认且不复用陈旧金额。
+- **不弹确认 Modal**：点击 All-in 快捷项后进入确认态，显示服务端给出的目标总投入 `allInTo`（例如 `ALL-IN · TO 7200`）；用户再次点击才提交 `{ type: "ALL_IN" }`。若确认前 `sequence`、当前 Actor 或 `canAllIn/allInTo` 改变，或用户改选普通 Bet/Raise 模式或金额（包括尚未提交的精确金额草稿），立即取消确认态——天然两步确认且不复用陈旧金额。
 
 ### 8.6 Time Bank 按钮
 
@@ -310,6 +312,8 @@ apps/web/
 - 首次提交后进入 `SENDING`，锁定重复点击并保留待提交记录，操作区可收起但不得乐观修改牌局规范态。`COMMAND_RESULT(APPLIED)` 只把命令标记为 `APPLIED_AWAITING_STATE`；在 `GAME_EVENT.sequence >= appliedSequence` 或 Snapshot 覆盖该序号前仍不得重新开放同一行动机会。`COMMAND_RESULT(REJECTED)` 按错误码结束或等待重同步。任何 `COMMAND_RESULT` 都不直接推进牌局规范态。
 - 连接中断且命令结果未知时，不生成新 ID 自动重复同一动作；重连完成并取得 Snapshot 后，若同一 `expectedSequence` 与行动机会仍有效，才允许用原 ID/原 Payload 重发，否则废弃 pending。用户在拒绝或状态推进后重新选择动作时使用新 ID。
 - 拒绝处理见 §14：`STALE_GAME_STATE` 重同步后重新决策；`ACTION_TIMEOUT` 丢弃并等待状态。
+
+> **实现核对（TEX-25）**：牌桌只以 `WebSocketTransport` 的命令订阅获得 pending/拒绝/重试反馈；在对应 Event/Snapshot 越过 `appliedSequence` 前保持禁用。`ProjectionStore` 仍是唯一的牌局状态源，乱序/重复/过期消息由其既有序列屏障处理。
 
 ## 9. AnimationQueue 与事件动画
 

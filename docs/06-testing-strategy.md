@@ -111,6 +111,8 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 > TEX-23/TEX-24 已补充前端基础与 Lobby Unit/E2E 测试：HTTP 成功/错误 Schema、Fake Clock 驱动 timeout、取消、Token 的同 Tab 恢复/安全清除与 storage 降级、WS 认证/幂等/`appliedSequence` pending 回收、Snapshot 覆盖、连续 Patch、乱序重同步、邀请链接预填和 Home 双入口的 a11y 回归。完整多浏览器多人联调继续由 TEX-28 落地。
 
+> TEX-25 增加牌桌展示和下注的定向回归：服务端 `LegalActions` 的操作准入、2–10 Seat 展示、BB/Pot 快捷额与普通 Bet/Raise 范围、键盘跟注、All-in 两步与 `ALL_IN` 信封、command feedback 不改投影。视觉验收以 Fake WebSocket 注入的合法投影在桌面与约 390×844 视口检查椭圆桌、环绕 Seat、公共牌及悬浮操作区，不依赖真实 game-server 或 sleep。WebSocketTransport 的 Fake WebSocket/Fake Clock/注入 UUID 测试继续覆盖 pending、拒绝、重连、乱序与 Token 安全边界。
+
 | 必测项 | 层次 | 规格来源 |
 | --- | --- | --- |
 | UI E2E：创建房间、邀请码加入、Ready、完成一手牌、完整 Tournament；下注无键盘（1/3 Pot、1/2 Pot、2/3 Pot、Pot、All-in、Slider、±）；普通 Raise Slider 范围为 `[minRaiseTo,maxRaiseTo]`，到达 `allInTo` 转独立 All-in 两步并提交 `ALL_IN`，Short All-in 不伪装成 Raise | E2E | 05 §8/§16 |

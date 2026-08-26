@@ -104,6 +104,36 @@ describe("WebSocketTransport", () => {
     expect(commandResults).toEqual([pending.requestId]);
   });
 
+  it("publishes command feedback to the UI while preserving Snapshot/Event as game authority", () => {
+    const { socket, store, transport } = setup();
+    const feedback: string[] = [];
+    transport.subscribeCommandResults((pending, result) => feedback.push(`${pending.status}:${result.status}`));
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+    const before = store.getSnapshot().game;
+    socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "REJECTED", duplicate: false, error: { code: "STALE_GAME_STATE", message: "ignored", retryable: true, traceId: "trace-1" } } });
+    expect(feedback).toEqual(["REJECTED:REJECTED"]);
+    expect(store.getSnapshot().game).toBe(before);
+    expect(store.getSnapshot().actionsDisabled).toBe(true);
+  });
+
+  it("publishes Session Replaced as a terminal feedback state without changing the last projection", () => {
+    const { socket, store, states, transport } = setup();
+    const errors: string[] = [];
+    transport.subscribeProtocolErrors((code) => errors.push(code));
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const before = store.getSnapshot().game;
+    socket.receive({ type: "SESSION_REPLACED", protocolVersion: 1, serverTime: 2, payload: {} });
+    expect(errors).toEqual(["SESSION_REPLACED"]);
+    expect(states).toContain("STOPPED");
+    expect(store.getSnapshot().game).toBe(before);
+  });
+
   it("recycles an APPLIED pending action only after its authoritative sequence arrives", () => {
     const { socket, commandResults, transport } = setup();
     transport.connect("room-1", "a".repeat(43));
@@ -215,5 +245,26 @@ describe("WebSocketTransport", () => {
     socket.open();
     socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 2, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
     expect(socket.sent.at(-1)).toBe(pending.serialized);
+  });
+
+  it("retries a user-rejected command after it is restored to SENDING", () => {
+    const clock = createFakeClock();
+    const { socket, transport } = setup(clock);
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: false, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+    socket.receive({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "REJECTED", duplicate: false, error: { code: "GAME_UNAVAILABLE", message: "ignored", retryable: true, traceId: "trace-1" } } });
+    transport.send({ ...pending, status: "SENDING" });
+
+    const sentBeforeReconnect = socket.sent.length;
+    socket.close();
+    clock.advance(500);
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 3, payload: { connectionId: "connection-2", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+
+    expect(socket.sent.length).toBeGreaterThan(sentBeforeReconnect);
+    expect(socket.sent.slice(sentBeforeReconnect)).toContain(pending.serialized);
   });
 });

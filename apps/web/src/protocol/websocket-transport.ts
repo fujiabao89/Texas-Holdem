@@ -51,6 +51,9 @@ export interface WebSocketTransportOptions {
   readonly clock?: WebSocketClock;
 }
 
+export type CommandResultListener = (pending: PendingCommand, result: CommandResultPayload) => void;
+export type ProtocolErrorListener = (code: ErrorCode) => void;
+
 export interface WebSocketClock {
   setTimeout(callback: () => void, delayMs: number): unknown;
   clearTimeout(handle: unknown): void;
@@ -62,6 +65,8 @@ export class WebSocketTransport {
   private playerToken: string | null = null;
   private state: ConnectionState = "IDLE";
   private readonly pending = new Map<string, PendingCommand>();
+  private readonly commandResultListeners = new Set<CommandResultListener>();
+  private readonly protocolErrorListeners = new Set<ProtocolErrorListener>();
   private retryTimer: unknown | null = null;
   private retryAttempt = 0;
 
@@ -117,6 +122,22 @@ export class WebSocketTransport {
       socket.close();
     }
     if (this.state !== "IDLE") this.transition("CLOSED");
+  }
+
+  /**
+   * Presentation code can observe command acknowledgement without treating it
+   * as a game-state update. The returned unsubscribe prevents route-lifetime
+   * listeners from leaking across navigation.
+   */
+  subscribeCommandResults(listener: CommandResultListener): () => void {
+    this.commandResultListeners.add(listener);
+    return () => this.commandResultListeners.delete(listener);
+  }
+
+  /** Exposes stable transport errors for user feedback only. */
+  subscribeProtocolErrors(listener: ProtocolErrorListener): () => void {
+    this.protocolErrorListeners.add(listener);
+    return () => this.protocolErrorListeners.delete(listener);
   }
 
   prepareCommand(command: Omit<Exclude<ClientCommand, Extract<ClientCommand, { type: "AUTHENTICATE" }>>, "requestId">): PendingCommand {
@@ -204,6 +225,7 @@ export class WebSocketTransport {
     };
     this.pending.set(result.requestId, next);
     this.options.onCommandResult?.(next);
+    for (const listener of this.commandResultListeners) listener(next, result);
     if (result.status === "REJECTED") {
       this.pending.delete(result.requestId);
       this.handleError(result.error?.code ?? "INVALID_MESSAGE");
@@ -245,12 +267,14 @@ export class WebSocketTransport {
 
   private handleInvalidMessage(): void {
     this.options.onProtocolError?.("INVALID_MESSAGE");
+    for (const listener of this.protocolErrorListeners) listener("INVALID_MESSAGE");
     this.options.projectionStore.requestResync("INVALID_EVENT");
     if (!this.requestSnapshot("INVALID_EVENT")) this.closeForProtocolError();
   }
 
   private handleError(code: ErrorCode): void {
     this.options.onProtocolError?.(code);
+    for (const listener of this.protocolErrorListeners) listener(code);
     if ((code === "AUTH_FAILED" || code === "INVITE_EXPIRED") && this.roomId !== null) this.options.tokenStore.clear(this.roomId, code);
     if (code === "AUTH_FAILED" || code === "UNSUPPORTED_PROTOCOL_VERSION" || code === "SESSION_REPLACED") {
       this.cancelRetry();
