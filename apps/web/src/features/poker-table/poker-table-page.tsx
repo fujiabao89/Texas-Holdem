@@ -196,7 +196,7 @@ function CardRow({ cards, hiddenCount = 0, variant = "seat" }: { readonly cards:
 function CardFace({ card, variant, className = "" }: { readonly card: Card; readonly variant: "board" | "seat" | "hole"; readonly className?: string }) {
   const red = card.suit === "DIAMONDS" || card.suit === "HEARTS";
   const dimensions = cardDimensions(variant);
-  const cornerText = variant === "seat" ? "text-[8px] sm:text-sm" : "text-xs sm:text-base";
+  const cornerText = variant === "seat" ? "text-[8px] sm:text-xs" : "text-[10px] sm:text-sm";
   const color = red ? "text-rose-600" : "text-slate-900";
   return <span className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#ffffff,#f6f8fb)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
@@ -213,12 +213,12 @@ function CardBack({ variant, className = "" }: { readonly variant: "seat" | "hol
 }
 
 function CardCorner({ rank, suit, className }: { readonly rank: Card["rank"]; readonly suit: string; readonly className: string }) {
-  return <span aria-hidden="true" className={`absolute grid justify-items-center gap-px leading-[0.95] ${className}`}><span>{rank}</span><span>{suit}</span></span>;
+  return <span aria-hidden="true" className={`absolute z-10 grid justify-items-center gap-px rounded-[0.1rem] bg-white/95 px-px leading-[0.95] ${className}`}><span>{rank}</span><span>{suit}</span></span>;
 }
 
 function CardPips({ card, variant }: { readonly card: Card; readonly variant: "board" | "seat" | "hole" }) {
   const suit = cardSuit(card);
-  const pipText = variant === "seat" ? "text-[0.82rem] sm:text-[1.25rem]" : "text-base sm:text-2xl";
+  const pipText = variant === "seat" ? "text-[9px] sm:text-xs" : variant === "board" ? "text-xs sm:text-base" : "text-xs sm:text-sm";
   const layout = pipLayouts[card.rank];
   if (layout !== undefined) return <>{layout.map((pip, index) => <span aria-hidden="true" className={`absolute -translate-x-1/2 -translate-y-1/2 leading-none ${pip.inverted ? "rotate-180" : ""} ${pipText}`} style={{ left: `${pip.x}%`, top: `${pip.y}%` }} key={index}>{suit}</span>)}</>;
   if (card.rank === "A") return <span aria-hidden="true" className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl"}`}>{suit}</span>;
@@ -231,15 +231,15 @@ function cardDimensions(variant: "board" | "seat" | "hole"): string {
 
 type PipPosition = { readonly x: number; readonly y: number; readonly inverted?: boolean };
 const pipLayouts: Readonly<Partial<Record<Card["rank"], readonly PipPosition[]>>> = {
-  "2": [{ x: 50, y: 27 }, { x: 50, y: 73, inverted: true }],
-  "3": [{ x: 50, y: 23 }, { x: 50, y: 50 }, { x: 50, y: 77, inverted: true }],
-  "4": [{ x: 29, y: 25 }, { x: 71, y: 25 }, { x: 29, y: 75, inverted: true }, { x: 71, y: 75, inverted: true }],
-  "5": [{ x: 29, y: 23 }, { x: 71, y: 23 }, { x: 50, y: 50 }, { x: 29, y: 77, inverted: true }, { x: 71, y: 77, inverted: true }],
-  "6": [{ x: 29, y: 20 }, { x: 71, y: 20 }, { x: 29, y: 50 }, { x: 71, y: 50 }, { x: 29, y: 80, inverted: true }, { x: 71, y: 80, inverted: true }],
-  "7": [{ x: 29, y: 17 }, { x: 71, y: 17 }, { x: 50, y: 35 }, { x: 29, y: 59 }, { x: 71, y: 59 }, { x: 29, y: 83, inverted: true }, { x: 71, y: 83, inverted: true }],
-  "8": [{ x: 29, y: 17 }, { x: 71, y: 17 }, { x: 50, y: 34 }, { x: 29, y: 50 }, { x: 71, y: 50 }, { x: 50, y: 66, inverted: true }, { x: 29, y: 83, inverted: true }, { x: 71, y: 83, inverted: true }],
-  "9": [{ x: 29, y: 18 }, { x: 71, y: 18 }, { x: 29, y: 36 }, { x: 71, y: 36 }, { x: 50, y: 50 }, { x: 29, y: 64, inverted: true }, { x: 71, y: 64, inverted: true }, { x: 29, y: 82, inverted: true }, { x: 71, y: 82, inverted: true }],
-  "10": [{ x: 29, y: 14 }, { x: 71, y: 14 }, { x: 29, y: 32 }, { x: 71, y: 32 }, { x: 29, y: 50 }, { x: 71, y: 50, inverted: true }, { x: 29, y: 68, inverted: true }, { x: 71, y: 68, inverted: true }, { x: 29, y: 86, inverted: true }, { x: 71, y: 86, inverted: true }],
+  "2": [{ x: 50, y: 31 }, { x: 50, y: 69, inverted: true }],
+  "3": [{ x: 50, y: 28 }, { x: 50, y: 50 }, { x: 50, y: 72, inverted: true }],
+  "4": [{ x: 34, y: 29 }, { x: 66, y: 29 }, { x: 34, y: 71, inverted: true }, { x: 66, y: 71, inverted: true }],
+  "5": [{ x: 34, y: 27 }, { x: 66, y: 27 }, { x: 50, y: 50 }, { x: 34, y: 73, inverted: true }, { x: 66, y: 73, inverted: true }],
+  "6": [{ x: 34, y: 25 }, { x: 66, y: 25 }, { x: 34, y: 50 }, { x: 66, y: 50 }, { x: 34, y: 75, inverted: true }, { x: 66, y: 75, inverted: true }],
+  "7": [{ x: 34, y: 24 }, { x: 66, y: 24 }, { x: 50, y: 37 }, { x: 34, y: 58 }, { x: 66, y: 58 }, { x: 34, y: 76, inverted: true }, { x: 66, y: 76, inverted: true }],
+  "8": [{ x: 34, y: 22 }, { x: 66, y: 22 }, { x: 50, y: 36 }, { x: 34, y: 50 }, { x: 66, y: 50 }, { x: 50, y: 64, inverted: true }, { x: 34, y: 78, inverted: true }, { x: 66, y: 78, inverted: true }],
+  "9": [{ x: 34, y: 22 }, { x: 66, y: 22 }, { x: 34, y: 36 }, { x: 66, y: 36 }, { x: 50, y: 50 }, { x: 34, y: 64, inverted: true }, { x: 66, y: 64, inverted: true }, { x: 34, y: 78, inverted: true }, { x: 66, y: 78, inverted: true }],
+  "10": [{ x: 34, y: 22 }, { x: 66, y: 22 }, { x: 34, y: 36 }, { x: 66, y: 36 }, { x: 34, y: 50 }, { x: 66, y: 50, inverted: true }, { x: 34, y: 64, inverted: true }, { x: 66, y: 64, inverted: true }, { x: 34, y: 78, inverted: true }, { x: 66, y: 78, inverted: true }],
 };
 
 function ClockStatus({ actionDeadline, timeBankMs }: { readonly actionDeadline: number | null; readonly timeBankMs: number }) { return <p className="text-xs text-slate-600 sm:text-sm">{actionDeadline === null ? message("table.waiting") : `${message("table.deadline")}：${new Date(actionDeadline).toLocaleTimeString("zh-CN")} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>; }
