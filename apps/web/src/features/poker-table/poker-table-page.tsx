@@ -80,12 +80,12 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
       setFeedback(message("table.connectionDisconnected"));
     }
   };
-  const chooseAmount = (next: number, nextMode: AmountMode = amountMode) => {
+  const chooseAmount = (next: number, nextMode: AmountMode = amountMode, closeExactInput = true) => {
     if (rangeForMode === null && !(range !== null && range.kind === nextMode)) return;
     const effectiveRange = rangeForMode ?? range!;
     setAmount(clampWager(next, effectiveRange));
     setAmountMode(effectiveRange.kind);
-    setShowExactInput(false);
+    if (closeExactInput) setShowExactInput(false);
     setAllInConfirmSequence(null);
   };
 
@@ -136,7 +136,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   </TableFrame>;
 }
 
-function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, rangeForMode, amount, showExactInput, exactAmount, allInConfirm, onAction, onSelectMode, onChooseAmount, onExactChange, onToggleExact, onSetAllInConfirm, onUseTimeBank }: { readonly game: GameSnapshot; readonly legal: NonNullable<GameSnapshot["viewer"]["legalActions"]>; readonly actionDeadline: number | null; readonly timeBankRemainingMs: number; readonly rangeForMode: WagerRange | null; readonly amount: number | null; readonly showExactInput: boolean; readonly exactAmount: string; readonly allInConfirm: boolean; readonly onAction: (action: SubmitAction) => void; readonly onSelectMode: (mode: AmountMode) => void; readonly onChooseAmount: (amount: number, mode?: AmountMode) => void; readonly onExactChange: (value: string) => void; readonly onToggleExact: () => void; readonly onSetAllInConfirm: (value: boolean) => void; readonly onUseTimeBank: () => void }) {
+function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, rangeForMode, amount, showExactInput, exactAmount, allInConfirm, onAction, onSelectMode, onChooseAmount, onExactChange, onToggleExact, onSetAllInConfirm, onUseTimeBank }: { readonly game: GameSnapshot; readonly legal: NonNullable<GameSnapshot["viewer"]["legalActions"]>; readonly actionDeadline: number | null; readonly timeBankRemainingMs: number; readonly rangeForMode: WagerRange | null; readonly amount: number | null; readonly showExactInput: boolean; readonly exactAmount: string; readonly allInConfirm: boolean; readonly onAction: (action: SubmitAction) => void; readonly onSelectMode: (mode: AmountMode) => void; readonly onChooseAmount: (amount: number, mode?: AmountMode, closeExactInput?: boolean) => void; readonly onExactChange: (value: string) => void; readonly onToggleExact: () => void; readonly onSetAllInConfirm: (value: boolean) => void; readonly onUseTimeBank: () => void }) {
   const currentRange = rangeForMode;
   const step = wagerStep(game.blindLevel.bigBlind);
   const displayedAmount = currentRange === null ? 0 : clampWager(amount ?? currentRange.min, currentRange);
@@ -145,11 +145,12 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
   const quick = useMemo(() => currentRange === null ? [] : quickAmounts(game, currentRange), [currentRange, game]);
   const submitAmount = () => {
     if (currentRange === null) return;
-    if (legal.canAllIn && displayedAmount === legal.allInTo) {
+    const submittedAmount = showExactInput && exactValid ? exactNumber : displayedAmount;
+    if (legal.canAllIn && submittedAmount === legal.allInTo) {
       onSetAllInConfirm(true);
       return;
     }
-    onAction(currentRange.kind === "BET" ? { type: "BET", betTo: displayedAmount } : { type: "RAISE", raiseTo: displayedAmount });
+    onAction(currentRange.kind === "BET" ? { type: "BET", betTo: submittedAmount } : { type: "RAISE", raiseTo: submittedAmount });
   };
   return <section className="relative z-20 mx-auto -mt-1 grid w-full max-w-xl gap-3 rounded-3xl border border-white/80 bg-white/95 p-3 shadow-[0_16px_35px_rgba(15,23,42,0.16)] backdrop-blur sm:p-4" aria-labelledby="actions-heading">
     <h2 id="actions-heading" className="sr-only">{message("betting.actions")}</h2>
@@ -166,7 +167,7 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
       <p className="text-sm text-slate-600">{formatMessage("betting.range", { min: currentRange.min, max: currentRange.max })}</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{quick.map((item) => <ActionButton key={item.label} tone="neutral" label={`${item.label} · ${item.amount}`} onClick={() => onChooseAmount(item.amount, currentRange.kind)} />)}</div>
       <div className="flex items-center gap-2"><ActionButton tone="neutral" label="−" ariaLabel={message("betting.decrease")} onClick={() => onChooseAmount(displayedAmount - step, currentRange.kind)} /><input className="w-full accent-emerald-700" type="range" aria-label={message("betting.amount")} min={currentRange.min} max={currentRange.max} step={step} value={displayedAmount} onChange={(event) => onChooseAmount(Number(event.target.value), currentRange.kind)} /><ActionButton tone="neutral" label="+" ariaLabel={message("betting.increase")} onClick={() => onChooseAmount(displayedAmount + step, currentRange.kind)} /></div>
-      <div className="flex flex-wrap items-center gap-2"><button className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" onClick={onToggleExact}>{message("betting.openExactInput")}</button><output aria-live="polite" className="font-semibold text-slate-950">{displayedAmount}</output>{showExactInput && <label className="grid gap-1 text-sm">{message("betting.amountInput")}<input className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2" inputMode="numeric" value={exactAmount} onChange={(event) => onExactChange(event.target.value)} onBlur={() => { if (exactValid) onChooseAmount(exactNumber, currentRange.kind); }} /></label>}</div>
+      <div className="flex flex-wrap items-center gap-2"><button className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" onClick={onToggleExact}>{message("betting.openExactInput")}</button><output aria-live="polite" className="font-semibold text-slate-950">{displayedAmount}</output>{showExactInput && <label className="grid gap-1 text-sm">{message("betting.amountInput")}<input className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2" inputMode="numeric" value={exactAmount} onChange={(event) => onExactChange(event.target.value)} onBlur={() => { if (exactValid) onChooseAmount(exactNumber, currentRange.kind, false); }} /></label>}</div>
       {showExactInput && !exactValid && exactAmount !== "" && <p className="text-sm text-red-700" role="alert">{message("betting.invalidAmount")}</p>}
       <ActionButton tone="bet" label={currentRange.kind === "BET" ? formatMessage("betting.submitBet", { amount: displayedAmount }) : formatMessage("betting.submitRaise", { amount: displayedAmount })} disabled={showExactInput && !exactValid} onClick={submitAmount} />
     </div>}

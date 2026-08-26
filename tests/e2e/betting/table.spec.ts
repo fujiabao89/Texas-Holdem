@@ -117,6 +117,25 @@ test("改选普通加注会取消全下确认并提交加注", async ({ page }) 
   expect(submitted[0]).toMatchObject({ type: "SUBMIT_ACTION", payload: { action: { type: "RAISE", raiseTo: 20 } } });
 });
 
+test("点击提交会采用仍聚焦的精确加注额", async ({ page }) => {
+  const submitted: unknown[] = [];
+  await seedTableSession(page);
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      const command = JSON.parse(raw.toString()) as { type: string };
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "SUBMIT_ACTION") submitted.push(command);
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await page.getByRole("button", { name: "加注" }).click();
+  await page.getByRole("button", { name: "输入精确金额" }).click();
+  await page.getByRole("textbox", { name: "输入精确下注额" }).fill("40");
+  await page.getByRole("button", { name: "确认加注至 20" }).click();
+  await expect.poll(() => submitted.length).toBe(1);
+  expect(submitted[0]).toMatchObject({ type: "SUBMIT_ACTION", payload: { action: { type: "RAISE", raiseTo: 40 } } });
+});
+
 test("ClockUpdated 的权威 Time Bank 余额会收起操作按钮", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
