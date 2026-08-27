@@ -14,6 +14,7 @@ import type { PresentationOverlay as PresentationOverlayState } from "../../anim
 import type { PendingCommand as TransportPendingCommand } from "../../protocol/websocket-transport";
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
+import { dealFlightVector } from "./deal-flight";
 import { canSubmitTableAction, remainingTimeMs, tableSeats } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
@@ -33,6 +34,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const [exactAmount, setExactAmount] = useState("");
   const [allInConfirmSequence, setAllInConfirmSequence] = useState<string | null>(null);
   const [terminalError, setTerminalError] = useState<TerminalError | null>(null);
+  const [tableElement, setTableElement] = useState<HTMLDivElement | null>(null);
   const wasDisconnected = useRef(false);
   // sessionStorage is deliberately client-only. Keep SSR and hydration output
   // identical until React has switched to the browser snapshot.
@@ -128,7 +130,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
       <div className="flex items-center gap-2"><button className={buttonClass} aria-label={message("table.soundLabel")} aria-pressed={soundEnabled} onClick={() => { void audio.unlock(); setSoundEnabled(!soundEnabled); }}>{soundEnabled ? message("table.soundOn") : message("table.soundOff")}</button><ConnectionStatus connectionState={connectionState} syncing={state.actionsDisabled} /></div>
     </header>
     <section className="relative mx-auto w-full max-w-[1240px] py-10 sm:py-16" aria-label={message("table.title")}>
-      <div className="relative mx-auto aspect-[1.06/1] w-full rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:aspect-[1.72/1] sm:border-[18px]">
+      <div ref={setTableElement} className="relative mx-auto aspect-[1.06/1] w-full rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:aspect-[1.72/1] sm:border-[18px]">
         <div aria-hidden="true" className="absolute inset-[4%] rounded-[46%] border border-emerald-300/25 bg-[radial-gradient(ellipse_at_center,rgba(20,148,111,0.28),transparent_65%)]" />
         <p aria-hidden="true" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none whitespace-nowrap font-serif text-3xl font-semibold tracking-[0.2em] text-emerald-200/10 sm:text-6xl">TEXAS HOLD&apos;EM</p>
         <div className="absolute left-1/2 top-[31%] z-20 flex -translate-x-1/2 items-center gap-2 text-center sm:top-[34%]">
@@ -139,13 +141,14 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
           <p className="sr-only">{message("table.board")}</p>
           <CommunityCards cards={game.board} overlay={presentation.overlay} />
         </div>
+        <DealerDeck />
         <div className="absolute bottom-[8%] left-1/2 z-20 -translate-x-1/2 text-center text-[10px] font-medium text-emerald-100/75 sm:text-xs">
           <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{actorName(game) ?? message("table.waiting")}</span>
         </div>
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
           {tableSeats(game).map((player, seat) => <SeatCard game={game} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
         </div>
-        {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} seatSlots={seatSlots} />}
+        {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} seatSlots={seatSlots} tableElement={tableElement} />}
       </div>
     </section>
     <section className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-center shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus actionDeadline={state.clock?.actionDeadline ?? game.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? game.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${game.handId}:${game.currentActorPlayerId ?? "none"}`} /></section>
@@ -317,10 +320,10 @@ function ClockStatus({ actionDeadline, timeBankMs, serverTime, clockKey }: { rea
   return <p className="text-xs text-slate-600 sm:text-sm">{remaining === null ? message("table.waiting") : `${message("table.remainingTime")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(remaining / 1000) })} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>;
 }
 function ConnectionStatus({ connectionState, syncing }: { readonly connectionState: string; readonly syncing: boolean }) { return <p role="status" aria-live="polite" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">{syncing ? message("table.syncing") : connectionState === "CONNECTED" ? message("table.connectionConnected") : connectionState === "STOPPED" ? message("table.connectionReplaced") : connectionState === "CONNECTING" || connectionState === "AUTHENTICATING" ? message("table.connectionConnecting") : message("table.connectionDisconnected")}</p>; }
-function PresentationOverlay({ overlay, boardCards, game, seatSlots }: { readonly overlay: PresentationOverlayState; readonly boardCards: readonly Card[]; readonly game: GameSnapshot; readonly seatSlots: ReadonlyArray<number | null> }) {
+function PresentationOverlay({ overlay, boardCards, game, seatSlots, tableElement }: { readonly overlay: PresentationOverlayState; readonly boardCards: readonly Card[]; readonly game: GameSnapshot; readonly seatSlots: ReadonlyArray<number | null>; readonly tableElement: HTMLDivElement | null }) {
   const text = overlay.kind === "DEAL" ? message("table.animationDeal") : overlay.kind === "BURN" ? message("table.animationBurn") : overlay.kind === "BOARD" ? message("table.animationBoard") : overlay.kind === "WAGER" ? message("table.animationWager") : overlay.kind === "FOLD" ? message("table.animationFold") : overlay.kind === "SHOWDOWN" ? message("table.animationShowdown") : overlay.kind === "POT_AWARD" ? message("table.animationPotAward") : overlay.kind === "ELIMINATION" ? message("table.animationElimination") : message("table.animationFinish");
   if (overlay.kind === "BOARD") return <p className="sr-only" aria-live="polite">{text}</p>;
-  if (overlay.event.type === "DEAL_HOLE_CARD") return <><HoleCardDealFlight event={overlay.event} viewerPlayerId={game.viewer.playerId} slot={seatSlots[overlay.event.payload.seat] ?? null} /><p className="sr-only" aria-live="polite">{text}</p></>;
+  if (overlay.event.type === "DEAL_HOLE_CARD") return <><HoleCardDealFlight event={overlay.event} viewerPlayerId={game.viewer.playerId} slot={seatSlots[overlay.event.payload.seat] ?? null} tableElement={tableElement} /><p className="sr-only" aria-live="polite">{text}</p></>;
   if (overlay.event.type === "PLAYER_REVEALED" && "playerId" in overlay.event.payload) {
     const playerId = overlay.event.payload.playerId;
     const playerName = game.players.find((player) => player.playerId === playerId)?.displayName ?? message("table.player");
@@ -329,21 +332,39 @@ function PresentationOverlay({ overlay, boardCards, game, seatSlots }: { readonl
   return <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center" aria-live="polite"><div className="grid justify-items-center gap-2"><span className="animate-pulse rounded-full bg-slate-950/80 px-3 py-1.5 text-xs font-semibold text-white shadow-lg">{overlay.burnCardBackOnly ? "🂠" : ""} {text}</span></div></div>;
 }
 
-function HoleCardDealFlight({ event, viewerPlayerId, slot }: { readonly event: Extract<PresentationOverlayState["event"], { type: "DEAL_HOLE_CARD" }>; readonly viewerPlayerId: string; readonly slot: number | null }) {
-  if (slot === null) return null;
-  const target = tableSeatPositions[slot]!;
+function DealerDeck() {
+  return <div className="pointer-events-none absolute left-1/2 top-[64%] z-20 h-[4.5rem] w-[3.2rem] -translate-x-1/2 -translate-y-1/2 sm:h-24 sm:w-[4.3rem]" aria-label={message("table.deck")}>
+    <span className="absolute inset-0 translate-x-2 translate-y-2 rotate-[5deg] rounded-[0.45rem] border border-blue-200/40 bg-[#16377d] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
+    <span className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2deg] rounded-[0.45rem] border border-blue-100/60 bg-[#1a408c] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
+    <CardBack variant="hole" className="!absolute inset-0" />
+    <span className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-950/55 px-2 py-0.5 text-[9px] font-semibold text-emerald-50 shadow-sm sm:text-[10px]">{message("table.deck")}</span>
+  </div>;
+}
+
+function HoleCardDealFlight({ event, viewerPlayerId, slot, tableElement }: { readonly event: Extract<PresentationOverlayState["event"], { type: "DEAL_HOLE_CARD" }>; readonly viewerPlayerId: string; readonly slot: number | null; readonly tableElement: HTMLDivElement | null }) {
+  const target = slot === null ? null : tableSeatPositions[slot]!;
+  const vector = target === null ? null : holeDealVector(tableElement, target);
   const isViewer = event.payload.playerId === viewerPlayerId;
   // `card` only exists in the already-filtered event for its owner. Never use
   // canonical player data as a fallback: opponents must stay card-back only.
   const privateCard = isViewer ? event.payload.card : undefined;
+  if (vector === null) return null;
   return <div className="pointer-events-none absolute inset-0 z-40" aria-hidden="true">
-    <span className="hole-deal-flight absolute block h-[4.5rem] w-[3.2rem] sm:h-24 sm:w-[4.3rem]" style={{ "--hole-target-x": target.left, "--hole-target-y": `calc(${target.top} - 6%)` } as CSSProperties}>
+    <span className="hole-deal-flight absolute block h-[4.5rem] w-[3.2rem] sm:h-24 sm:w-[4.3rem]" style={{ "--hole-delta-x": `${vector.x}px`, "--hole-delta-y": `${vector.y}px` } as CSSProperties}>
       <span className={`relative block h-full w-full ${privateCard === undefined ? "" : "hole-deal-flip-own"}`}>
         <CardBack variant="hole" className="hole-deal-back absolute inset-0" />
         {privateCard !== undefined && <CardFace card={privateCard} variant="hole" className="hole-deal-face absolute inset-0" />}
       </span>
     </span>
   </div>;
+}
+
+function holeDealVector(tableElement: HTMLDivElement | null, target: { readonly left: string; readonly top: string }): { x: number; y: number } | null {
+  if (tableElement === null) return null;
+  const { width, height } = tableElement.getBoundingClientRect();
+  // This runs once when a projected deal task mounts. The actual 900ms flight
+  // only animates transform/opacity, so every seat stays on the compositor.
+  return dealFlightVector({ width, height }, target);
 }
 
 function ShowdownShowcase({ cards, boardCards, bestFiveCards, playerName }: { readonly cards: readonly Card[]; readonly boardCards: readonly Card[]; readonly bestFiveCards: readonly Card[]; readonly playerName: string }) {

@@ -112,6 +112,7 @@ export const zhCN = {
     bestFiveServer: "最佳五张（由服务端判定）",
     syncing: "正在同步最新牌局状态，暂不能行动。",
     pot: "底池",
+    deck: "牌堆",
     board: "公共牌",
     noBoard: "尚未发出公共牌",
     currentActor: "当前行动",
