@@ -13,9 +13,10 @@
 }
 
 @keyframes hole-card-deal-flight {
-  0% { opacity: 0; transform: translate3d(-50%, -50%, 0) rotate(16deg) scale(0.72); }
-  18% { opacity: 1; }
-  76% { opacity: 1; transform: translate3d(calc(-50% + var(--hole-delta-x)), calc(-50% + var(--hole-delta-y)), 0) rotate(-2deg) scale(1.04); }
+  0% { opacity: 0; transform: translate3d(-50%, -50%, 0) rotate(18deg) scale(0.68); }
+  12% { opacity: 1; transform: translate3d(-50%, -50%, 0) rotate(14deg) scale(0.84); }
+  46% { opacity: 1; transform: translate3d(calc(-50% + var(--hole-mid-x)), calc(-50% + var(--hole-mid-y)), 0) rotate(-8deg) scale(1.06); }
+  82% { opacity: 1; transform: translate3d(calc(-50% + var(--hole-delta-x)), calc(-50% + var(--hole-delta-y)), 0) rotate(-2deg) scale(1.04); }
   100% { opacity: 1; transform: translate3d(calc(-50% + var(--hole-delta-x)), calc(-50% + var(--hole-delta-y)), 0) rotate(0) scale(1); }
 }
 
@@ -60,15 +61,15 @@
 .board-deal-face { transform: rotateY(180deg); }
 
 .hole-deal-flight {
-  animation: hole-card-deal-flight 900ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+  animation: hole-card-deal-flight 1250ms cubic-bezier(0.22, 0.72, 0.18, 1) both;
   left: 50%;
-  top: 64%;
+  top: 71%;
   perspective: 800px;
   will-change: transform, opacity;
 }
 
 .hole-deal-flip-own {
-  animation: hole-card-flip 600ms cubic-bezier(0.3, 0.75, 0.25, 1) 900ms both;
+  animation: hole-card-flip 700ms cubic-bezier(0.3, 0.75, 0.25, 1) 1250ms both;
   transform-style: preserve-3d;
 }
 

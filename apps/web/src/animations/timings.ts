@@ -1,9 +1,9 @@
 export const animationTimings = {
   // Each hole-card event visibly travels from the deck; a private card then
   // waits at its seat before it is allowed to flip.
-  deal: 900,
-  dealSeatInterval: 300,
-  ownCardReveal: 600,
+  deal: 1_250,
+  dealSeatInterval: 400,
+  ownCardReveal: 700,
   wager: 220,
   check: 140,
   fold: 200,
@@ -35,5 +35,5 @@ export const softCatchUpTasks = 8;
 // A normal all-in sends the remaining streets, two reveals and awards as one
 // burst. Keep that explainable flow in Soft Catch-up; reserve hard reset for
 // genuinely stale/lossy backlogs.
-export const hardForwardBacklogMs = 28_000;
+export const hardForwardBacklogMs = 30_000;
 export const hardForwardEvents = 40;

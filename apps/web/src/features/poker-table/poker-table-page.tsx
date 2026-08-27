@@ -333,7 +333,7 @@ function PresentationOverlay({ overlay, boardCards, game, seatSlots, tableElemen
 }
 
 function DealerDeck() {
-  return <div className="pointer-events-none absolute left-1/2 top-[64%] z-20 h-[4.5rem] w-[3.2rem] -translate-x-1/2 -translate-y-1/2 sm:h-24 sm:w-[4.3rem]" aria-label={message("table.deck")}>
+  return <div className="pointer-events-none absolute left-1/2 top-[71%] z-10 h-[4.5rem] w-[3.2rem] -translate-x-1/2 -translate-y-1/2 sm:h-24 sm:w-[4.3rem]" aria-label={message("table.deck")}>
     <span className="absolute inset-0 translate-x-2 translate-y-2 rotate-[5deg] rounded-[0.45rem] border border-blue-200/40 bg-[#16377d] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
     <span className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2deg] rounded-[0.45rem] border border-blue-100/60 bg-[#1a408c] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
     <CardBack variant="hole" className="!absolute inset-0" />
@@ -350,7 +350,7 @@ function HoleCardDealFlight({ event, viewerPlayerId, slot, tableElement }: { rea
   const privateCard = isViewer ? event.payload.card : undefined;
   if (vector === null) return null;
   return <div className="pointer-events-none absolute inset-0 z-40" aria-hidden="true">
-    <span className="hole-deal-flight absolute block h-[4.5rem] w-[3.2rem] sm:h-24 sm:w-[4.3rem]" style={{ "--hole-delta-x": `${vector.x}px`, "--hole-delta-y": `${vector.y}px` } as CSSProperties}>
+    <span className="hole-deal-flight absolute block h-[4.5rem] w-[3.2rem] sm:h-24 sm:w-[4.3rem]" style={{ "--hole-delta-x": `${vector.x}px`, "--hole-delta-y": `${vector.y}px`, "--hole-mid-x": `${vector.midX}px`, "--hole-mid-y": `${vector.midY}px` } as CSSProperties}>
       <span className={`relative block h-full w-full ${privateCard === undefined ? "" : "hole-deal-flip-own"}`}>
         <CardBack variant="hole" className="hole-deal-back absolute inset-0" />
         {privateCard !== undefined && <CardFace card={privateCard} variant="hole" className="hole-deal-face absolute inset-0" />}
@@ -359,7 +359,7 @@ function HoleCardDealFlight({ event, viewerPlayerId, slot, tableElement }: { rea
   </div>;
 }
 
-function holeDealVector(tableElement: HTMLDivElement | null, target: { readonly left: string; readonly top: string }): { x: number; y: number } | null {
+function holeDealVector(tableElement: HTMLDivElement | null, target: { readonly left: string; readonly top: string }): ReturnType<typeof dealFlightVector> | null {
   if (tableElement === null) return null;
   const { width, height } = tableElement.getBoundingClientRect();
   // This runs once when a projected deal task mounts. The actual 900ms flight
