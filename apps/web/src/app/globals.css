@@ -13,10 +13,10 @@
 }
 
 @keyframes hole-card-deal-flight {
-  0% { opacity: 0; transform: translate(-50%, -50%) rotate(16deg) scale(0.72); }
+  0% { opacity: 0; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(16deg) scale(0.72); }
   18% { opacity: 1; }
-  76% { opacity: 1; transform: translate(calc(var(--hole-target-x) - 50%), calc(var(--hole-target-y) - 50%)) rotate(-2deg) scale(1.04); }
-  100% { opacity: 1; transform: translate(calc(var(--hole-target-x) - 50%), calc(var(--hole-target-y) - 50%)) rotate(0) scale(1); }
+  76% { opacity: 1; left: var(--hole-target-x); top: var(--hole-target-y); transform: translate(-50%, -50%) rotate(-2deg) scale(1.04); }
+  100% { opacity: 1; left: var(--hole-target-x); top: var(--hole-target-y); transform: translate(-50%, -50%) rotate(0) scale(1); }
 }
 
 @keyframes hole-card-flip {
@@ -61,6 +61,8 @@
 
 .hole-deal-flight {
   animation: hole-card-deal-flight 900ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+  left: 50%;
+  top: 50%;
   perspective: 800px;
 }
 
