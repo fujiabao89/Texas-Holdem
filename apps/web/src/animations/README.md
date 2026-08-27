@@ -4,4 +4,4 @@
 
 公共牌任务携带该 Event 的公开牌和动画前 Board 长度：Flop/Turn/River 在目标牌框中从 Deck 方向到位、再翻面；不为 Burn 生成牌面。`PLAYER_REVEALED` 只携带服务端公开的 `handRank.bestFiveCards`，牌桌仅以该字段让七张候选牌中的非最佳牌淡出并组合五张，不计算牌型、赢家或补牌。
 
-节奏常量集中于 `timings.ts`：公共牌保留完整的“飞入目标框 → 停顿 → 翻面”时间，Showdown 保留候选牌、未选牌淡出和 Best Five 组合的可读停留；音频控制器复用同一公共牌节拍。
+节奏常量集中于 `timings.ts`：公共牌保留完整的“飞入目标框 → 停顿 → 翻面”时间，Showdown 保留候选牌、未选牌淡出和 Best Five 组合的长停留；Soft Catch-up 仅压缩普通动作反馈，绝不提早提交这些语义帧的 canonical 终态，因此不会让第三张公共牌跳帧。音频控制器复用同一公共牌节拍。

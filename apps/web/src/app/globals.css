@@ -48,10 +48,10 @@
 .board-deal-face { transform: rotateY(180deg); }
 
 .showdown-showcase { min-width: min(21rem, 100%); }
-.showdown-source-card { animation: showdown-source-card 600ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--showdown-delay) both; }
-.showdown-discard-card { animation-name: showdown-source-card, showdown-discard-card; animation-duration: 600ms, 900ms; animation-timing-function: cubic-bezier(0.2, 0.85, 0.25, 1), ease-out; animation-delay: var(--showdown-delay), 900ms; animation-fill-mode: both, forwards; }
-.showdown-best-card { animation: showdown-best-card 650ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--best-delay) both; }
-.showdown-best-label { animation: showdown-best-label 500ms ease-out 1.65s both; }
+.showdown-source-card { animation: showdown-source-card 700ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--showdown-delay) both; }
+.showdown-discard-card { animation-name: showdown-source-card, showdown-discard-card; animation-duration: 700ms, 1.2s; animation-timing-function: cubic-bezier(0.2, 0.85, 0.25, 1), ease-out; animation-delay: var(--showdown-delay), 1s; animation-fill-mode: both, forwards; }
+.showdown-best-card { animation: showdown-best-card 750ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--best-delay) both; }
+.showdown-best-label { animation: showdown-best-label 600ms ease-out 2s both; }
 
 @media (prefers-reduced-motion: reduce) {
   .board-deal-flight,

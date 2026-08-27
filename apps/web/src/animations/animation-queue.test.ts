@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GameEventMessage } from "@texas-holdem/protocol";
+import type { Card, GameEvent, GameEventMessage } from "@texas-holdem/protocol";
 
 import { createFakeClock } from "../../../../tests/support/fake-clock";
 import { gameSnapshot } from "../testing-fixtures";
@@ -16,6 +16,13 @@ function event(sequence: string, type: "PLAYER_CHECKED" | "BURN_CARD" = "PLAYER_
       patch: {},
     },
   };
+}
+
+function gameEvent(sequence: string, next: GameEvent): GameEventMessage {
+  return {
+    type: "GAME_EVENT", protocolVersion: 1, serverTime: 1,
+    payload: { tournamentId: "tournament-1", sequence, handId: "hand-1", event: next, patch: {} },
+  } as GameEventMessage;
 }
 
 describe("AnimationQueue", () => {
@@ -105,6 +112,27 @@ describe("AnimationQueue", () => {
     }
     expect(hardForwards).toBe(0);
     expect(queue.getSnapshot()).toMatchObject({ overlay: { kind: "SHOWDOWN" } });
+  });
+
+  it("does not let Soft Catch-up complete a three-card board before its third visual frame", () => {
+    const clock = createFakeClock();
+    const queue = new AnimationQueue({ clock });
+    const before = gameSnapshot();
+    const allIn = gameSnapshot({ sequence: "9007199254740992" });
+    const cards: Card[] = [{ rank: "A", suit: "SPADES" }, { rank: "K", suit: "HEARTS" }, { rank: "Q", suit: "CLUBS" }];
+    const afterFlop = gameSnapshot({ sequence: "9007199254740993", board: cards });
+    queue.alignToSnapshot(before);
+    queue.enqueue(gameEvent(allIn.sequence, { type: "PLAYER_ALL_IN", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET", amount: 10, betTo: 10 } }), allIn);
+    queue.enqueue(gameEvent(afterFlop.sequence, { type: "FLOP_DEALT", payload: { cards } }), afterFlop);
+    for (let index = 0; index < 9; index += 1) queue.enqueue(event(String(9_007_199_254_740_994n + BigInt(index))), gameSnapshot({ sequence: String(9_007_199_254_740_994n + BigInt(index)), board: cards }));
+
+    clock.advance(animationTimings.allIn);
+    expect(queue.getSnapshot()).toMatchObject({ mode: "SOFT_CATCH_UP", overlay: { kind: "BOARD", boardCards: cards } });
+    const flopDuration = animationTimings.flopCard * 3 + animationTimings.flopInterval * 2;
+    clock.advance(flopDuration - 1);
+    expect(queue.getSnapshot().game?.sequence).toBe(allIn.sequence);
+    clock.advance(1);
+    expect(queue.getSnapshot().game?.sequence).toBe(afterFlop.sequence);
   });
 
   it("budgets Hard Fast Forward above a readable two-player all-in showdown", () => {

@@ -8,13 +8,13 @@ export const animationTimings = {
   allIn: 280,
   burn: 160,
   // Each community card travels from the dealer, lands in its slot, then flips.
-  flopCard: 960,
-  flopInterval: 260,
-  turnRiver: 960,
+  flopCard: 1_000,
+  flopInterval: 300,
+  turnRiver: 1_000,
   // Reveal source cards, fade the two non-winning candidates, then assemble the
   // five server-projected cards in the centre of the table.
-  showdownReveal: 1_200,
-  bestFive: 3_000,
+  showdownReveal: 1_400,
+  bestFive: 5_000,
   winner: 800,
   potAward: 450,
   handEnd: 1_000,
@@ -33,5 +33,5 @@ export const softCatchUpTasks = 8;
 // A normal all-in sends the remaining streets, two reveals and awards as one
 // burst. Keep that explainable flow in Soft Catch-up; reserve hard reset for
 // genuinely stale/lossy backlogs.
-export const hardForwardBacklogMs = 22_000;
+export const hardForwardBacklogMs = 28_000;
 export const hardForwardEvents = 40;

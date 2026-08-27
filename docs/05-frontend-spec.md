@@ -377,15 +377,15 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 | Blind/Call/Bet/Raise 筹码移动 | 220ms |
 | Check / Fold / All-in 反馈 | 140ms / 200ms / 280ms |
 | Burn 移出 | 160ms |
-| Flop 单张入框并翻牌 / 张间隔 | 960ms / 260ms |
-| Turn、River 入框并翻牌 | 960ms |
-| Showdown 单人 Reveal / 人间隔 | 1,200ms / 120ms |
-| Best Five 候选淡出与组合 / 牌型标签停留 | 3,000ms / 1,000ms |
+| Flop 单张入框并翻牌 / 张间隔 | 1,000ms / 300ms |
+| Turn、River 入框并翻牌 | 1,000ms |
+| Showdown 单人 Reveal / 人间隔 | 1,400ms / 120ms |
+| Best Five 候选淡出与组合 / 牌型标签停留 | 5,000ms / 3,000ms |
 | Winner 突出 / 每个 Pot 分配 | 800ms / 450ms |
 | Hand End 最终停留 | 1,000ms |
 
-- 单个普通动作视觉反馈不得超过 300ms；公共牌必须完整保留“入框、停顿、翻面”的可读节奏。Showdown 从首次 Reveal 到首个 Pot 开始分配以看清候选牌淡出和 Best Five 组合为优先，双人常规剧本目标不超过 9 秒；Side Pot 很多时保留信息顺序，但每个额外 Pot 的停留可缩短至 300ms。
-- AnimationQueue 预计视觉落后超过 2 秒或待播任务超过 8 个时进入 Soft Catch-up：播放速率提高到 1.75×，跳过纯装饰任务，但保留 Deal/Burn/Board/Reveal/Winner/Pot 语义帧。预计落后超过 22 秒或未播 Event 超过 40 个时进入 Hard Fast Forward，发送 `REQUEST_SNAPSHOT(reason=MANUAL)`；阈值高于一手按可读节奏播放的双人 All-in 正常事件突发，因此完整的公开街牌、Reveal 与 Best Five 先在 Soft Catch-up 中播放，不能被 Hard Forward 直接跳过。
+- 单个普通动作视觉反馈不得超过 300ms；公共牌必须完整保留“入框、停顿、翻面”的可读节奏。Showdown 从首次 Reveal 到首个 Pot 开始分配以看清候选牌淡出和 Best Five 组合为优先，双人常规剧本目标不超过 15 秒；Side Pot 很多时保留信息顺序，但每个额外 Pot 的停留可缩短至 300ms。
+- AnimationQueue 预计视觉落后超过 2 秒或待播任务超过 8 个时进入 Soft Catch-up：普通操作的纯展示反馈可提高到 1.75×或跳过，但 Deal/Burn/Board/Reveal/Winner/Pot 等语义帧保持声明时长，不能在 CSS 卡牌飞行/翻面完成前提交 canonical 终帧。预计落后超过 28 秒或未播 Event 超过 40 个时进入 Hard Fast Forward，发送 `REQUEST_SNAPSHOT(reason=MANUAL)`；阈值高于一手按可读节奏播放的双人 All-in 正常事件突发，因此完整的公开街牌、Reveal 与 Best Five 先在 Soft Catch-up 中播放，不能被 Hard Forward 直接跳过。
 - 服务端对单连接满足任一条件即发送 `RESYNC_REQUIRED`：未发送 `GAME_EVENT ≥64`、最老未发送 Event 等待 `≥5s`、或应用队列估算字节数加 `ws.bufferedAmount ≥256KiB`；随后丢弃该连接旧积压并用 Snapshot 重建屏障。总待发送量达到 `1MiB`，或 30 秒内始终无法回落到 `256KiB` 以下时，以 Close Code `1013` 关闭并由客户端退避重连（[04](./04-game-server-architecture.md) §9.5）。
 - Fast Forward 的原子操作顺序为：暂停取任务 → 清空队列与 Overlay → 应用新 Snapshot 到牌局规范态 → 将动画展示态整体对齐到该 Snapshot → 恢复接收屏障后的 Event。不得出现新规范态搭配旧牌面/筹码 Overlay 的混合帧。
 - Soft Catch-up 不提示用户；Hard Fast Forward 使用 120ms 淡出/淡入，并在完成后显示 3 秒 Toast“牌局进度已同步至最新状态”。如果正在展示 Showdown，先保留最终 Board、赢家和各 Pot 结果的静态摘要至少 1 秒，再完成跳转。
@@ -604,7 +604,7 @@ E2E 固定使用 **Playwright**，可访问性自动扫描使用 **axe-core**；
 | 5 | 行动 `15/20/30/45/60/不限时`；Time Bank `关/30/60/120`，单次最多 30 秒且每次行动最多成功一次 | §6.2/§8.6 |
 | 6 | 固定快捷档位及 Bet/Raise 的 `*To` 公式 | §8.3 |
 | 7 | step=`max(1, round(BB/10))`，半数向上、边界精确可达 | §8.3 |
-| 8 | 2s/8 任务 Soft Catch-up；22s/40 Event Hard Fast Forward；服务端 64 Event/5s/256KiB，硬上限 1MiB/30s | §9.6 |
+| 8 | 2s/8 任务 Soft Catch-up（仅普通反馈加速）；28s/40 Event Hard Fast Forward；服务端 64 Event/5s/256KiB，硬上限 1MiB/30s | §9.6 |
 | 9 | Kenney Casino Audio + UI Audio（CC0），本地托管并留授权证据 | §10 |
 | 10 | `serverTime + performance.now()` 展示锚点 | §11.1 |
 | 11 | Playwright + axe-core；跨应用 E2E 位于 `tests/e2e/` | §16；[06](./06-testing-strategy.md) §2/§9 |

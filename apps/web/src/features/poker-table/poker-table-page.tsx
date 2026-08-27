@@ -334,11 +334,11 @@ function ShowdownShowcase({ cards, boardCards, bestFiveCards, playerName }: { re
     <section className="showdown-showcase grid max-w-full justify-items-center gap-2 rounded-2xl border border-amber-200/70 bg-slate-950/90 p-3 shadow-2xl sm:p-4" aria-label={message("table.bestFiveServer") }>
       <p className="text-center text-xs font-semibold text-amber-100">{formatMessage("table.showdownCombining", { name: playerName })}</p>
       <div className="flex max-w-full flex-wrap justify-center gap-1.5">
-        {candidates.map((card, index) => <span className={isProjectedBestCard(bestFiveCards, card) ? "showdown-source-card" : "showdown-source-card showdown-discard-card"} style={{ "--showdown-delay": `${index * 110}ms` } as CSSProperties} key={`candidate-${card.rank}-${card.suit}-${index}`}><CardFace card={card} variant="seat" /></span>)}
+        {candidates.map((card, index) => <span className={isProjectedBestCard(bestFiveCards, card) ? "showdown-source-card" : "showdown-source-card showdown-discard-card"} style={{ "--showdown-delay": `${index * 135}ms` } as CSSProperties} key={`candidate-${card.rank}-${card.suit}-${index}`}><CardFace card={card} variant="seat" /></span>)}
       </div>
       <p className="showdown-best-label text-center text-[11px] font-semibold text-amber-200">{message("table.bestFiveServer")}</p>
       <div className="flex gap-1">
-        {bestFiveCards.map((card, index) => <span className="showdown-best-card" style={{ "--best-delay": `${1_900 + index * 135}ms` } as CSSProperties} key={`best-${card.rank}-${card.suit}-${index}`}><CardFace card={card} variant="seat" className="ring-2 ring-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.7)]" /></span>)}
+        {bestFiveCards.map((card, index) => <span className="showdown-best-card" style={{ "--best-delay": `${2_300 + index * 155}ms` } as CSSProperties} key={`best-${card.rank}-${card.suit}-${index}`}><CardFace card={card} variant="seat" className="ring-2 ring-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.7)]" /></span>)}
       </div>
     </section>
   </div>;

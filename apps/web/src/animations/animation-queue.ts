@@ -110,7 +110,12 @@ export class AnimationQueue {
     this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event, item.beforePresentation), mode: soft ? "SOFT_CATCH_UP" : "NORMAL" });
     try { this.options.onEventStarted?.(item.message.payload.event); }
     catch { this.finishActive(); return; }
-    this.timer = this.clock.setTimeout(() => this.finishActive(), Math.round(item.durationMs / (soft ? softCatchUpRate : 1)));
+    // Soft Catch-up may condense ordinary acknowledgement feedback, but it
+    // must not outrun a visible card sequence. Board and showdown frames keep
+    // their declared pace so the final canonical commit cannot snap cards into
+    // place before their CSS flight/flip has completed.
+    const playbackRate = soft && !isPacedSemanticEvent(item.message.payload.event) ? softCatchUpRate : 1;
+    this.timer = this.clock.setTimeout(() => this.finishActive(), Math.round(item.durationMs / playbackRate));
   }
 
   private finishActive(): void {
@@ -173,6 +178,26 @@ function durationFor(event: GameEvent): number {
     case "PLAYER_ELIMINATED": case "PLAYER_WITHDRAWN": return animationTimings.fold;
     case "TOURNAMENT_FINISHED": return animationTimings.handEnd;
     case "HAND_STARTED": case "UNCALLED_BET_RETURNED": return 0;
+  }
+}
+
+/** These frames convey public information; Soft Catch-up never shortens them. */
+function isPacedSemanticEvent(event: GameEvent): boolean {
+  switch (event.type) {
+    case "DEAL_HOLE_CARD":
+    case "BURN_CARD":
+    case "FLOP_DEALT":
+    case "TURN_DEALT":
+    case "RIVER_DEALT":
+    case "SHOWDOWN_STARTED":
+    case "PLAYER_REVEALED":
+    case "POT_AWARDED":
+    case "PLAYER_ELIMINATED":
+    case "PLAYER_WITHDRAWN":
+    case "TOURNAMENT_FINISHED":
+      return true;
+    default:
+      return false;
   }
 }
 
