@@ -4,4 +4,4 @@
 
 `table-state.ts` 保持为可测的纯展示准入逻辑：没有当前行动、连续投影、有效连接或存在 pending 命令时不展示操作区。它不计算筹码、合法性或胜负。
 
-TEX-26 的牌桌将队列 presentation state 仅用于牌、筹码和 Overlay；下注区、倒计时和命令 payload 一律使用最新 canonical Snapshot。公共牌在对应目标框中按“入框 → 停顿 → 翻面”逐张可读地呈现，Soft Catch-up 不会抢先以 canonical Board 替换尚未翻完的第三张；Burn Overlay 没有牌面。Showdown 先摊开服务端公开的底牌，再使七张已公开候选牌中非最佳牌淡出并组合 `PLAYER_REVEALED.handRank.bestFiveCards`，并保留 Best Five 的长阅读停留；前端只比较卡牌身份以展示服务端已判定集合，绝不计算牌型或赢家。牌桌提供音效开关、非阻断重连提示、`EXIT_PENDING`/`WITHDRAWN` 文案及 `SESSION_REPLACED` 的键盘可达阻断对话框。
+TEX-26 的牌桌将队列 presentation state 仅用于牌、筹码和 Overlay；下注区、倒计时和命令 payload 一律使用最新 canonical Snapshot。每张手牌按其已投影的 `DEAL_HOLE_CARD` 从牌堆飞向目标座位，本人的投影牌面到位后翻开，其他人始终只有牌背；公共牌在对应目标框中按“入框 → 停顿 → 翻面”逐张可读地呈现，Soft Catch-up 不会抢先以 canonical Board 替换尚未翻完的第三张；Burn Overlay 没有牌面。Showdown 先摊开服务端公开的底牌，再使七张已公开候选牌中非最佳牌淡出并组合 `PLAYER_REVEALED.handRank.bestFiveCards`，并保留 Best Five 的长阅读停留；前端只比较卡牌身份以展示服务端已判定集合，绝不计算牌型或赢家。牌桌提供音效开关、非阻断重连提示、`EXIT_PENDING`/`WITHDRAWN` 文案及 `SESSION_REPLACED` 的键盘可达阻断对话框。

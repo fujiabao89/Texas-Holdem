@@ -85,6 +85,20 @@ describe("AnimationQueue", () => {
     expect(queue.getSnapshot().overlay?.bestFiveCards[4]).toEqual({ rank: "10", suit: "SPADES" });
   });
 
+  it("keeps each projected hole-card flight in presentation until its visible final frame", () => {
+    const clock = createFakeClock();
+    const queue = new AnimationQueue({ clock });
+    const before = gameSnapshot({ viewer: { ...gameSnapshot().viewer, holeCards: [] }, players: gameSnapshot().players.map((player) => player.playerId === "player-1" ? { ...player, hasHoleCards: false } : player) });
+    const after = gameSnapshot({ sequence: "9007199254740992", viewer: { ...gameSnapshot().viewer, holeCards: [{ rank: "A", suit: "SPADES" }] }, players: gameSnapshot().players.map((player) => player.playerId === "player-1" ? { ...player, hasHoleCards: true } : player) });
+    queue.alignToSnapshot(before);
+    queue.enqueue(gameEvent(after.sequence, { type: "DEAL_HOLE_CARD", payload: { playerId: "player-1", seat: 0, cardIndex: 0, card: { rank: "A", suit: "SPADES" } } }), after);
+    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: before.sequence }, overlay: { kind: "DEAL", event: { payload: { cardIndex: 0, card: { rank: "A", suit: "SPADES" } } } } });
+    clock.advance(animationTimings.deal + animationTimings.ownCardReveal - 1);
+    expect(queue.getSnapshot().game?.sequence).toBe(before.sequence);
+    clock.advance(1);
+    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: after.sequence }, overlay: null });
+  });
+
   it("clears old work at a reconnect snapshot barrier and hard forwards without replay", () => {
     const clock = createFakeClock();
     let hardForwards = 0;
@@ -136,7 +150,10 @@ describe("AnimationQueue", () => {
   });
 
   it("budgets Hard Fast Forward above a readable two-player all-in showdown", () => {
-    const normalTwoPlayerAllInBurst = animationTimings.allIn + animationTimings.wager
+    const normalTwoPlayerAllInBurst = (animationTimings.deal + animationTimings.ownCardReveal) * 2
+      + animationTimings.deal * 2
+      + animationTimings.wager * 2
+      + animationTimings.allIn + animationTimings.wager
       + animationTimings.burn * 3
       + animationTimings.flopCard * 3 + animationTimings.flopInterval * 2
       + animationTimings.turnRiver * 2

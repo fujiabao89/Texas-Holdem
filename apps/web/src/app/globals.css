@@ -12,6 +12,18 @@
   100% { transform: rotateY(180deg); }
 }
 
+@keyframes hole-card-deal-flight {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(16deg) scale(0.72); }
+  18% { opacity: 1; }
+  76% { opacity: 1; transform: translate(calc(var(--hole-target-x) - 50%), calc(var(--hole-target-y) - 50%)) rotate(-2deg) scale(1.04); }
+  100% { opacity: 1; transform: translate(calc(var(--hole-target-x) - 50%), calc(var(--hole-target-y) - 50%)) rotate(0) scale(1); }
+}
+
+@keyframes hole-card-flip {
+  0%, 38% { transform: rotateY(0deg); }
+  100% { transform: rotateY(180deg); }
+}
+
 @keyframes showdown-source-card {
   0% { opacity: 0; transform: translateY(2.25rem) scale(0.75); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -47,6 +59,20 @@
 .board-deal-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .board-deal-face { transform: rotateY(180deg); }
 
+.hole-deal-flight {
+  animation: hole-card-deal-flight 900ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+  perspective: 800px;
+}
+
+.hole-deal-flip-own {
+  animation: hole-card-flip 600ms cubic-bezier(0.3, 0.75, 0.25, 1) 900ms both;
+  transform-style: preserve-3d;
+}
+
+.hole-deal-back,
+.hole-deal-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.hole-deal-face { transform: rotateY(180deg); }
+
 .showdown-showcase { min-width: min(21rem, 100%); }
 .showdown-source-card { animation: showdown-source-card 700ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--showdown-delay) both; }
 .showdown-discard-card { animation-name: showdown-source-card, showdown-discard-card; animation-duration: 700ms, 1.2s; animation-timing-function: cubic-bezier(0.2, 0.85, 0.25, 1), ease-out; animation-delay: var(--showdown-delay), 1s; animation-fill-mode: both, forwards; }
@@ -56,6 +82,8 @@
 @media (prefers-reduced-motion: reduce) {
   .board-deal-flight,
   .board-deal-flip,
+  .hole-deal-flight,
+  .hole-deal-flip-own,
   .showdown-source-card,
   .showdown-discard-card,
   .showdown-best-card,

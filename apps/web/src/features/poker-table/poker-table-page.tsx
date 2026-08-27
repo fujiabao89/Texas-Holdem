@@ -145,7 +145,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
           {tableSeats(game).map((player, seat) => <SeatCard game={game} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
         </div>
-        {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} />}
+        {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} seatSlots={seatSlots} />}
       </div>
     </section>
     <section className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-center shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus actionDeadline={state.clock?.actionDeadline ?? game.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? game.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${game.handId}:${game.currentActorPlayerId ?? "none"}`} /></section>
@@ -317,15 +317,33 @@ function ClockStatus({ actionDeadline, timeBankMs, serverTime, clockKey }: { rea
   return <p className="text-xs text-slate-600 sm:text-sm">{remaining === null ? message("table.waiting") : `${message("table.remainingTime")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(remaining / 1000) })} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>;
 }
 function ConnectionStatus({ connectionState, syncing }: { readonly connectionState: string; readonly syncing: boolean }) { return <p role="status" aria-live="polite" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">{syncing ? message("table.syncing") : connectionState === "CONNECTED" ? message("table.connectionConnected") : connectionState === "STOPPED" ? message("table.connectionReplaced") : connectionState === "CONNECTING" || connectionState === "AUTHENTICATING" ? message("table.connectionConnecting") : message("table.connectionDisconnected")}</p>; }
-function PresentationOverlay({ overlay, boardCards, game }: { readonly overlay: PresentationOverlayState; readonly boardCards: readonly Card[]; readonly game: GameSnapshot }) {
+function PresentationOverlay({ overlay, boardCards, game, seatSlots }: { readonly overlay: PresentationOverlayState; readonly boardCards: readonly Card[]; readonly game: GameSnapshot; readonly seatSlots: ReadonlyArray<number | null> }) {
   const text = overlay.kind === "DEAL" ? message("table.animationDeal") : overlay.kind === "BURN" ? message("table.animationBurn") : overlay.kind === "BOARD" ? message("table.animationBoard") : overlay.kind === "WAGER" ? message("table.animationWager") : overlay.kind === "FOLD" ? message("table.animationFold") : overlay.kind === "SHOWDOWN" ? message("table.animationShowdown") : overlay.kind === "POT_AWARD" ? message("table.animationPotAward") : overlay.kind === "ELIMINATION" ? message("table.animationElimination") : message("table.animationFinish");
   if (overlay.kind === "BOARD") return <p className="sr-only" aria-live="polite">{text}</p>;
+  if (overlay.event.type === "DEAL_HOLE_CARD") return <><HoleCardDealFlight event={overlay.event} viewerPlayerId={game.viewer.playerId} slot={seatSlots[overlay.event.payload.seat] ?? null} /><p className="sr-only" aria-live="polite">{text}</p></>;
   if (overlay.event.type === "PLAYER_REVEALED" && "playerId" in overlay.event.payload) {
     const playerId = overlay.event.payload.playerId;
     const playerName = game.players.find((player) => player.playerId === playerId)?.displayName ?? message("table.player");
     return <ShowdownShowcase cards={overlay.event.payload.cards} boardCards={boardCards} bestFiveCards={overlay.bestFiveCards} playerName={playerName} />;
   }
   return <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center" aria-live="polite"><div className="grid justify-items-center gap-2"><span className="animate-pulse rounded-full bg-slate-950/80 px-3 py-1.5 text-xs font-semibold text-white shadow-lg">{overlay.burnCardBackOnly ? "🂠" : ""} {text}</span></div></div>;
+}
+
+function HoleCardDealFlight({ event, viewerPlayerId, slot }: { readonly event: Extract<PresentationOverlayState["event"], { type: "DEAL_HOLE_CARD" }>; readonly viewerPlayerId: string; readonly slot: number | null }) {
+  if (slot === null) return null;
+  const target = tableSeatPositions[slot]!;
+  const isViewer = event.payload.playerId === viewerPlayerId;
+  // `card` only exists in the already-filtered event for its owner. Never use
+  // canonical player data as a fallback: opponents must stay card-back only.
+  const privateCard = isViewer ? event.payload.card : undefined;
+  return <div className="pointer-events-none absolute inset-0 z-40" aria-hidden="true">
+    <span className="hole-deal-flight absolute block h-[4.5rem] w-[3.2rem] sm:h-24 sm:w-[4.3rem]" style={{ "--hole-target-x": target.left, "--hole-target-y": `calc(${target.top} - 6%)` } as CSSProperties}>
+      <span className={`relative block h-full w-full ${privateCard === undefined ? "" : "hole-deal-flip-own"}`}>
+        <CardBack variant="hole" className="hole-deal-back absolute inset-0" />
+        {privateCard !== undefined && <CardFace card={privateCard} variant="hole" className="hole-deal-face absolute inset-0" />}
+      </span>
+    </span>
+  </div>;
 }
 
 function ShowdownShowcase({ cards, boardCards, bestFiveCards, playerName }: { readonly cards: readonly Card[]; readonly boardCards: readonly Card[]; readonly bestFiveCards: readonly Card[]; readonly playerName: string }) {

@@ -1,7 +1,9 @@
 export const animationTimings = {
-  deal: 180,
-  dealSeatInterval: 70,
-  ownCardReveal: 160,
+  // Each hole-card event visibly travels from the deck; a private card then
+  // waits at its seat before it is allowed to flip.
+  deal: 900,
+  dealSeatInterval: 300,
+  ownCardReveal: 600,
   wager: 220,
   check: 140,
   fold: 200,

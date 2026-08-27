@@ -113,7 +113,7 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 > TEX-25 增加牌桌展示和下注的定向回归：服务端 `LegalActions` 的操作准入、2–10 Seat 展示、BB/Pot 快捷额与普通 Bet/Raise 范围、键盘跟注、All-in 两步与 `ALL_IN` 信封、command feedback 不改投影。视觉验收以 Fake WebSocket 注入的合法投影在桌面与约 390×844 视口检查椭圆桌、环绕 Seat、公共牌及悬浮操作区，不依赖真实 game-server 或 sleep。WebSocketTransport 的 Fake WebSocket/Fake Clock/注入 UUID 测试继续覆盖 pending、拒绝、重连、乱序与 Token 安全边界。
 
-> TEX-26 增加 Fake Clock 驱动的 AnimationQueue 与 AudioAdapter 回归：连续/重复 Event 的顺序与 canonical/presentation 分离、Snapshot/重连/Hard Forward 清队列、取消/异常/Reduced Motion 终帧、Burn 无牌面、公共牌逐张“入框后翻面”、服务端 `bestFiveCards` 的七张候选淡出/五张组合展示、Soft/Hard catch-up 不影响 LegalActions/Clock/命令，且 Soft Catch-up 不会在第三张公共牌 CSS 入框/翻面结束前提交完整 Board，音效开关和 autoplay/播放失败降级。AudioAdapter 断言复用本地预加载 voice，并以 Fake Clock 将一条 Flop Event 的三个 cue 及 Turn/River 的单 cue 对齐各自的落牌/翻面时点。Transport/Projection 的 Fake WebSocket 测试覆盖受限 Snapshot 请求、`SESSION_REPLACED` 冻结和单连接重试；不依赖真实网络、game-server 或 sleep。
+> TEX-26 增加 Fake Clock 驱动的 AnimationQueue 与 AudioAdapter 回归：连续/重复 Event 的顺序与 canonical/presentation 分离、Snapshot/重连/Hard Forward 清队列、取消/异常/Reduced Motion 终帧、每张手牌从 Deck 到目标座位的停留、本人公开牌面与对手永远仅牌背、Burn 无牌面、公共牌逐张“入框后翻面”、服务端 `bestFiveCards` 的七张候选淡出/五张组合展示、Soft/Hard catch-up 不影响 LegalActions/Clock/命令，且 Soft Catch-up 不会在第三张公共牌 CSS 入框/翻面结束前提交完整 Board，音效开关和 autoplay/播放失败降级。AudioAdapter 断言复用本地预加载 voice，并以 Fake Clock 将一条 Flop Event 的三个 cue 及 Turn/River 的单 cue 对齐各自的落牌/翻面时点。Transport/Projection 的 Fake WebSocket 测试覆盖受限 Snapshot 请求、`SESSION_REPLACED` 冻结和单连接重试；不依赖真实网络、game-server 或 sleep。
 
 | 必测项 | 层次 | 规格来源 |
 | --- | --- | --- |
