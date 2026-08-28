@@ -10,10 +10,16 @@ export function dealFlightVector(
   // The hand row is above the player name/chips card at the seat coordinate.
   const targetY = table.height * ((Number.parseFloat(target.top) - 6) / 100);
   const x = targetX - table.width * 0.5;
-  const y = targetY - table.height * 0.71;
+  const y = targetY - table.height * 0.76;
   // Lift the card mid-flight. This gives even a short journey to the bottom
-  // seat a clearly readable dealer "throw", while the card still lands exactly
-  // at the projected seat's hand row.
+  // seat a clearly readable dealer "throw". A lateral sway keeps heads-up
+  // flights visibly curved instead of looking like a vertical snap.
   const lift = Math.min(82, Math.max(44, Math.hypot(x, y) * 0.14));
-  return { x, y, midX: x * 0.46, midY: y * 0.46 - lift };
+  const sway = Math.min(58, Math.max(34, Math.hypot(x, y) * 0.1));
+  return { x, y, midX: x * 0.46 + (x < 0 ? -sway : sway), midY: y * 0.46 - lift };
+}
+
+/** A different key forces the browser to start a fresh CSS flight per Event. */
+export function dealFlightKey(handId: string | null, playerId: string, cardIndex: 0 | 1): string {
+  return `${handId ?? "no-hand"}:${playerId}:${cardIndex}`;
 }

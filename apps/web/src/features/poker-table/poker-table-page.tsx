@@ -14,7 +14,7 @@ import type { PresentationOverlay as PresentationOverlayState } from "../../anim
 import type { PendingCommand as TransportPendingCommand } from "../../protocol/websocket-transport";
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
-import { dealFlightVector } from "./deal-flight";
+import { dealFlightKey, dealFlightVector } from "./deal-flight";
 import { canSubmitTableAction, remainingTimeMs, tableSeats } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
@@ -323,7 +323,7 @@ function ConnectionStatus({ connectionState, syncing }: { readonly connectionSta
 function PresentationOverlay({ overlay, boardCards, game, seatSlots, tableElement }: { readonly overlay: PresentationOverlayState; readonly boardCards: readonly Card[]; readonly game: GameSnapshot; readonly seatSlots: ReadonlyArray<number | null>; readonly tableElement: HTMLDivElement | null }) {
   const text = overlay.kind === "DEAL" ? message("table.animationDeal") : overlay.kind === "BURN" ? message("table.animationBurn") : overlay.kind === "BOARD" ? message("table.animationBoard") : overlay.kind === "WAGER" ? message("table.animationWager") : overlay.kind === "FOLD" ? message("table.animationFold") : overlay.kind === "SHOWDOWN" ? message("table.animationShowdown") : overlay.kind === "POT_AWARD" ? message("table.animationPotAward") : overlay.kind === "ELIMINATION" ? message("table.animationElimination") : message("table.animationFinish");
   if (overlay.kind === "BOARD") return <p className="sr-only" aria-live="polite">{text}</p>;
-  if (overlay.event.type === "DEAL_HOLE_CARD") return <><HoleCardDealFlight event={overlay.event} viewerPlayerId={game.viewer.playerId} slot={seatSlots[overlay.event.payload.seat] ?? null} tableElement={tableElement} /><p className="sr-only" aria-live="polite">{text}</p></>;
+  if (overlay.event.type === "DEAL_HOLE_CARD") return <><HoleCardDealFlight event={overlay.event} viewerPlayerId={game.viewer.playerId} slot={seatSlots[overlay.event.payload.seat] ?? null} tableElement={tableElement} key={dealFlightKey(game.handId, overlay.event.payload.playerId, overlay.event.payload.cardIndex)} /><p className="sr-only" aria-live="polite">{text}</p></>;
   if (overlay.event.type === "PLAYER_REVEALED" && "playerId" in overlay.event.payload) {
     const playerId = overlay.event.payload.playerId;
     const playerName = game.players.find((player) => player.playerId === playerId)?.displayName ?? message("table.player");
@@ -333,10 +333,10 @@ function PresentationOverlay({ overlay, boardCards, game, seatSlots, tableElemen
 }
 
 function DealerDeck() {
-  return <div className="pointer-events-none absolute left-1/2 top-[71%] z-10 h-[4.5rem] w-[3.2rem] -translate-x-1/2 -translate-y-1/2 sm:h-24 sm:w-[4.3rem]" aria-label={message("table.deck")}>
+  return <div className="pointer-events-none absolute left-1/2 top-[76%] z-10 h-14 w-10 -translate-x-1/2 -translate-y-1/2 sm:h-20 sm:w-14" aria-label={message("table.deck")}>
     <span className="absolute inset-0 translate-x-2 translate-y-2 rotate-[5deg] rounded-[0.45rem] border border-blue-200/40 bg-[#16377d] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
     <span className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2deg] rounded-[0.45rem] border border-blue-100/60 bg-[#1a408c] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
-    <CardBack variant="hole" className="!absolute inset-0" />
+    <CardBack variant="seat" className="!absolute inset-0 !h-full !w-full" />
     <span className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-950/55 px-2 py-0.5 text-[9px] font-semibold text-emerald-50 shadow-sm sm:text-[10px]">{message("table.deck")}</span>
   </div>;
 }
