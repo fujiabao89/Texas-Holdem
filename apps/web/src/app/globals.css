@@ -62,8 +62,8 @@
 
 .hole-deal-flight {
   animation: hole-card-deal-flight 1250ms cubic-bezier(0.22, 0.72, 0.18, 1) both;
-  left: 50%;
-  top: 76%;
+  left: var(--hole-origin-x);
+  top: var(--hole-origin-y);
   perspective: 800px;
   backface-visibility: hidden;
   contain: layout style paint;

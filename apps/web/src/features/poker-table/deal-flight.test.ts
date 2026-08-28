@@ -1,16 +1,38 @@
 import { describe, expect, it } from "vitest";
 
-import { dealFlightKey, dealFlightVector } from "./deal-flight";
+import { dealFlightKey, dealFlightOrigin, dealFlightVector } from "./deal-flight";
 
 describe("dealFlightVector", () => {
+  it("measures a shared flight origin in the white area outside the table's top-left", () => {
+    const origin = dealFlightOrigin(
+      { left: 100, top: 200 },
+      { left: 116, top: 124, width: 40, height: 64 },
+    );
+    expect(origin).toEqual({ x: 36, y: -44 });
+    expect(origin.x).toBeLessThan(120);
+    expect(origin.y).toBeLessThan(0);
+  });
+
   it("starts every hand-card flight at the shared deck and reaches the requested seat", () => {
-    const upper = dealFlightVector({ width: 1200, height: 700 }, { left: "50%", top: "8%" });
-    const side = dealFlightVector({ width: 1200, height: 700 }, { left: "91%", top: "64%" });
-    const lower = dealFlightVector({ width: 1200, height: 700 }, { left: "50%", top: "93%" });
-    expect(upper).toMatchObject({ x: 0, y: -518 });
-    expect(upper.midX).toBeCloseTo(51.8);
-    expect(side).toMatchObject({ x: 492, y: -126 });
-    expect(lower).toMatchObject({ x: 0, y: 77, midX: 34 });
+    const outsideTopLeftDeck = { x: 40, y: -24 };
+    const upper = dealFlightVector(
+      { width: 1200, height: 700 },
+      { left: "50%", top: "8%" },
+      outsideTopLeftDeck,
+    );
+    const side = dealFlightVector(
+      { width: 1200, height: 700 },
+      { left: "91%", top: "64%" },
+      outsideTopLeftDeck,
+    );
+    const lower = dealFlightVector(
+      { width: 1200, height: 700 },
+      { left: "50%", top: "93%" },
+      outsideTopLeftDeck,
+    );
+    expect(upper).toMatchObject({ x: 560, y: 38 });
+    expect(side).toMatchObject({ x: 1052, y: 430 });
+    expect(lower).toMatchObject({ x: 560, y: 633 });
     // Every target gets a visible upward arc before its exact landing point.
     expect(upper.midY).toBeLessThan(upper.y * 0.46);
     expect(side.midY).toBeLessThan(side.y * 0.46);
