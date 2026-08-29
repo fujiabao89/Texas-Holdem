@@ -356,7 +356,7 @@ function ConnectionStatus({ connectionState, syncing }: { readonly connectionSta
 function PresentationOverlay({ overlay, boardCards, game, seatSlots, tableElement, deckElement }: { readonly overlay: PresentationOverlayState; readonly boardCards: readonly Card[]; readonly game: GameSnapshot; readonly seatSlots: ReadonlyArray<number | null>; readonly tableElement: HTMLDivElement | null; readonly deckElement: HTMLDivElement | null }) {
   const text = overlay.kind === "DEAL" ? message("table.animationDeal") : overlay.kind === "BURN" ? message("table.animationBurn") : overlay.kind === "BOARD" ? message("table.animationBoard") : overlay.kind === "WAGER" ? message("table.animationWager") : overlay.kind === "FOLD" ? message("table.animationFold") : overlay.kind === "SHOWDOWN" ? message("table.animationShowdown") : overlay.kind === "POT_AWARD" ? message("table.animationPotAward") : overlay.kind === "ELIMINATION" ? message("table.animationElimination") : message("table.animationFinish");
   if (overlay.kind === "BOARD") return <p className="sr-only" aria-live="polite">{text}</p>;
-  if (overlay.event.type === "DEAL_HOLE_CARD") return <><HoleCardDealFlight event={overlay.event} viewerPlayerId={game.viewer.playerId} slot={seatSlots[overlay.event.payload.seat] ?? null} tableElement={tableElement} deckElement={deckElement} key={dealFlightKey(game.handId, overlay.event.payload.playerId, overlay.event.payload.cardIndex)} /><p className="sr-only" aria-live="polite">{text}</p></>;
+  if (overlay.event.type === "DEAL_HOLE_CARD") return <><HoleCardDealFlight event={overlay.event} finalHoleCardDeal={overlay.finalHoleCardDeal} viewerPlayerId={game.viewer.playerId} slot={seatSlots[overlay.event.payload.seat] ?? null} tableElement={tableElement} deckElement={deckElement} key={dealFlightKey(game.handId, overlay.event.payload.playerId, overlay.event.payload.cardIndex)} /><p className="sr-only" aria-live="polite">{text}</p></>;
   if (overlay.event.type === "PLAYER_REVEALED" && "playerId" in overlay.event.payload) {
     const playerId = overlay.event.payload.playerId;
     const playerName = game.players.find((player) => player.playerId === playerId)?.displayName ?? message("table.player");
@@ -374,13 +374,13 @@ function DealerDeck({ onElement }: { readonly onElement: (element: HTMLDivElemen
   </div>;
 }
 
-function HoleCardDealFlight({ event, viewerPlayerId, slot, tableElement, deckElement }: { readonly event: Extract<PresentationOverlayState["event"], { type: "DEAL_HOLE_CARD" }>; readonly viewerPlayerId: string; readonly slot: number | null; readonly tableElement: HTMLDivElement | null; readonly deckElement: HTMLDivElement | null }) {
+function HoleCardDealFlight({ event, finalHoleCardDeal, viewerPlayerId, slot, tableElement, deckElement }: { readonly event: Extract<PresentationOverlayState["event"], { type: "DEAL_HOLE_CARD" }>; readonly finalHoleCardDeal: boolean; readonly viewerPlayerId: string; readonly slot: number | null; readonly tableElement: HTMLDivElement | null; readonly deckElement: HTMLDivElement | null }) {
   const target = slot === null ? null : tableSeatPositions[slot]!;
   const variant = event.payload.playerId === viewerPlayerId ? "hole" : "seat";
   const vector = target === null ? null : holeDealVector(tableElement, deckElement, target, event.payload.cardIndex, variant);
   if (vector === null) return null;
   return <div className="pointer-events-none absolute inset-0 z-40" aria-hidden="true">
-    <span className={`hole-deal-flight absolute block ${cardDimensions(variant)}`} style={{ "--hole-origin-x": `${vector.originX}px`, "--hole-origin-y": `${vector.originY}px`, "--hole-delta-x": `${vector.x}px`, "--hole-delta-y": `${vector.y}px`, "--hole-mid-x": `${vector.midX}px`, "--hole-mid-y": `${vector.midY}px`, "--hole-deal-duration": `${animationTimings.deal}ms` } as CSSProperties}>
+    <span className={`hole-deal-flight absolute block ${cardDimensions(variant)} ${finalHoleCardDeal ? "hole-deal-flight-final" : ""}`} style={{ "--hole-origin-x": `${vector.originX}px`, "--hole-origin-y": `${vector.originY}px`, "--hole-delta-x": `${vector.x}px`, "--hole-delta-y": `${vector.y}px`, "--hole-mid-x": `${vector.midX}px`, "--hole-mid-y": `${vector.midY}px`, "--hole-deal-duration": `${animationTimings.deal}ms` } as CSSProperties}>
       <span className="relative block h-full w-full">
         <CardBack variant={variant} className="!absolute inset-0" />
       </span>

@@ -15,6 +15,8 @@ export interface PresentationOverlay {
   readonly boardCards: readonly Card[];
   /** The existing board length before this event, used only to place the visual destination slots. */
   readonly boardStartIndex: number;
+  /** The last second-round card needs an atomic flight-to-seat handoff. */
+  readonly finalHoleCardDeal: boolean;
 }
 
 export interface PresentationState {
@@ -138,7 +140,7 @@ export class AnimationQueue {
     const soft = this.shouldSoftCatchUp();
     const viewerCardsForReveal = item.finalHoleCardDeal ? item.afterCanonical.viewer.holeCards : [];
     const holeDeal = this.holeDealActive ? this.currentHoleDeal(viewerCardsForReveal) : null;
-    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event, item.beforePresentation), mode: soft ? "SOFT_CATCH_UP" : "NORMAL", holeDeal });
+    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event, item.beforePresentation, item.finalHoleCardDeal), mode: soft ? "SOFT_CATCH_UP" : "NORMAL", holeDeal });
     try { this.options.onEventStarted?.(item.message.payload.event); }
     catch { this.finishActive(); return; }
     // Soft Catch-up may condense ordinary acknowledgement feedback, but it
@@ -269,7 +271,7 @@ function isPacedSemanticEvent(event: GameEvent): boolean {
   }
 }
 
-function overlayFor(event: GameEvent, beforePresentation: GameSnapshot | null): PresentationOverlay {
+function overlayFor(event: GameEvent, beforePresentation: GameSnapshot | null, finalHoleCardDeal: boolean): PresentationOverlay {
   const kind: AnimationKind = event.type === "DEAL_HOLE_CARD" ? "DEAL" : event.type === "BURN_CARD" ? "BURN"
     : event.type === "FLOP_DEALT" || event.type === "TURN_DEALT" || event.type === "RIVER_DEALT" ? "BOARD"
       : event.type === "PLAYER_FOLDED" ? "FOLD" : event.type === "SHOWDOWN_STARTED" || event.type === "PLAYER_REVEALED" ? "SHOWDOWN"
@@ -284,5 +286,6 @@ function overlayFor(event: GameEvent, beforePresentation: GameSnapshot | null): 
     bestFiveCards: event.type === "PLAYER_REVEALED" ? event.payload.handRank.bestFiveCards : [],
     boardCards,
     boardStartIndex: beforePresentation?.board.length ?? 0,
+    finalHoleCardDeal,
   };
 }

@@ -31,6 +31,11 @@
   100% { opacity: 1; }
 }
 
+@keyframes hole-card-flight-handoff {
+  0% { visibility: visible; }
+  100% { visibility: hidden; }
+}
+
 @keyframes showdown-source-card {
   0% { opacity: 0; transform: translateY(2.25rem) scale(0.75); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -74,6 +79,14 @@
   backface-visibility: hidden;
   contain: layout style paint;
   will-change: transform, opacity;
+}
+
+/* The final task remains mounted while both private cards turn over. Hide its
+   travelling card exactly when the seat copy appears, so two card backs never
+   stack for a frame and cover the face animation beneath it. */
+.hole-deal-flight-final {
+  animation: hole-card-deal-flight var(--hole-deal-duration) cubic-bezier(0.2, 0.72, 0.18, 1) both,
+    hole-card-flight-handoff 1ms linear var(--hole-deal-duration) forwards;
 }
 
 .hole-reveal-arrival {

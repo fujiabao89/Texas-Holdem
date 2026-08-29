@@ -1,7 +1,7 @@
 export const animationTimings = {
   // Each projected card keeps the upright Solitaire-style slide readable.
   // Only after the final second-round deal do both private cards turn over.
-  deal: 980,
+  deal: 900,
   holeRevealPause: 260,
   ownCardReveal: 680,
   ownCardRevealStagger: 150,

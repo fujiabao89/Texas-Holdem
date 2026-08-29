@@ -105,7 +105,7 @@ describe("AnimationQueue", () => {
     expect(queue.getSnapshot()).toMatchObject({
       game: { sequence: "9007199254740994" },
       holeDeal: { dealtCardCounts: { "player-1": 2, "player-2": 1 }, viewerCardsForReveal: viewerCards },
-      overlay: { event: { payload: { playerId: "player-2", cardIndex: 1 } } },
+      overlay: { finalHoleCardDeal: true, event: { payload: { playerId: "player-2", cardIndex: 1 } } },
     });
     const finalDealDuration = animationTimings.deal + animationTimings.holeRevealPause + animationTimings.ownCardReveal + animationTimings.ownCardRevealStagger;
     clock.advance(finalDealDuration - 1);
