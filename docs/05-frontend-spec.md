@@ -345,7 +345,7 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 
 | 事件（目录权威 [01](./01-engine-spec.md) §14） | 视觉行为 | 依据 |
 | --- | --- | --- |
-| `HAND_STARTED` / `DEAL_HOLE_CARD` | 桌面始终在牌桌外左上角的白色留白区呈现一个可见 Deck，不得占用或遮挡 Board/玩家手牌；每个接收者都对同一已投影 Event 看见牌背从该 Deck 沿连续的上扬弧线飞向目标座位手牌区。每个 Event 必须启动独立动画实例，不得因复用已完成的 DOM/CSS animation 而跳过轨迹。自己的牌到位、停顿后才翻开，其他人始终保持牌背。飞行只使用合成层 `transform` / `opacity`，不得仅播放音效或用通用提示替代可见发牌 | 《区块1-5 v0.1》§5.5 |
+| `HAND_STARTED` / `DEAL_HOLE_CARD` | 桌面始终在牌桌外左上角的白色留白区呈现一个可见 Deck，不得占用或遮挡 Board/玩家手牌；每个接收者都对同一已投影 Event 看见牌背从该 Deck 沿连续浅弧线、保持正向地飞向目标座位手牌区，`cardIndex` 决定同一手牌区的左右落点。每个 Event 必须启动独立动画实例，不得因复用已完成的 DOM/CSS animation 而跳过轨迹。第一轮和第二轮全部发完后，自己的两张服务端投影牌才依次绕纵轴翻开，其他人始终保持牌背。飞行只使用合成层 `transform` / `opacity`，不得仅播放音效或用通用提示替代可见发牌 | 《区块1-5 v0.1》§5.5 |
 | `BURN_CARD` | 牌背从 Deck 移出，进入 Muck/弃牌区或淡出；**永不翻面**（事件不携带牌面） | 《区块6-10 v0.2》§6.6；《总规划》§7.2 |
 | `FLOP_DEALT` | 三张公共牌从 Deck 方向依次到达各自的目标牌框，再逐张 Flip；一条 Event 不得直接把三张正面牌替换进 Board | 《区块1-5 v0.1》§5.5 |
 | `TURN_DEALT` / `RIVER_DEALT` | 单张牌背先进入对应目标框、停顿后 Flip 展示 | 同上 |
@@ -373,7 +373,7 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 
 | 任务 | 时长/间隔 |
 | --- | ---: |
-| 单张手牌飞入 / 同轮座位间隔 / 自己翻牌 | 900ms / 300ms / 600ms |
+| 单张手牌飞入 / 两轮结束后停顿 / 自己单张翻牌 / 双牌翻面间隔 | 980ms / 260ms / 680ms / 150ms |
 | Blind/Call/Bet/Raise 筹码移动 | 220ms |
 | Check / Fold / All-in 反馈 | 140ms / 200ms / 280ms |
 | Burn 移出 | 160ms |
@@ -544,7 +544,7 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 | 配置与快捷金额 | 四个配置预设快照测试；全部行动/Time Bank 档位 Schema 测试；Bet 与 facing-bet Raise 对 1/3、1/2、2/3、Pot 的公式、舍入、夹取、去重及边界值表驱动测试 |
 | 命令幂等 | 双击只产生一个逻辑命令；结果未知的重发复用同一 `requestId/actionId/Payload`；状态已推进后不重放旧动作；`APPLIED` 后持续锁定至对应 sequence 可见，`COMMAND_RESULT` 不直接修改牌局规范态 |
 | 事件与计时 | Event reducer 穷尽类型；重复 Event 无副作用、缺序/非法 Payload 触发 Snapshot；乱序或已过期的 `CLOCK_UPDATED` 不覆盖当前行动机会，倒计时归零不产生 Action |
-| 动画 | Deal 两轮发牌顺滑、Seat 时序正确；Burn 牌背移出不露牌面；Flop/Turn/River 翻牌顺序与 Event 一致；Showdown 按 Reveal → Best Five → 牌型 → Winner → Pot 剧本（《区块6-10 v0.2》§9.17） |
+| 动画 | Deal 两轮逐张从共享 Deck 平滑飞向全部 Seat，左右落点正确且两轮结束前不翻本人牌；随后本人双牌依次纵轴翻开；Burn 牌背移出不露牌面；Flop/Turn/River 翻牌顺序与 Event 一致；Showdown 按 Reveal → Best Five → 牌型 → Winner → Pot 剧本（《区块6-10 v0.2》§9.17） |
 | 响应式 | ~390×844、~360×800、平板、1366×768、1920×1080；10 人桌姓名/Stack/D/SB/BB/当前 Actor/操作区不重叠（《区块6-10 v0.2》§9.18） |
 | 重连 | 刷新、断网、网络切换、移动端后台恢复可用（《总规划》§9.1） |
 | Fast Forward | Soft/Hard 阈值可用 Fake Clock 触发；Hard 路径无规范态/旧 Overlay 混合帧；`RESYNC_REQUIRED` 与 Close `1013` 均可恢复 |

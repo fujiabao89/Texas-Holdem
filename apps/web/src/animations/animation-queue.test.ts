@@ -53,6 +53,9 @@ describe("AnimationQueue", () => {
     queue.enqueue(event("9007199254740993"), gameSnapshot({ sequence: "9007199254740993" }));
     queue.setReducedMotion(true);
     expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254740993" }, overlay: null, mode: "NORMAL" });
+    const reducedAfterDeal = gameSnapshot({ sequence: "9007199254740994" });
+    queue.enqueue(gameEvent(reducedAfterDeal.sequence, { type: "DEAL_HOLE_CARD", payload: { playerId: "player-1", seat: 0, cardIndex: 0, card: { rank: "A", suit: "SPADES" } } }), reducedAfterDeal);
+    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: reducedAfterDeal.sequence }, overlay: null, holeDeal: null });
   });
 
   it("keeps public board destinations and server best-five data in the presentation task", () => {
@@ -85,18 +88,31 @@ describe("AnimationQueue", () => {
     expect(queue.getSnapshot().overlay?.bestFiveCards[4]).toEqual({ rank: "10", suit: "SPADES" });
   });
 
-  it("keeps each projected hole-card flight in presentation until its visible final frame", () => {
+  it("deals two complete rounds before exposing the server-projected viewer pair for turnover", () => {
     const clock = createFakeClock();
     const queue = new AnimationQueue({ clock });
     const before = gameSnapshot({ viewer: { ...gameSnapshot().viewer, holeCards: [] }, players: gameSnapshot().players.map((player) => player.playerId === "player-1" ? { ...player, hasHoleCards: false } : player) });
-    const after = gameSnapshot({ sequence: "9007199254740992", viewer: { ...gameSnapshot().viewer, holeCards: [{ rank: "A", suit: "SPADES" }] }, players: gameSnapshot().players.map((player) => player.playerId === "player-1" ? { ...player, hasHoleCards: true } : player) });
+    const viewerCards: Card[] = [{ rank: "A", suit: "SPADES" }, { rank: "K", suit: "SPADES" }];
+    const after = (sequence: string) => gameSnapshot({ sequence, viewer: { ...gameSnapshot().viewer, holeCards: viewerCards }, players: gameSnapshot().players.map((player) => ({ ...player, hasHoleCards: true })) });
     queue.alignToSnapshot(before);
-    queue.enqueue(gameEvent(after.sequence, { type: "DEAL_HOLE_CARD", payload: { playerId: "player-1", seat: 0, cardIndex: 0, card: { rank: "A", suit: "SPADES" } } }), after);
-    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: before.sequence }, overlay: { kind: "DEAL", event: { payload: { cardIndex: 0, card: { rank: "A", suit: "SPADES" } } } } });
-    clock.advance(animationTimings.deal + animationTimings.ownCardReveal - 1);
-    expect(queue.getSnapshot().game?.sequence).toBe(before.sequence);
+    queue.enqueue(gameEvent("9007199254740992", { type: "DEAL_HOLE_CARD", payload: { playerId: "player-1", seat: 0, cardIndex: 0, card: viewerCards[0] } }), after("9007199254740992"));
+    queue.enqueue(gameEvent("9007199254740993", { type: "DEAL_HOLE_CARD", payload: { playerId: "player-2", seat: 1, cardIndex: 0 } }), after("9007199254740993"));
+    queue.enqueue(gameEvent("9007199254740994", { type: "DEAL_HOLE_CARD", payload: { playerId: "player-1", seat: 0, cardIndex: 1, card: viewerCards[1] } }), after("9007199254740994"));
+    queue.enqueue(gameEvent("9007199254740995", { type: "DEAL_HOLE_CARD", payload: { playerId: "player-2", seat: 1, cardIndex: 1 } }), after("9007199254740995"));
+
+    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: before.sequence }, holeDeal: { dealtCardCounts: {}, viewerCardsForReveal: [] }, overlay: { kind: "DEAL", event: { payload: { playerId: "player-1", cardIndex: 0 } } } });
+    clock.advance(animationTimings.deal * 3);
+    expect(queue.getSnapshot()).toMatchObject({
+      game: { sequence: "9007199254740994" },
+      holeDeal: { dealtCardCounts: { "player-1": 2, "player-2": 1 }, viewerCardsForReveal: viewerCards },
+      overlay: { event: { payload: { playerId: "player-2", cardIndex: 1 } } },
+    });
+    const finalDealDuration = animationTimings.deal + animationTimings.holeRevealPause + animationTimings.ownCardReveal + animationTimings.ownCardRevealStagger;
+    clock.advance(finalDealDuration - 1);
+    expect(queue.getSnapshot().game?.sequence).toBe("9007199254740994");
+    expect(queue.getSnapshot().holeDeal?.viewerCardsForReveal).toEqual(viewerCards);
     clock.advance(1);
-    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: after.sequence }, overlay: null });
+    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254740995" }, overlay: null, holeDeal: null });
   });
 
   it("clears old work at a reconnect snapshot barrier and hard forwards without replay", () => {
@@ -104,11 +120,15 @@ describe("AnimationQueue", () => {
     let hardForwards = 0;
     const queue = new AnimationQueue({ clock, onHardForward: () => { hardForwards += 1; } });
     queue.alignToSnapshot(gameSnapshot());
+    queue.enqueue(gameEvent("9007199254740992", { type: "DEAL_HOLE_CARD", payload: { playerId: "player-1", seat: 0, cardIndex: 0, card: { rank: "A", suit: "SPADES" } } }), gameSnapshot({ sequence: "9007199254740992" }));
+    expect(queue.getSnapshot().holeDeal).not.toBeNull();
+    queue.alignToSnapshot(gameSnapshot({ sequence: "9007199254740992" }));
+    expect(queue.getSnapshot().holeDeal).toBeNull();
     for (let index = 0; index < 42; index += 1) queue.enqueue(event(String(9_007_199_254_740_992n + BigInt(index))), gameSnapshot({ sequence: String(9_007_199_254_740_992n + BigInt(index)) }));
     expect(hardForwards).toBe(1);
     queue.alignToSnapshot(gameSnapshot({ sequence: "9007199254741000" }));
     clock.advance(10_000);
-    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254741000" }, overlay: null });
+    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254741000" }, overlay: null, holeDeal: null });
   });
 
   it("uses soft catch-up instead of dropping a queued public showdown explanation", () => {
@@ -150,8 +170,8 @@ describe("AnimationQueue", () => {
   });
 
   it("budgets Hard Fast Forward above a readable two-player all-in showdown", () => {
-    const normalTwoPlayerAllInBurst = (animationTimings.deal + animationTimings.ownCardReveal) * 2
-      + animationTimings.deal * 2
+    const normalTwoPlayerAllInBurst = animationTimings.deal * 4
+      + animationTimings.holeRevealPause + animationTimings.ownCardReveal + animationTimings.ownCardRevealStagger
       + animationTimings.wager * 2
       + animationTimings.allIn + animationTimings.wager
       + animationTimings.burn * 3

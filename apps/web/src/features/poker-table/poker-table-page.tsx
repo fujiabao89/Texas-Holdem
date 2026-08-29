@@ -10,7 +10,7 @@ import { errorMessage, formatMessage, message } from "../../messages/zh-CN";
 import { useAudioController } from "../../audio/use-audio-controller";
 import { animationTimings } from "../../animations/timings";
 import { useTablePresentation } from "../../animations/use-table-presentation";
-import type { PresentationOverlay as PresentationOverlayState } from "../../animations/animation-queue";
+import type { HoleDealPresentation, PresentationOverlay as PresentationOverlayState } from "../../animations/animation-queue";
 import type { PendingCommand as TransportPendingCommand } from "../../protocol/websocket-transport";
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
@@ -147,7 +147,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
           <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{actorName(game) ?? message("table.waiting")}</span>
         </div>
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
-          {tableSeats(game).map((player, seat) => <SeatCard game={game} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
+          {tableSeats(game).map((player, seat) => <SeatCard game={game} holeDeal={presentation.holeDeal} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
         </div>
         {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} seatSlots={seatSlots} tableElement={tableElement} deckElement={deckElement} />}
       </div>
@@ -203,16 +203,23 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
   </section>;
 }
 
-function SeatCard({ game, room, player, seat, slot }: { readonly game: GameSnapshot; readonly room: ReturnType<typeof useProjectionState>["room"]; readonly player: GameSnapshot["players"][number] | null; readonly seat: number; readonly slot: number | null }) {
+function SeatCard({ game, holeDeal, room, player, seat, slot }: { readonly game: GameSnapshot; readonly holeDeal: HoleDealPresentation | null; readonly room: ReturnType<typeof useProjectionState>["room"]; readonly player: GameSnapshot["players"][number] | null; readonly seat: number; readonly slot: number | null }) {
   if (player === null || slot === null) return <span className="sr-only">{formatMessage("table.seat", { position: seat + 1 })}</span>;
   const viewer = player.playerId === game.viewer.playerId;
   const active = player.playerId === game.currentActorPlayerId;
-  const cards = viewer ? game.viewer.holeCards : player.revealedCards;
+  const stagedDeal = holeDeal !== null && game.handId === holeDeal.handId;
+  const stagedCardCount = stagedDeal ? Math.min(2, holeDeal.dealtCardCounts[player.playerId] ?? 0) : null;
+  const revealCards = viewer && stagedDeal && holeDeal.viewerCardsForReveal.length === 2 ? holeDeal.viewerCardsForReveal : null;
+  const cards = stagedDeal ? [] : viewer ? game.viewer.holeCards : player.revealedCards;
   const connectionStatus = room?.players.find((roomPlayer) => roomPlayer.playerId === player.playerId)?.connectionStatus;
   const status = connectionStatus === "DISCONNECTED" ? message("table.disconnected") : player.pokerStatus === "ELIMINATED" ? message("table.eliminated") : player.pokerStatus === "EXIT_PENDING" ? message("table.exitPending") : player.pokerStatus === "WITHDRAWN" ? message("table.withdrawn") : null;
   return <article style={seatPosition(slot)} className="absolute z-30 w-[5.5rem] -translate-x-1/2 -translate-y-1/2 text-center sm:w-36" aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
     <div className="relative z-10 mx-auto -mb-1 flex min-h-8 justify-center sm:min-h-14">
-      <CardRow cards={cards} hiddenCount={viewer ? Math.max(0, 2 - cards.length) : player.hasHoleCards ? Math.max(0, 2 - cards.length) : 0} variant={viewer ? "hole" : "seat"} />
+      {revealCards === null
+        ? stagedCardCount === null
+          ? <CardRow cards={cards} hiddenCount={viewer ? Math.max(0, 2 - cards.length) : player.hasHoleCards ? Math.max(0, 2 - cards.length) : 0} variant={viewer ? "hole" : "seat"} />
+          : <HoleDealBacks landedCount={stagedCardCount} variant={viewer ? "hole" : "seat"} />
+        : <HoleCardsReveal cards={revealCards} landedCount={stagedCardCount ?? 2} />}
     </div>
     <div className={`relative rounded-xl border px-1.5 py-1.5 shadow-lg sm:rounded-2xl sm:px-3 sm:py-2 ${active ? "border-amber-300 bg-[#315d37] ring-2 ring-amber-300/75" : "border-slate-700 bg-[#092a35]"}`}>
       {player.seat === game.dealerSeat && <span aria-label={message("table.dealer")} className="absolute -left-2 -top-2 grid h-5 w-5 place-items-center rounded-full border-2 border-white bg-slate-950 text-[9px] font-bold text-white shadow">D</span>}
@@ -250,6 +257,31 @@ function CardRow({ cards, hiddenCount = 0, variant = "seat" }: { readonly cards:
   const fan = variant === "hole" ? "first:-rotate-6 last:rotate-6" : "first:-rotate-3 last:rotate-3";
   const spacing = variant === "hole" ? "-space-x-5 sm:-space-x-7" : "-space-x-3 sm:-space-x-5";
   return <div className={`flex justify-center ${spacing}`}>{cards.map((card, index) => <CardFace card={card} variant={variant} className={fan} key={`${card.rank}-${card.suit}-${index}`} />)}{Array.from({ length: hiddenCount }, (_, index) => <CardBack variant={variant} className={fan} key={`hidden-${index}`} />)}</div>;
+}
+
+function HoleDealBacks({ landedCount, variant }: { readonly landedCount: number; readonly variant: "seat" | "hole" }) {
+  const spacing = variant === "hole" ? "-space-x-5 sm:-space-x-7" : "-space-x-3 sm:-space-x-5";
+  const rotation = variant === "hole" ? ["-rotate-6", "rotate-6"] : ["-rotate-3", "rotate-3"];
+  return <div className={`flex justify-center ${spacing}`}>{[0, 1].map((index) => <span className={`relative block ${cardDimensions(variant)} shrink-0 ${rotation[index]}`} key={index}>
+    {index < landedCount && <CardBack variant={variant} className="!absolute inset-0" />}
+  </span>)}</div>;
+}
+
+function HoleCardsReveal({ cards, landedCount }: { readonly cards: readonly Card[]; readonly landedCount: number }) {
+  return <div className="flex justify-center -space-x-5 sm:-space-x-7">{cards.map((card, index) => {
+    const arrivesWithFinalFlight = index >= landedCount;
+    const style = {
+      "--hole-arrival-delay": `${animationTimings.deal}ms`,
+      "--hole-reveal-delay": `${animationTimings.deal + animationTimings.holeRevealPause + index * animationTimings.ownCardRevealStagger}ms`,
+      "--hole-reveal-duration": `${animationTimings.ownCardReveal}ms`,
+    } as CSSProperties;
+    return <span className={`relative block ${cardDimensions("hole")} shrink-0 ${index === 0 ? "-rotate-6" : "rotate-6"} ${arrivesWithFinalFlight ? "hole-reveal-arrival" : ""}`} style={style} key={`reveal-${card.rank}-${card.suit}-${index}`}>
+      <span className="hole-group-flip relative block h-full w-full">
+        <CardBack variant="hole" className="hole-deal-back !absolute inset-0" />
+        <CardFace card={card} variant="hole" className="hole-deal-face !absolute inset-0" />
+      </span>
+    </span>;
+  })}</div>;
 }
 
 function CardFace({ card, variant, className = "" }: { readonly card: Card; readonly variant: "board" | "seat" | "hole"; readonly className?: string }) {
@@ -344,30 +376,26 @@ function DealerDeck({ onElement }: { readonly onElement: (element: HTMLDivElemen
 
 function HoleCardDealFlight({ event, viewerPlayerId, slot, tableElement, deckElement }: { readonly event: Extract<PresentationOverlayState["event"], { type: "DEAL_HOLE_CARD" }>; readonly viewerPlayerId: string; readonly slot: number | null; readonly tableElement: HTMLDivElement | null; readonly deckElement: HTMLDivElement | null }) {
   const target = slot === null ? null : tableSeatPositions[slot]!;
-  const vector = target === null ? null : holeDealVector(tableElement, deckElement, target);
-  const isViewer = event.payload.playerId === viewerPlayerId;
-  // `card` only exists in the already-filtered event for its owner. Never use
-  // canonical player data as a fallback: opponents must stay card-back only.
-  const privateCard = isViewer ? event.payload.card : undefined;
+  const variant = event.payload.playerId === viewerPlayerId ? "hole" : "seat";
+  const vector = target === null ? null : holeDealVector(tableElement, deckElement, target, event.payload.cardIndex, variant);
   if (vector === null) return null;
   return <div className="pointer-events-none absolute inset-0 z-40" aria-hidden="true">
-    <span className="hole-deal-flight absolute block h-[4.5rem] w-[3.2rem] sm:h-24 sm:w-[4.3rem]" style={{ "--hole-origin-x": `${vector.originX}px`, "--hole-origin-y": `${vector.originY}px`, "--hole-delta-x": `${vector.x}px`, "--hole-delta-y": `${vector.y}px`, "--hole-mid-x": `${vector.midX}px`, "--hole-mid-y": `${vector.midY}px` } as CSSProperties}>
-      <span className={`relative block h-full w-full ${privateCard === undefined ? "" : "hole-deal-flip-own"}`}>
-        <CardBack variant="hole" className="hole-deal-back absolute inset-0" />
-        {privateCard !== undefined && <CardFace card={privateCard} variant="hole" className="hole-deal-face absolute inset-0" />}
+    <span className={`hole-deal-flight absolute block ${cardDimensions(variant)}`} style={{ "--hole-origin-x": `${vector.originX}px`, "--hole-origin-y": `${vector.originY}px`, "--hole-delta-x": `${vector.x}px`, "--hole-delta-y": `${vector.y}px`, "--hole-mid-x": `${vector.midX}px`, "--hole-mid-y": `${vector.midY}px`, "--hole-deal-duration": `${animationTimings.deal}ms` } as CSSProperties}>
+      <span className="relative block h-full w-full">
+        <CardBack variant={variant} className="!absolute inset-0" />
       </span>
     </span>
   </div>;
 }
 
-function holeDealVector(tableElement: HTMLDivElement | null, deckElement: HTMLDivElement | null, target: { readonly left: string; readonly top: string }): (ReturnType<typeof dealFlightVector> & { readonly originX: number; readonly originY: number }) | null {
+function holeDealVector(tableElement: HTMLDivElement | null, deckElement: HTMLDivElement | null, target: { readonly left: string; readonly top: string }, cardIndex: 0 | 1, targetVariant: "seat" | "hole"): (ReturnType<typeof dealFlightVector> & { readonly originX: number; readonly originY: number }) | null {
   if (tableElement === null || deckElement === null) return null;
   const tableRect = tableElement.getBoundingClientRect();
   const deckRect = deckElement.getBoundingClientRect();
   const { x: originX, y: originY } = dealFlightOrigin(tableRect, deckRect);
-  // This runs once when a projected deal task mounts. The actual 1250ms flight
+  // This runs once when a projected deal task mounts. The compositor-only flight
   // only animates transform/opacity, so every seat stays on the compositor.
-  return { ...dealFlightVector({ width: tableRect.width, height: tableRect.height }, target, { x: originX, y: originY }), originX, originY };
+  return { ...dealFlightVector({ width: tableRect.width, height: tableRect.height }, target, { x: originX, y: originY }, cardIndex, targetVariant), originX, originY };
 }
 
 function ShowdownShowcase({ cards, boardCards, bestFiveCards, playerName }: { readonly cards: readonly Card[]; readonly boardCards: readonly Card[]; readonly bestFiveCards: readonly Card[]; readonly playerName: string }) {

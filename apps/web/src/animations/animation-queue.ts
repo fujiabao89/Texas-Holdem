@@ -21,6 +21,19 @@ export interface PresentationState {
   readonly game: GameSnapshot | null;
   readonly overlay: PresentationOverlay | null;
   readonly mode: "NORMAL" | "SOFT_CATCH_UP" | "HARD_FORWARD";
+  /**
+   * Presentation-only progress for the opening two-round deal. Canonical
+   * cards remain available to actions immediately, while seats reveal only
+   * after the final projected deal event has visibly landed.
+   */
+  readonly holeDeal: HoleDealPresentation | null;
+}
+
+export interface HoleDealPresentation {
+  readonly handId: string;
+  readonly dealtCardCounts: Readonly<Record<string, number>>;
+  /** Copied only from the server-projected viewer hole cards. */
+  readonly viewerCardsForReveal: readonly Card[];
 }
 
 export interface AnimationClock {
@@ -41,6 +54,7 @@ interface QueueItem {
   readonly beforePresentation: GameSnapshot | null;
   readonly afterCanonical: GameSnapshot;
   readonly durationMs: number;
+  readonly finalHoleCardDeal: boolean;
 }
 
 const browserClock: AnimationClock = {
@@ -61,7 +75,12 @@ export class AnimationQueue {
   private timer: unknown | null = null;
   private tailTarget: GameSnapshot | null = null;
   private reducedMotion = false;
-  private state: PresentationState = { game: null, overlay: null, mode: "NORMAL" };
+  private state: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null };
+  private holeDealHandId: string | null = null;
+  private holeDealActive = false;
+  private readonly firstRoundRecipients = new Set<string>();
+  private readonly secondRoundRecipients = new Set<string>();
+  private readonly dealtCardCounts = new Map<string, number>();
 
   constructor(private readonly options: AnimationQueueOptions = {}) { this.clock = options.clock ?? browserClock; }
 
@@ -79,18 +98,28 @@ export class AnimationQueue {
     this.active = null;
     this.queue.splice(0);
     this.tailTarget = game;
-    this.replace({ game, overlay: null, mode: "NORMAL" });
+    this.resetHoleDeal();
+    this.replace({ game, overlay: null, mode: "NORMAL", holeDeal: null });
   }
 
   enqueue(message: GameEventMessage, afterCanonical: GameSnapshot): void {
+    const finalHoleCardDeal = this.registerHoleDealEvent(message);
     const item: QueueItem = {
       message,
       beforePresentation: this.tailTarget ?? this.state.game,
       afterCanonical,
-      durationMs: durationFor(message.payload.event),
+      durationMs: durationFor(message.payload.event, finalHoleCardDeal),
+      finalHoleCardDeal,
     };
     this.tailTarget = afterCanonical;
-    if (this.reducedMotion) { this.commitFinalFrame(item); return; }
+    if (this.reducedMotion) {
+      this.resetHoleDeal();
+      this.replace({ game: afterCanonical, overlay: null, mode: "NORMAL", holeDeal: null });
+      return;
+    }
+    if (message.payload.event.type === "DEAL_HOLE_CARD" && this.holeDealActive) {
+      this.replace({ ...this.state, holeDeal: this.currentHoleDeal() });
+    }
     this.queue.push(item);
     // An all-in can arrive as one burst. Compress it, but do not erase the
     // only public showdown/best-five explanation the player can inspect.
@@ -107,7 +136,9 @@ export class AnimationQueue {
     if (item === undefined) { this.replace({ ...this.state, mode: "NORMAL" }); return; }
     this.active = item;
     const soft = this.shouldSoftCatchUp();
-    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event, item.beforePresentation), mode: soft ? "SOFT_CATCH_UP" : "NORMAL" });
+    const viewerCardsForReveal = item.finalHoleCardDeal ? item.afterCanonical.viewer.holeCards : [];
+    const holeDeal = this.holeDealActive ? this.currentHoleDeal(viewerCardsForReveal) : null;
+    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event, item.beforePresentation), mode: soft ? "SOFT_CATCH_UP" : "NORMAL", holeDeal });
     try { this.options.onEventStarted?.(item.message.payload.event); }
     catch { this.finishActive(); return; }
     // Soft Catch-up may condense ordinary acknowledgement feedback, but it
@@ -127,8 +158,13 @@ export class AnimationQueue {
   }
 
   private commitFinalFrame(item: QueueItem): void {
-    if (this.state.game?.sequence === item.afterCanonical.sequence && this.state.overlay === null) return;
-    this.replace({ game: item.afterCanonical, overlay: null, mode: this.state.mode });
+    if (item.message.payload.event.type === "DEAL_HOLE_CARD") {
+      const playerId = item.message.payload.event.payload.playerId;
+      this.dealtCardCounts.set(playerId, Math.min(2, (this.dealtCardCounts.get(playerId) ?? 0) + 1));
+      if (item.finalHoleCardDeal) this.holeDealActive = false;
+    }
+    if (this.state.game?.sequence === item.afterCanonical.sequence && this.state.overlay === null && !item.finalHoleCardDeal) return;
+    this.replace({ game: item.afterCanonical, overlay: null, mode: this.state.mode, holeDeal: this.holeDealActive ? this.currentHoleDeal() : null });
   }
 
   private commitAllFinalFrames(): void {
@@ -138,7 +174,8 @@ export class AnimationQueue {
     this.active = null;
     this.queue.splice(0);
     this.tailTarget = this.state.game;
-    this.replace({ ...this.state, overlay: null, mode: "NORMAL" });
+    this.resetHoleDeal();
+    this.replace({ ...this.state, overlay: null, mode: "NORMAL", holeDeal: null });
   }
 
   private hardForward(): void {
@@ -146,9 +183,40 @@ export class AnimationQueue {
     this.clearTimer();
     this.active = null;
     this.queue.splice(0);
-    this.replace({ game: latest, overlay: null, mode: "HARD_FORWARD" });
+    this.resetHoleDeal();
+    this.replace({ game: latest, overlay: null, mode: "HARD_FORWARD", holeDeal: null });
     this.options.onHardForward?.();
-    this.replace({ game: latest, overlay: null, mode: "NORMAL" });
+    this.replace({ game: latest, overlay: null, mode: "NORMAL", holeDeal: null });
+  }
+
+  private registerHoleDealEvent(message: GameEventMessage): boolean {
+    const { event, handId } = message.payload;
+    if (event.type === "HAND_STARTED") this.resetHoleDeal();
+    if (event.type !== "DEAL_HOLE_CARD") return false;
+    if (this.holeDealHandId !== handId) this.resetHoleDeal(handId);
+    this.holeDealActive = true;
+    if (event.payload.cardIndex === 0) this.firstRoundRecipients.add(event.payload.playerId);
+    else this.secondRoundRecipients.add(event.payload.playerId);
+    return event.payload.cardIndex === 1
+      && this.firstRoundRecipients.size > 0
+      && this.secondRoundRecipients.size === this.firstRoundRecipients.size;
+  }
+
+  private currentHoleDeal(viewerCardsForReveal: readonly Card[] = []): HoleDealPresentation | null {
+    if (!this.holeDealActive || this.holeDealHandId === null) return null;
+    return {
+      handId: this.holeDealHandId,
+      dealtCardCounts: Object.fromEntries(this.dealtCardCounts),
+      viewerCardsForReveal,
+    };
+  }
+
+  private resetHoleDeal(handId: string | null = null): void {
+    this.holeDealHandId = handId;
+    this.holeDealActive = false;
+    this.firstRoundRecipients.clear();
+    this.secondRoundRecipients.clear();
+    this.dealtCardCounts.clear();
   }
 
   private clearTimer(): void { if (this.timer !== null) this.clock.clearTimeout(this.timer); this.timer = null; }
@@ -162,9 +230,9 @@ export class AnimationQueue {
   private replace(next: PresentationState): void { this.state = next; for (const listener of this.listeners) listener(); }
 }
 
-function durationFor(event: GameEvent): number {
+function durationFor(event: GameEvent, finalHoleCardDeal: boolean): number {
   switch (event.type) {
-    case "DEAL_HOLE_CARD": return animationTimings.deal + (event.payload.card === undefined ? 0 : animationTimings.ownCardReveal);
+    case "DEAL_HOLE_CARD": return animationTimings.deal + (finalHoleCardDeal ? animationTimings.holeRevealPause + animationTimings.ownCardReveal + animationTimings.ownCardRevealStagger : 0);
     case "BURN_CARD": return animationTimings.burn;
     case "FLOP_DEALT": return animationTimings.flopCard * 3 + animationTimings.flopInterval * 2;
     case "TURN_DEALT": case "RIVER_DEALT": return animationTimings.turnRiver;

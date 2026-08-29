@@ -21,18 +21,21 @@ export function dealFlightVector(
   table: { readonly width: number; readonly height: number },
   target: { readonly left: string; readonly top: string },
   origin: { readonly x: number; readonly y: number },
+  cardIndex: 0 | 1,
+  targetVariant: "seat" | "hole",
 ): { readonly x: number; readonly y: number; readonly midX: number; readonly midY: number } {
-  const targetX = table.width * (Number.parseFloat(target.left) / 100);
+  const cardOffset = targetVariant === "hole"
+    ? Math.min(22, Math.max(14, table.width * 0.018))
+    : Math.min(14, Math.max(9, table.width * 0.011));
+  const targetX = table.width * (Number.parseFloat(target.left) / 100) + (cardIndex === 0 ? -cardOffset : cardOffset);
   // The hand row is above the player name/chips card at the seat coordinate.
   const targetY = table.height * ((Number.parseFloat(target.top) - 6) / 100);
   const x = targetX - origin.x;
   const y = targetY - origin.y;
-  // Lift the card mid-flight. This gives even a short journey to the bottom
-  // seat a clearly readable dealer "throw". A lateral sway keeps heads-up
-  // flights visibly curved instead of looking like a vertical snap.
-  const lift = Math.min(82, Math.max(44, Math.hypot(x, y) * 0.14));
-  const sway = Math.min(58, Math.max(34, Math.hypot(x, y) * 0.1));
-  return { x, y, midX: x * 0.46 + (x < 0 ? -sway : sway), midY: y * 0.46 - lift };
+  // The Windows Solitaire reference keeps cards upright and follows a clean,
+  // shallow arc. Only transform/opacity are animated by the caller.
+  const lift = Math.min(46, Math.max(20, Math.hypot(x, y) * 0.06));
+  return { x, y, midX: x * 0.58, midY: y * 0.58 - lift };
 }
 
 /** A different key forces the browser to start a fresh CSS flight per Event. */

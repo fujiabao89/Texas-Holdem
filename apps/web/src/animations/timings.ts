@@ -1,9 +1,10 @@
 export const animationTimings = {
-  // Each hole-card event visibly travels from the deck; a private card then
-  // waits at its seat before it is allowed to flip.
-  deal: 1_250,
-  dealSeatInterval: 400,
-  ownCardReveal: 700,
+  // Each projected card keeps the upright Solitaire-style slide readable.
+  // Only after the final second-round deal do both private cards turn over.
+  deal: 980,
+  holeRevealPause: 260,
+  ownCardReveal: 680,
+  ownCardRevealStagger: 150,
   wager: 220,
   check: 140,
   fold: 200,

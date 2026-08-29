@@ -19,24 +19,43 @@ describe("dealFlightVector", () => {
       { width: 1200, height: 700 },
       { left: "50%", top: "8%" },
       outsideTopLeftDeck,
+      0,
+      "seat",
     );
     const side = dealFlightVector(
       { width: 1200, height: 700 },
       { left: "91%", top: "64%" },
       outsideTopLeftDeck,
+      1,
+      "seat",
     );
     const lower = dealFlightVector(
       { width: 1200, height: 700 },
       { left: "50%", top: "93%" },
       outsideTopLeftDeck,
+      0,
+      "hole",
     );
-    expect(upper).toMatchObject({ x: 560, y: 38 });
-    expect(side).toMatchObject({ x: 1052, y: 430 });
-    expect(lower).toMatchObject({ x: 560, y: 633 });
+    expect(upper.x).toBeCloseTo(546.8);
+    expect(upper.y).toBe(38);
+    expect(side.x).toBeCloseTo(1_065.2);
+    expect(side.y).toBe(430);
+    expect(lower.x).toBeCloseTo(538.4);
+    expect(lower.y).toBe(633);
     // Every target gets a visible upward arc before its exact landing point.
-    expect(upper.midY).toBeLessThan(upper.y * 0.46);
-    expect(side.midY).toBeLessThan(side.y * 0.46);
-    expect(lower.midY).toBeLessThan(lower.y * 0.46);
+    expect(upper.midY).toBeLessThan(upper.y * 0.58);
+    expect(side.midY).toBeLessThan(side.y * 0.58);
+    expect(lower.midY).toBeLessThan(lower.y * 0.58);
+  });
+
+  it("lands the two rounds on distinct sides of the same player hand", () => {
+    const table = { width: 1200, height: 700 };
+    const target = { left: "50%", top: "93%" };
+    const origin = { x: 40, y: -24 };
+    const first = dealFlightVector(table, target, origin, 0, "hole");
+    const second = dealFlightVector(table, target, origin, 1, "hole");
+    expect(second.x - first.x).toBeCloseTo(43.2);
+    expect(second.y).toBe(first.y);
   });
 
   it("restarts the CSS flight for every player and card index", () => {
