@@ -77,3 +77,16 @@ export function reduceHandHistoryDetail(state: HandHistoryDetailState, action: H
 export function canLoadMore(state: HandHistoryListState): boolean {
   return state.status === "READY" && !state.loadingMore && state.nextCursor !== null;
 }
+
+/**
+ * True only while the buffered events belong to a hand that is actually still
+ * running: settlement keeps the hand's events buffered (they share its
+ * `handId`), but the projection's `handPhase` moves to `HAND_END` and must not
+ * be presented as "in progress" anymore. A `null` phase means no active hand.
+ */
+export function currentHandInProgress(
+  handPhase: "PREFLOP" | "FLOP" | "TURN" | "RIVER" | "HAND_END" | null,
+  bufferedEventCount: number,
+): boolean {
+  return bufferedEventCount > 0 && handPhase !== null && handPhase !== "HAND_END";
+}

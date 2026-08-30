@@ -100,6 +100,7 @@ export const zhCN = {
     missingSession: "未找到此房间的身份凭证，请重新加入。",
     roomClosed: "房间已关闭。",
     notFound: "未找到该场比赛的结果。",
+    snapshotUnavailable: "当前连接无法获取该比赛的结果快照，请返回房间后从牌桌重新进入。",
     tiedRank: "并列第 {position} 名",
     view: "查看比赛结果",
   },

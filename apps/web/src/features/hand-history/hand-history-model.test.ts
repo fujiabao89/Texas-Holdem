@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { HandHistoryItem } from "./hand-history-model";
-import { canLoadMore, initialDetailState, initialListState, reduceHandHistoryDetail, reduceHandHistoryList } from "./hand-history-model";
+import { canLoadMore, currentHandInProgress, initialDetailState, initialListState, reduceHandHistoryDetail, reduceHandHistoryList } from "./hand-history-model";
 
 function item(handNumber: number): HandHistoryItem {
   return {
@@ -60,6 +60,22 @@ describe("reduceHandHistoryList", () => {
   it("ignores a late page arrival after a fresh load reset the list", () => {
     const state = reduceHandHistoryList(initialListState, { type: "LOAD" });
     expect(reduceHandHistoryList(state, { type: "MORE_LOADED", items: [item(1)], nextCursor: null })).toBe(state);
+  });
+});
+
+describe("currentHandInProgress", () => {
+  it("shows the buffered hand only while its phase is still running", () => {
+    expect(currentHandInProgress("PREFLOP", 3)).toBe(true);
+    expect(currentHandInProgress("RIVER", 1)).toBe(true);
+  });
+
+  it("hides a settled hand (HAND_END) even though its events stay buffered", () => {
+    expect(currentHandInProgress("HAND_END", 3)).toBe(false);
+  });
+
+  it("hides the section when there is no active hand or nothing buffered", () => {
+    expect(currentHandInProgress(null, 3)).toBe(false);
+    expect(currentHandInProgress("PREFLOP", 0)).toBe(false);
   });
 });
 

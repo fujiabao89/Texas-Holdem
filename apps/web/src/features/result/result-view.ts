@@ -1,4 +1,4 @@
-import type { GameSnapshot } from "@texas-holdem/protocol";
+import type { GameSnapshot, RoomSnapshot } from "@texas-holdem/protocol";
 
 /**
  * Pure presentation model for the Game Result page (docs/05 §6.6). Rankings,
@@ -41,4 +41,19 @@ export function resultAvailableFor(game: GameSnapshot | null, tournamentId: stri
 /** The room is playable for "play again" only through the host's start flow. */
 export function canPlayAgain(roomStatus: string, isHost: boolean): boolean {
   return isHost && roomStatus !== "CLOSED";
+}
+
+/**
+ * The room is loaded with no active tournament and no game snapshot: once a
+ * tournament finishes the server clears `activeTournamentId`, so the auth /
+ * reconnect answer always carries `gameSnapshot: null` and the requested
+ * result snapshot will never arrive on this connection (docs/02 §10). The
+ * page must show an explicit unavailable state instead of waiting forever.
+ */
+export function resultSnapshotUnreachable(
+  room: RoomSnapshot | null,
+  roomId: string,
+  game: GameSnapshot | null,
+): boolean {
+  return room !== null && room.roomId === roomId && room.activeTournamentId === null && game === null;
 }

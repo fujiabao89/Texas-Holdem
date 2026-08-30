@@ -7,7 +7,7 @@ import type { Card, GameEventMessage } from "@texas-holdem/protocol";
 import { formatMessage, message, type MessageKey } from "../../messages/zh-CN";
 import { useProjectionState } from "../../state/use-projection-state";
 import { useRoomClient } from "../lobby/room-client";
-import { canLoadMore, initialDetailState, initialListState, reduceHandHistoryDetail, reduceHandHistoryList, type HandHistoryItem } from "./hand-history-model";
+import { canLoadMore, currentHandInProgress, initialDetailState, initialListState, reduceHandHistoryDetail, reduceHandHistoryList, type HandHistoryItem } from "./hand-history-model";
 import { buildHandTimeline, type StageView, type TimelineEntry, type TimelineStage } from "./hand-timeline";
 
 const numberFormat = new Intl.NumberFormat("zh-CN");
@@ -34,6 +34,10 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
   const [list, dispatchList] = useReducer(reduceHandHistoryList, initialListState);
   const [detail, dispatchDetail] = useReducer(reduceHandHistoryDetail, initialDetailState);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  // 同步锁：滚动事件先于重渲染到达时，`canLoadMore(list)` 仍读到旧的
+  // `loadingMore:false`，会以同一 cursor 双发请求并把同一页追加两次；
+  // ref 写入在事件处理内即时生效，杜绝重复分页。
+  const loadMoreInFlight = useRef(false);
 
   const names = useMemo(() => new Map((state.game?.players ?? []).map((player) => [player.playerId, player.displayName])), [state.game]);
   const lookup = useCallback((playerId: string) => names.get(playerId) ?? playerId, [names]);
@@ -61,9 +65,10 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
   }, [onClose]);
 
   const loadMore = () => {
-    if (!canLoadMore(list)) return;
+    if (loadMoreInFlight.current || !canLoadMore(list)) return;
+    loadMoreInFlight.current = true;
     dispatchList({ type: "LOAD_MORE" });
-    void load(list.nextCursor ?? undefined);
+    void load(list.nextCursor ?? undefined).finally(() => { loadMoreInFlight.current = false; });
   };
 
   const select = (handId: string) => {
@@ -92,7 +97,7 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
           const element = event.currentTarget;
           if (element.scrollTop + element.clientHeight >= element.scrollHeight - 48) loadMore();
         }}>
-          {state.currentHandEvents.length > 0 && (
+          {currentHandInProgress(state.game?.handPhase ?? null, state.currentHandEvents.length) && (
             <section aria-labelledby="current-hand-heading" className="border-b border-neutral-200 bg-emerald-50/60 p-4">
               <h3 className="text-sm font-semibold text-emerald-900" id="current-hand-heading">{message("history.currentHand")}</h3>
               <p className="mt-0.5 text-xs text-emerald-800">{message("history.currentHandHint")}</p>

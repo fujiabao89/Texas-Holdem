@@ -155,7 +155,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     {game.tournamentStatus === "FINISHED" && (
       <Link className="mx-auto w-fit rounded-xl bg-emerald-700 px-4 py-2 text-center text-sm font-bold text-white shadow-sm hover:bg-emerald-800" href={`/room/${roomId}/result/${game.tournamentId}`}>{message("result.view")}</Link>
     )}
-    {historyOpen && <HandHistoryDrawer roomId={roomId} tournamentId={game.tournamentId} onClose={() => setHistoryOpen(false)} />}
+    {historyOpen && <HandHistoryDrawer key={game.tournamentId} roomId={roomId} tournamentId={game.tournamentId} onClose={() => setHistoryOpen(false)} />}
   </TableFrame>;
 }
 

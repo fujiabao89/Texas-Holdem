@@ -8,7 +8,7 @@ import { useSyncExternalStore } from "react";
 import { errorMessage, formatMessage, message } from "../../messages/zh-CN";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
 import { useProjectionState } from "../../state/use-projection-state";
-import { canPlayAgain, resultAvailableFor, resultRows } from "./result-view";
+import { canPlayAgain, resultAvailableFor, resultRows, resultSnapshotUnreachable } from "./result-view";
 
 const numberFormat = new Intl.NumberFormat("zh-CN");
 
@@ -34,6 +34,9 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
   const game = state.game;
   if (tokens.get(roomId) === null) return <ResultFrame><p role="alert">{message("result.missingSession")}</p><Link className="underline" href="/join">{message("room.joinTitle")}</Link></ResultFrame>;
   if (room !== null && room.roomId === roomId && room.status === "CLOSED") return <ResultFrame><p role="alert">{message("result.roomClosed")}</p><Link className="underline" href="/">{message("result.backHome")}</Link></ResultFrame>;
+  // 房间已加载且无活跃比赛（FINISHED/LOBBY）：认证/重连只会带回 gameSnapshot:null，
+  // 结果快照不会到达本连接——给出明确的不可用状态而不是永久 loading。
+  if (resultSnapshotUnreachable(room, roomId, game)) return <ResultFrame><p role="alert">{message("result.snapshotUnavailable")}</p><Link className="underline" href={`/room/${roomId}`}>{message("result.backToLobby")}</Link></ResultFrame>;
   if (room === null || room.roomId !== roomId || game === null) return <ResultFrame><p aria-live="polite">{message("result.loading")}</p></ResultFrame>;
   if (!resultAvailableFor(game, tournamentId)) return <ResultFrame><p role="alert">{message("result.notFound")}</p><Link className="underline" href={`/room/${roomId}`}>{message("result.backToLobby")}</Link></ResultFrame>;
 

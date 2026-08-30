@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { gameSnapshot } from "../../testing-fixtures";
-import { canPlayAgain, resultAvailableFor, resultRows } from "./result-view";
+import { gameSnapshot, roomSnapshot } from "../../testing-fixtures";
+import { canPlayAgain, resultAvailableFor, resultRows, resultSnapshotUnreachable } from "./result-view";
 
 const finishedGame = gameSnapshot({
   tournamentStatus: "FINISHED",
@@ -56,6 +56,22 @@ describe("resultAvailableFor", () => {
     expect(resultAvailableFor(finishedGame, "other-tournament")).toBe(false);
     expect(resultAvailableFor(gameSnapshot(), "tournament-1")).toBe(false);
     expect(resultAvailableFor(finishedGame, "tournament-1")).toBe(true);
+  });
+});
+
+describe("resultSnapshotUnreachable", () => {
+  it("is true once the room is loaded with no active tournament and no game snapshot", () => {
+    const finishedRoom = roomSnapshot({ activeTournamentId: null });
+    expect(resultSnapshotUnreachable(finishedRoom, "room-1", null)).toBe(true);
+  });
+
+  it("stays false while the room is loading, is another room, or still has state to arrive", () => {
+    expect(resultSnapshotUnreachable(null, "room-1", null)).toBe(false);
+    const otherRoom = roomSnapshot({ roomId: "room-2", activeTournamentId: null });
+    expect(resultSnapshotUnreachable(otherRoom, "room-1", null)).toBe(false);
+    expect(resultSnapshotUnreachable(roomSnapshot(), "room-1", null)).toBe(false);
+    expect(resultSnapshotUnreachable(roomSnapshot(), "room-1", gameSnapshot())).toBe(false);
+    expect(resultSnapshotUnreachable(roomSnapshot({ activeTournamentId: null }), "room-1", gameSnapshot())).toBe(false);
   });
 });
 
