@@ -36,5 +36,5 @@ export const softCatchUpTasks = 8;
 // A normal all-in sends the remaining streets, two reveals and awards as one
 // burst. Keep that explainable flow in Soft Catch-up; reserve hard reset for
 // genuinely stale/lossy backlogs.
-export const hardForwardBacklogMs = 30_000;
+export const hardForwardBacklogMs = 28_000;
 export const hardForwardEvents = 40;

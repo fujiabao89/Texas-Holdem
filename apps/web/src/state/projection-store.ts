@@ -131,6 +131,7 @@ export class ProjectionStore {
         tournamentId: game.tournamentId,
         sequence: message.payload.sequence,
       });
+      if (!matchesEventHand(message.payload.handId, game.handId, next.handId)) return this.requestResync("INVALID_EVENT");
       this.replace({ ...this.state, game: next, lastSequence: next.sequence, clock: clockFromSnapshot(next, message.serverTime) });
       this.emitAcceptedEvent({ message, afterCanonical: next });
       return "APPLIED";
@@ -170,6 +171,11 @@ export class ProjectionStore {
   private emitBarrier(barrier: ProjectionBarrier): void {
     for (const listener of this.barrierListeners) listener(barrier);
   }
+}
+
+/** Event envelope identity must agree with the accepted patch's hand boundary. */
+function matchesEventHand(eventHandId: string | null, previousHandId: string | null, nextHandId: string | null): boolean {
+  return eventHandId === nextHandId || (nextHandId === null && eventHandId === previousHandId);
 }
 
 function clockFromSnapshot(snapshot: GameSnapshot, serverTime: number): ClockProjection {

@@ -29,6 +29,8 @@ export interface PresentationState {
    * after the final projected deal event has visibly landed.
    */
   readonly holeDeal: HoleDealPresentation | null;
+  /** Opponent cards become visible only after their own public reveal frame commits. */
+  readonly revealedPlayerIds: readonly string[];
 }
 
 export interface HoleDealPresentation {
@@ -78,7 +80,7 @@ export class AnimationQueue {
   private timer: unknown | null = null;
   private tailTarget: GameSnapshot | null = null;
   private reducedMotion = false;
-  private state: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null };
+  private state: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: [] };
   private holeDealHandId: string | null = null;
   private holeDealActive = false;
   private readonly firstRoundRecipients = new Set<string>();
@@ -103,7 +105,7 @@ export class AnimationQueue {
     this.queue.splice(0);
     this.tailTarget = game;
     this.resetHoleDeal();
-    this.replace({ game, overlay: null, mode: "NORMAL", holeDeal: null });
+    this.replace({ game, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(game) });
   }
 
   enqueue(message: GameEventMessage, afterCanonical: GameSnapshot): void {
@@ -118,7 +120,7 @@ export class AnimationQueue {
     this.tailTarget = afterCanonical;
     if (this.reducedMotion) {
       this.resetHoleDeal();
-      this.replace({ game: afterCanonical, overlay: null, mode: "NORMAL", holeDeal: null });
+      this.replace({ game: afterCanonical, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(afterCanonical) });
       return;
     }
     if (message.payload.event.type === "DEAL_HOLE_CARD" && this.holeDealActive) {
@@ -142,7 +144,7 @@ export class AnimationQueue {
     const soft = this.shouldSoftCatchUp();
     const viewerCardsForReveal = item.finalHoleCardDeal ? item.afterCanonical.viewer.holeCards : [];
     const holeDeal = this.holeDealActive ? this.currentHoleDeal(viewerCardsForReveal) : null;
-    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event, item.beforePresentation, item.finalHoleCardDeal), mode: soft ? "SOFT_CATCH_UP" : "NORMAL", holeDeal });
+    this.replace({ game: item.beforePresentation, overlay: overlayFor(item.message.payload.event, item.beforePresentation, item.finalHoleCardDeal), mode: soft ? "SOFT_CATCH_UP" : "NORMAL", holeDeal, revealedPlayerIds: this.state.revealedPlayerIds });
     try { this.options.onEventStarted?.(item.message.payload.event); }
     catch { this.finishActive(); return; }
     // Soft Catch-up may condense ordinary acknowledgement feedback, but it
@@ -158,6 +160,10 @@ export class AnimationQueue {
     const item = this.active;
     this.active = null;
     if (item !== null) this.commitFinalFrame(item);
+    if (item !== null && this.shouldHardForward() && shouldHardForwardAfter(item.message.payload.event, this.queue)) {
+      this.hardForward();
+      return;
+    }
     this.pump();
   }
 
@@ -168,7 +174,13 @@ export class AnimationQueue {
       if (item.finalHoleCardDeal) this.holeDealActive = false;
     }
     if (this.state.game?.sequence === item.afterCanonical.sequence && this.state.overlay === null && !item.finalHoleCardDeal) return;
-    this.replace({ game: item.afterCanonical, overlay: null, mode: this.state.mode, holeDeal: this.holeDealActive ? this.currentHoleDeal() : null });
+    this.replace({
+      game: item.afterCanonical,
+      overlay: null,
+      mode: this.state.mode,
+      holeDeal: this.holeDealActive ? this.currentHoleDeal() : null,
+      revealedPlayerIds: nextRevealedPlayerIds(this.state.revealedPlayerIds, item.message.payload.event),
+    });
   }
 
   private commitAllFinalFrames(): void {
@@ -189,9 +201,9 @@ export class AnimationQueue {
     this.active = null;
     this.queue.splice(0);
     this.resetHoleDeal();
-    this.replace({ game: latest, overlay: null, mode: "HARD_FORWARD", holeDeal: null });
+    this.replace({ game: latest, overlay: null, mode: "HARD_FORWARD", holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(latest) });
     this.options.onHardForward?.();
-    this.replace({ game: latest, overlay: null, mode: "NORMAL", holeDeal: null });
+    this.replace({ game: latest, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(latest) });
   }
 
   private registerHoleDealEvent(message: GameEventMessage): boolean {
@@ -237,6 +249,21 @@ export class AnimationQueue {
   }
   private estimatedBacklogMs(): number { return (this.active?.durationMs ?? 0) + this.queue.reduce((sum, item) => sum + item.durationMs, 0); }
   private replace(next: PresentationState): void { this.state = next; for (const listener of this.listeners) listener(); }
+}
+
+function revealedPlayerIdsFor(game: GameSnapshot | null): readonly string[] {
+  return game?.players.filter((player) => player.revealedCards.length > 0).map((player) => player.playerId) ?? [];
+}
+
+function nextRevealedPlayerIds(previous: readonly string[], event: GameEvent): readonly string[] {
+  if (event.type === "HAND_STARTED") return [];
+  if (event.type !== "PLAYER_REVEALED") return previous;
+  return previous.includes(event.payload.playerId) ? previous : [...previous, event.payload.playerId];
+}
+
+function shouldHardForwardAfter(event: GameEvent, queued: readonly QueueItem[]): boolean {
+  if (event.type === "PLAYER_REVEALED") return true;
+  return event.type === "SHOWDOWN_STARTED" && !queued.some((item) => item.message.payload.event.type === "PLAYER_REVEALED");
 }
 
 function durationFor(event: GameEvent, finalHoleCardDeal: boolean): number {

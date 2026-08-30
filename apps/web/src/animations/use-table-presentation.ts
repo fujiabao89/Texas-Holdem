@@ -8,7 +8,7 @@ import type { WebSocketTransport } from "../protocol/websocket-transport";
 import type { ProjectionStore } from "../state/projection-store";
 import { AnimationQueue, type PresentationState } from "./animation-queue";
 
-const emptyPresentation: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null };
+const emptyPresentation: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: [] };
 
 /** Connects presentation to the single canonical ProjectionStore lifecycle. */
 export function useTablePresentation(

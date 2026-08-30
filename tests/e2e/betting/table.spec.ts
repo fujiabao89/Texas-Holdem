@@ -40,12 +40,12 @@ test("牌桌由 WS 权威投影驱动，键盘提交跟注后等待 Event 状态
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string; requestId: string; payload?: { actionId?: string } };
       if (command.type === "AUTHENTICATE") {
-        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       }
       if (command.type === "SUBMIT_ACTION") {
         submitted.push(command);
-        socket.send(JSON.stringify({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: command.requestId, actionId: command.payload?.actionId, status: "APPLIED", duplicate: false, appliedSequence: "2" } }));
-        socket.send(JSON.stringify({ type: "GAME_EVENT", protocolVersion: 1, serverTime: 3, payload: { tournamentId: "tournament-1", sequence: "2", handId: "hand-1", event: { type: "PLAYER_CALLED", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET", amount: 5, betTo: 15 } }, patch: { currentActorPlayerId: "player-2", viewer: { legalActions: null } } } }));
+        socket.send(JSON.stringify({ type: "COMMAND_RESULT", protocolVersion: 2, serverTime: 2, payload: { requestId: command.requestId, actionId: command.payload?.actionId, status: "APPLIED", duplicate: false, appliedSequence: "2" } }));
+        socket.send(JSON.stringify({ type: "GAME_EVENT", protocolVersion: 2, serverTime: 3, payload: { tournamentId: "tournament-1", sequence: "2", handId: "hand-1", event: { type: "PLAYER_CALLED", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET", amount: 5, betTo: 15 } }, patch: { currentActorPlayerId: "player-2", viewer: { legalActions: null } } } }));
       }
     });
   });
@@ -66,7 +66,7 @@ test("全下需要第二次确认，且不会伪装成普通下注", async ({ pa
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string };
-      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
     });
   });
@@ -84,7 +84,7 @@ test("普通加注达到全下目标时仍需二次确认", async ({ page }) => 
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string };
-      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ viewer: { ...gameSnapshot().viewer, legalActions: { ...gameSnapshot().viewer.legalActions!, maxRaiseTo: 1000, allInTo: 1000 } } }) } }));
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ viewer: { ...gameSnapshot().viewer, legalActions: { ...gameSnapshot().viewer.legalActions!, maxRaiseTo: 1000, allInTo: 1000 } } }) } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
     });
   });
@@ -104,7 +104,7 @@ test("改选普通加注会取消全下确认并提交加注", async ({ page }) 
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string };
-      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
     });
   });
@@ -123,7 +123,7 @@ test("点击提交会采用仍聚焦的精确加注额", async ({ page }) => {
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string };
-      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
     });
   });
@@ -142,7 +142,7 @@ test("输入非法精确金额会取消全下确认", async ({ page }) => {
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string };
-      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
     });
   });
@@ -162,8 +162,8 @@ test("ClockUpdated 的权威 Time Bank 余额会收起操作按钮", async ({ pa
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
       if ((JSON.parse(raw.toString()) as { type: string }).type !== "AUTHENTICATE") return;
-      socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
-      socket.send(JSON.stringify({ type: "CLOCK_UPDATED", protocolVersion: 1, serverTime: 2, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 55_000, timeBankRemainingMs: 0 } }));
+      socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      socket.send(JSON.stringify({ type: "CLOCK_UPDATED", protocolVersion: 2, serverTime: 2, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 55_000, timeBankRemainingMs: 0 } }));
     });
   });
   await page.goto("/room/room-1/table");
@@ -177,10 +177,10 @@ test("已有待发送命令时不能重试已拒绝的旧命令", async ({ page 
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string; requestId: string; payload?: { action?: { type: string }; actionId?: string } };
-      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") {
         submitted.push(command);
-        if (command.payload?.action?.type === "CALL") socket.send(JSON.stringify({ type: "COMMAND_RESULT", protocolVersion: 1, serverTime: 2, payload: { requestId: command.requestId, actionId: command.payload.actionId, status: "REJECTED", duplicate: false, error: { code: "GAME_UNAVAILABLE", message: "ignored", retryable: true, traceId: "trace-1" } } }));
+        if (command.payload?.action?.type === "CALL") socket.send(JSON.stringify({ type: "COMMAND_RESULT", protocolVersion: 2, serverTime: 2, payload: { requestId: command.requestId, actionId: command.payload.actionId, status: "REJECTED", duplicate: false, error: { code: "GAME_UNAVAILABLE", message: "ignored", retryable: true, traceId: "trace-1" } } }));
       }
       if (command.type === "USE_TIME_BANK") timeBankUses += 1;
     });
@@ -199,7 +199,7 @@ test("AUTH_FAILED 会清除 Token 并引导重新加入", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
-      if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "ERROR", protocolVersion: 1, serverTime: 1, payload: { code: "AUTH_FAILED", message: "ignored", retryable: false, traceId: "trace-1" } }));
+      if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "ERROR", protocolVersion: 2, serverTime: 1, payload: { code: "AUTH_FAILED", message: "ignored", retryable: false, traceId: "trace-1" } }));
     });
   });
   await page.goto("/room/room-1/table");
@@ -210,7 +210,7 @@ test("UNSUPPORTED_PROTOCOL_VERSION 会显示刷新入口", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
-      if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "ERROR", protocolVersion: 1, serverTime: 2, payload: { code: "UNSUPPORTED_PROTOCOL_VERSION", message: "ignored", retryable: false, traceId: "trace-2" } }));
+      if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "ERROR", protocolVersion: 2, serverTime: 2, payload: { code: "UNSUPPORTED_PROTOCOL_VERSION", message: "ignored", retryable: false, traceId: "trace-2" } }));
     });
   });
   await page.goto("/room/room-1/table");
@@ -224,8 +224,8 @@ test("房间关闭会以服务端 RoomSnapshot 覆盖牌桌", async ({ page }) =
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") {
-        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
-        socket.send(JSON.stringify({ type: "ROOM_SNAPSHOT", protocolVersion: 1, serverTime: 2, payload: { ...roomSnapshot, roomRevision: "2", status: "CLOSED", inviteCode: null, activeTournamentId: null } }));
+        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+        socket.send(JSON.stringify({ type: "ROOM_SNAPSHOT", protocolVersion: 2, serverTime: 2, payload: { ...roomSnapshot, roomRevision: "2", status: "CLOSED", inviteCode: null, activeTournamentId: null } }));
       }
     });
   });
@@ -239,8 +239,8 @@ test("成员被移出会以服务端 RoomSnapshot 停止牌桌操作", async ({ 
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") {
-        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 1, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
-        socket.send(JSON.stringify({ type: "ROOM_SNAPSHOT", protocolVersion: 1, serverTime: 2, payload: { ...roomSnapshot, roomRevision: "2", players: [roomSnapshot.players[1]] } }));
+        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+        socket.send(JSON.stringify({ type: "ROOM_SNAPSHOT", protocolVersion: 2, serverTime: 2, payload: { ...roomSnapshot, roomRevision: "2", players: [roomSnapshot.players[1]] } }));
       }
     });
   });
@@ -252,7 +252,7 @@ test("Session Replaced 停止操作并显示明确反馈", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
-      if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "SESSION_REPLACED", protocolVersion: 1, serverTime: 1, payload: {} }));
+      if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "SESSION_REPLACED", protocolVersion: 2, serverTime: 1, payload: {} }));
     });
   });
   await page.goto("/room/room-1/table");

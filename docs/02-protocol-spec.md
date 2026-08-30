@@ -65,7 +65,7 @@
 
 ### 4.1 Wire 基础约定【规范性决定】
 
-- P0 协议版本为 `1`。HTTP 路径统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 1`。不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。
+- P0 协议版本为 `2`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 2`。`bestFiveCards` 成为必填公开 Showdown 字段，因此本次提升 wire 主版本；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。
 - 传输格式为 UTF-8 JSON；字段名使用 `lowerCamelCase`，`type`/`code` 等枚举值使用 `UPPER_SNAKE_CASE`。
 - ID 是不透明字符串；客户端不得从 ID 格式推断业务含义。客户端生成的 `requestId`/`actionId` 必须是 UUID v4 或具备等价碰撞强度的值。
 - `sequence` 是无符号 64 位整数，但在 JSON 中编码为十进制字符串（如 `"42"`），避免 JavaScript `number` 精度损失。客户端应用时使用 `BigInt` 或十进制整数库比较。
@@ -156,7 +156,7 @@ type ClientCommand<TType extends string, TPayload> = {
 ```ts
 type ServerMessage<TType extends string, TPayload> = {
   type: TType;
-  protocolVersion: 1;
+  protocolVersion: 2;
   serverTime: number;
   payload: TPayload;
 };

@@ -315,7 +315,7 @@ apps/web/
 
 > **实现核对（TEX-25）**：牌桌只以 `WebSocketTransport` 的命令订阅获得 pending/拒绝/重试反馈；在对应 Event/Snapshot 越过 `appliedSequence` 前保持禁用。`ProjectionStore` 仍是唯一的牌局状态源，乱序/重复/过期消息由其既有序列屏障处理。
 
-> **实现核对（TEX-26）**：`ProjectionStore` 在连续 Patch 已原子写入 canonical 后才向 AnimationQueue 发出只读 `{ message, afterCanonical }`，并为 `GAME_SNAPSHOT`/`RECONNECT_RESULT` 发出清队列屏障。动画不写回投影、不发送 Action；Hard Fast Forward 仅经既有 Transport 请求权威 Snapshot。`PLAYER_REVEALED.handRank.bestFiveCards` 是服务端 evaluator 公开字段，Web 端不重算牌型或赢家；`BURN_CARD` 不含、也不会生成牌面。
+> **实现核对（TEX-26）**：`ProjectionStore` 在连续 Patch 已原子写入 canonical、且 Event `handId` 与 Patch 前后手局一致后，才向 AnimationQueue 发出只读 `{ message, afterCanonical }`，并为 `GAME_SNAPSHOT`/`RECONNECT_RESULT` 发出清队列屏障。动画不写回投影、不发送 Action；Hard Fast Forward 仅经既有 Transport 的 OPEN 已认证 Socket 请求权威 Snapshot，关闭 Socket 不得抢占重连状态。`PLAYER_REVEALED.handRank.bestFiveCards` 是服务端 evaluator 公开字段，Web 端不重算牌型或赢家；`BURN_CARD` 不含、也不会生成牌面。
 
 ## 9. AnimationQueue 与事件动画
 

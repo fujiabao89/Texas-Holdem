@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Card, GameEvent, GameEventMessage } from "@texas-holdem/protocol";
+import { PROTOCOL_VERSION, type Card, type GameEvent, type GameEventMessage } from "@texas-holdem/protocol";
 
 import { createFakeClock } from "../../../../tests/support/fake-clock";
 import { gameSnapshot } from "../testing-fixtures";
@@ -9,7 +9,7 @@ import { animationTimings, hardForwardBacklogMs } from "./timings";
 
 function event(sequence: string, type: "PLAYER_CHECKED" | "BURN_CARD" = "PLAYER_CHECKED") {
   return {
-    type: "GAME_EVENT" as const, protocolVersion: 1 as const, serverTime: 1,
+    type: "GAME_EVENT" as const, protocolVersion: PROTOCOL_VERSION, serverTime: 1,
     payload: {
       tournamentId: "tournament-1", sequence, handId: "hand-1",
       event: type === "BURN_CARD" ? { type, payload: { street: "FLOP" as const } } : { type, payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET" as const } },
@@ -20,7 +20,7 @@ function event(sequence: string, type: "PLAYER_CHECKED" | "BURN_CARD" = "PLAYER_
 
 function gameEvent(sequence: string, next: GameEvent): GameEventMessage {
   return {
-    type: "GAME_EVENT", protocolVersion: 1, serverTime: 1,
+    type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
     payload: { tournamentId: "tournament-1", sequence, handId: "hand-1", event: next, patch: {} },
   } as GameEventMessage;
 }
@@ -65,7 +65,7 @@ describe("AnimationQueue", () => {
     const turn = { rank: "J", suit: "SPADES" } as const;
     const afterTurn = gameSnapshot({ sequence: "9007199254740992", board: [...before.board, turn] });
     const turnEvent = {
-      type: "GAME_EVENT", protocolVersion: 1, serverTime: 1,
+      type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
       payload: { tournamentId: "tournament-1", sequence: afterTurn.sequence, handId: "hand-1", event: { type: "TURN_DEALT", payload: { card: turn } }, patch: {} },
     } as GameEventMessage;
     queue.alignToSnapshot(before);
@@ -74,7 +74,7 @@ describe("AnimationQueue", () => {
 
     queue.cancel();
     const reveal = {
-      type: "GAME_EVENT", protocolVersion: 1, serverTime: 1,
+      type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
       payload: {
         tournamentId: "tournament-1", sequence: "9007199254740993", handId: "hand-1",
         event: { type: "PLAYER_REVEALED", payload: {
@@ -115,6 +115,32 @@ describe("AnimationQueue", () => {
     expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254740995" }, overlay: null, holeDeal: null });
   });
 
+  it("stages opponent cards until each server-projected reveal frame commits", () => {
+    const clock = createFakeClock();
+    const queue = new AnimationQueue({ clock });
+    const opponentCards: Card[] = [{ rank: "Q", suit: "HEARTS" }, { rank: "J", suit: "HEARTS" }];
+    const afterShowdown = gameSnapshot({
+      sequence: "9007199254740992",
+      players: gameSnapshot().players.map((player) => player.playerId === "player-2" ? { ...player, revealedCards: opponentCards } : player),
+    });
+    const reveal = gameEvent("9007199254740993", {
+      type: "PLAYER_REVEALED",
+      payload: {
+        playerId: "player-2", seat: 1, cards: opponentCards,
+        handRank: { category: "ONE_PAIR", tiebreakRanks: ["Q"], label: "一对", bestFiveCards: [{ rank: "A", suit: "SPADES" }, { rank: "K", suit: "SPADES" }, { rank: "Q", suit: "HEARTS" }, { rank: "J", suit: "HEARTS" }, { rank: "2", suit: "CLUBS" }] },
+      },
+    });
+    const showdown = gameEvent("9007199254740992", { type: "SHOWDOWN_STARTED", payload: { contenderPlayerIds: ["player-1", "player-2"] } });
+    queue.alignToSnapshot(gameSnapshot());
+    queue.enqueue(showdown, afterShowdown);
+    queue.enqueue(reveal, gameSnapshot({ ...afterShowdown, sequence: "9007199254740993" }));
+
+    clock.advance(animationTimings.check);
+    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254740992" }, revealedPlayerIds: [], overlay: { event: { type: "PLAYER_REVEALED" } } });
+    clock.advance(animationTimings.showdownReveal + animationTimings.bestFive);
+    expect(queue.getSnapshot().revealedPlayerIds).toEqual(["player-2"]);
+  });
+
   it("clears old work at a reconnect snapshot barrier and hard forwards without replay", () => {
     const clock = createFakeClock();
     let hardForwards = 0;
@@ -143,7 +169,7 @@ describe("AnimationQueue", () => {
     const queue = new AnimationQueue({ clock, onHardForward: () => { hardForwards += 1; } });
     queue.alignToSnapshot(gameSnapshot());
     const showdown = {
-      type: "GAME_EVENT", protocolVersion: 1, serverTime: 1,
+      type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
       payload: { tournamentId: "tournament-1", sequence: "9007199254740992", handId: "hand-1", event: { type: "SHOWDOWN_STARTED", payload: { contenderPlayerIds: ["player-1", "player-2"] } }, patch: {} },
     } as GameEventMessage;
     queue.enqueue(showdown, gameSnapshot({ sequence: "9007199254740992" }));
@@ -152,6 +178,8 @@ describe("AnimationQueue", () => {
     }
     expect(hardForwards).toBe(0);
     expect(queue.getSnapshot()).toMatchObject({ overlay: { kind: "SHOWDOWN" } });
+    clock.advance(animationTimings.check);
+    expect(hardForwards).toBe(1);
   });
 
   it("does not let Soft Catch-up complete a three-card board before its third visual frame", () => {

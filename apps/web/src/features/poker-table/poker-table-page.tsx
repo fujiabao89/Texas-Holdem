@@ -152,7 +152,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
           <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{actorName(game) ?? message("table.waiting")}</span>
         </div>
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
-          {tableSeats(game).map((player, seat) => <SeatCard game={game} holeDeal={presentation.holeDeal} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
+          {tableSeats(game).map((player, seat) => <SeatCard game={game} holeDeal={presentation.holeDeal} revealedPlayerIds={presentation.revealedPlayerIds} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
         </div>
         {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} seatSlots={seatSlots} tableElement={tableElement} deckElement={deckElement} />}
       </div>
@@ -208,14 +208,14 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
   </section>;
 }
 
-function SeatCard({ game, holeDeal, room, player, seat, slot }: { readonly game: GameSnapshot; readonly holeDeal: HoleDealPresentation | null; readonly room: ReturnType<typeof useProjectionState>["room"]; readonly player: GameSnapshot["players"][number] | null; readonly seat: number; readonly slot: number | null }) {
+function SeatCard({ game, holeDeal, revealedPlayerIds, room, player, seat, slot }: { readonly game: GameSnapshot; readonly holeDeal: HoleDealPresentation | null; readonly revealedPlayerIds: readonly string[]; readonly room: ReturnType<typeof useProjectionState>["room"]; readonly player: GameSnapshot["players"][number] | null; readonly seat: number; readonly slot: number | null }) {
   if (player === null || slot === null) return <span className="sr-only">{formatMessage("table.seat", { position: seat + 1 })}</span>;
   const viewer = player.playerId === game.viewer.playerId;
   const active = player.playerId === game.currentActorPlayerId;
   const stagedDeal = holeDeal !== null && game.handId === holeDeal.handId;
   const stagedCardCount = stagedDeal ? Math.min(2, holeDeal.dealtCardCounts[player.playerId] ?? 0) : null;
   const revealCards = viewer && stagedDeal && holeDeal.viewerCardsForReveal.length === 2 ? holeDeal.viewerCardsForReveal : null;
-  const cards = stagedDeal ? [] : viewer ? game.viewer.holeCards : player.revealedCards;
+  const cards = stagedDeal ? [] : viewer ? game.viewer.holeCards : revealedPlayerIds.includes(player.playerId) ? player.revealedCards : [];
   const connectionStatus = room?.players.find((roomPlayer) => roomPlayer.playerId === player.playerId)?.connectionStatus;
   const status = connectionStatus === "DISCONNECTED" ? message("table.disconnected") : player.pokerStatus === "ELIMINATED" ? message("table.eliminated") : player.pokerStatus === "EXIT_PENDING" ? message("table.exitPending") : player.pokerStatus === "WITHDRAWN" ? message("table.withdrawn") : null;
   return <article style={seatPosition(slot)} className="absolute z-30 w-[5.5rem] -translate-x-1/2 -translate-y-1/2 text-center sm:w-36" aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>

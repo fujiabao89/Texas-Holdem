@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PROTOCOL_VERSION } from "@texas-holdem/protocol";
 
 import { gameSnapshot, roomSnapshot } from "../testing-fixtures";
 import { ProjectionStore } from "./projection-store";
@@ -6,7 +7,7 @@ import { ProjectionStore } from "./projection-store";
 function event(sequence: string, tournamentId = "tournament-1") {
   return {
     type: "GAME_EVENT" as const,
-    protocolVersion: 1 as const,
+    protocolVersion: PROTOCOL_VERSION,
     serverTime: 1,
     payload: {
       tournamentId,
@@ -79,6 +80,21 @@ describe("ProjectionStore", () => {
     };
     expect(store.acceptGameEvent(privateCard)).toBe("RESYNC");
     expect(store.getSnapshot().game?.sequence).toBe("9007199254740991");
+  });
+
+  it("rejects a continuous patch whose envelope hand identity cannot be reconciled", () => {
+    const store = new ProjectionStore();
+    const accepted: string[] = [];
+    store.subscribeAcceptedGameEvents((next) => accepted.push(next.message.payload.sequence));
+    store.acceptGameSnapshot(gameSnapshot());
+    const mismatched = {
+      ...event("9007199254740992"),
+      payload: { ...event("9007199254740992").payload, handId: "other-hand" },
+    };
+
+    expect(store.acceptGameEvent(mismatched)).toBe("RESYNC");
+    expect(store.getSnapshot()).toMatchObject({ lastSequence: "9007199254740991", actionsDisabled: true, resyncReason: "INVALID_EVENT" });
+    expect(accepted).toEqual([]);
   });
 
   it("accepts only a current, non-stale display clock without changing game state", () => {
