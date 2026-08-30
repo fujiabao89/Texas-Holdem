@@ -256,5 +256,7 @@ test("Session Replaced 停止操作并显示明确反馈", async ({ page }) => {
     });
   });
   await page.goto("/room/room-1/table");
-  await expect(page.getByRole("alert").filter({ hasText: "此牌局已在其他设备打开。" })).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "此牌局已在其他设备打开" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "在此设备重新接管" })).toBeVisible();
 });
