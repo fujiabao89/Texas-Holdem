@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createFakeClock } from "../../../../tests/support/fake-clock";
 
 import { boardCardAudioCueDelayMs, flopCardAudioCueSpacingMs } from "../animations/timings";
-import { AudioController, soundFor, type AudioAdapter } from "./audio-controller";
+import { AudioController, createExclusiveAudioChannel, soundFor, type AudioAdapter } from "./audio-controller";
 
 function fakeAdapter(overrides: Partial<AudioAdapter> = {}) {
   const played: string[] = [];
@@ -45,6 +45,33 @@ describe("AudioController", () => {
     audio.playEvent({ type: "PLAYER_FOLDED", payload: { playerId: "q", seat: 1, source: "HUMAN_SOCKET" } });
     expect(play).toHaveBeenCalledTimes(2);
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("preempts audio owned by another mounted table controller", async () => {
+    const channel = createExclusiveAudioChannel();
+    const firstStop = vi.fn();
+    const secondPlay = vi.fn(() => new Promise<void>(() => undefined));
+    const first = new AudioController({ unlock: async () => undefined, play: () => new Promise<void>(() => undefined), stop: firstStop }, undefined, channel);
+    const second = new AudioController({ unlock: async () => undefined, play: secondPlay }, undefined, channel);
+    await first.unlock();
+    await second.unlock();
+
+    first.playEvent({ type: "PLAYER_CHECKED", payload: { playerId: "p", seat: 0, source: "HUMAN_SOCKET" } });
+    second.playEvent({ type: "PLAYER_RAISED", payload: { playerId: "q", seat: 1, source: "HUMAN_SOCKET", amount: 10, raiseTo: 20, isFullRaise: true } });
+
+    expect(firstStop).toHaveBeenCalledOnce();
+    expect(secondPlay).toHaveBeenCalledOnce();
+  });
+
+  it("stops and suppresses cues while its table is in a background tab", async () => {
+    const { adapter, played } = fakeAdapter({ stop: vi.fn() });
+    const audio = new AudioController(adapter);
+    await audio.unlock();
+    audio.playEvent({ type: "PLAYER_CHECKED", payload: { playerId: "p", seat: 0, source: "HUMAN_SOCKET" } });
+    audio.setForeground(false);
+    audio.playEvent({ type: "PLAYER_FOLDED", payload: { playerId: "q", seat: 1, source: "HUMAN_SOCKET" } });
+    await Promise.resolve();
+    expect(played).toHaveLength(1);
   });
 
   it("stops an active cue when sound is disabled", async () => {

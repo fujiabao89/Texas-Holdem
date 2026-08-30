@@ -32,6 +32,29 @@ export interface AudioClock {
   clearTimeout(handle: unknown): void;
 }
 
+export interface AudioChannel {
+  claim(owner: object, stop: () => void): void;
+  release(owner: object): void;
+}
+
+/** Keeps independently mounted table controllers on one in-page channel. */
+export function createExclusiveAudioChannel(): AudioChannel {
+  let active: { readonly owner: object; readonly stop: () => void } | null = null;
+  return {
+    claim(owner, stop) {
+      if (active?.owner !== owner) {
+        const previous = active;
+        active = null;
+        previous?.stop();
+      }
+      active = { owner, stop };
+    },
+    release(owner) {
+      if (active?.owner === owner) active = null;
+    },
+  };
+}
+
 const soundUrls: Readonly<Record<SoundName, string>> = {
   deal: "/audio/kenney-casino-deal-soft.mp3",
   board: "/audio/kenney-casino-board-soft.mp3",
@@ -49,18 +72,28 @@ const soundUrls: Readonly<Record<SoundName, string>> = {
 /** Local-only audio facade. All browser failures are deliberately non-fatal. */
 export class AudioController {
   private enabled = true;
+  private foreground = true;
   private unlocked = false;
   private playing = false;
   private playGeneration = 0;
   private readonly pending = new Set<unknown>();
 
-  constructor(private readonly adapter: AudioAdapter, private readonly clock: AudioClock = browserClock) {}
+  constructor(
+    private readonly adapter: AudioAdapter,
+    private readonly clock: AudioClock = browserClock,
+    private readonly channel?: AudioChannel,
+  ) {}
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!enabled) this.cancelPending();
   }
   isEnabled(): boolean { return this.enabled; }
+
+  setForeground(foreground: boolean): void {
+    this.foreground = foreground;
+    if (!foreground) this.cancelPending();
+  }
 
   async unlock(): Promise<void> {
     try { await this.adapter.unlock(); this.unlocked = true; }
@@ -73,7 +106,7 @@ export class AudioController {
 
   playEvent(event: GameEvent): void {
     const sound = soundFor(event);
-    if (!this.enabled || !this.unlocked || sound === null) return;
+    if (!this.enabled || !this.foreground || !this.unlocked || sound === null) return;
     // Card sounds land with the in-slot flip, not when a queued Event starts.
     // A flop remains one authoritative event; the three local cues only follow
     // the presentation timing of its three cards.
@@ -93,9 +126,7 @@ export class AudioController {
   cancelPending(): void {
     for (const handle of this.pending) this.clock.clearTimeout(handle);
     this.pending.clear();
-    this.playGeneration += 1;
-    this.playing = false;
-    this.adapter.stop?.();
+    this.stopActivePlayback();
   }
 
   private schedule(sound: SoundName, delayMs: number, options?: AudioPlayOptions): void {
@@ -107,18 +138,32 @@ export class AudioController {
   }
 
   private play(sound: SoundName, options?: AudioPlayOptions): void {
-    if (!this.enabled || !this.unlocked) return;
-    if (this.playing) this.adapter.stop?.();
+    if (!this.enabled || !this.foreground || !this.unlocked) return;
+    if (this.playing) this.stopActivePlayback();
+    this.channel?.claim(this, () => this.stopActivePlayback());
     this.playing = true;
     const generation = ++this.playGeneration;
     void this.adapter.play(soundUrls[sound], options).then(
       () => {
-        if (generation === this.playGeneration) this.playing = false;
+        if (generation === this.playGeneration) {
+          this.playing = false;
+          this.channel?.release(this);
+        }
       },
       () => {
-        if (generation === this.playGeneration) this.playing = false;
+        if (generation === this.playGeneration) {
+          this.playing = false;
+          this.channel?.release(this);
+        }
       },
     );
+  }
+
+  private stopActivePlayback(): void {
+    this.playGeneration += 1;
+    this.playing = false;
+    this.adapter.stop?.();
+    this.channel?.release(this);
   }
 }
 

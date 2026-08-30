@@ -11,10 +11,16 @@ import { AnimationQueue, type PresentationState } from "./animation-queue";
 const emptyPresentation: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null };
 
 /** Connects presentation to the single canonical ProjectionStore lifecycle. */
-export function useTablePresentation(projection: ProjectionStore, websocket: WebSocketTransport, onEventStarted?: (event: GameEvent) => void): PresentationState {
+export function useTablePresentation(
+  projection: ProjectionStore,
+  websocket: WebSocketTransport,
+  onEventStarted?: (event: GameEvent) => void,
+  onPresentationReset?: () => void,
+): PresentationState {
   const [queue] = useState(() => new AnimationQueue({
     onHardForward: () => { websocket.requestAuthoritativeSnapshot("MANUAL"); },
     onEventStarted,
+    onPresentationReset,
   }));
   const presentation = useSyncExternalStore(queue.subscribe, queue.getSnapshot, () => emptyPresentation);
 

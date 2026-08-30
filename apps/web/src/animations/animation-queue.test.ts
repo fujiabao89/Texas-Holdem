@@ -118,7 +118,12 @@ describe("AnimationQueue", () => {
   it("clears old work at a reconnect snapshot barrier and hard forwards without replay", () => {
     const clock = createFakeClock();
     let hardForwards = 0;
-    const queue = new AnimationQueue({ clock, onHardForward: () => { hardForwards += 1; } });
+    let presentationResets = 0;
+    const queue = new AnimationQueue({
+      clock,
+      onHardForward: () => { hardForwards += 1; },
+      onPresentationReset: () => { presentationResets += 1; },
+    });
     queue.alignToSnapshot(gameSnapshot());
     queue.enqueue(gameEvent("9007199254740992", { type: "DEAL_HOLE_CARD", payload: { playerId: "player-1", seat: 0, cardIndex: 0, card: { rank: "A", suit: "SPADES" } } }), gameSnapshot({ sequence: "9007199254740992" }));
     expect(queue.getSnapshot().holeDeal).not.toBeNull();
@@ -129,6 +134,7 @@ describe("AnimationQueue", () => {
     queue.alignToSnapshot(gameSnapshot({ sequence: "9007199254741000" }));
     clock.advance(10_000);
     expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254741000" }, overlay: null, holeDeal: null });
+    expect(presentationResets).toBe(4);
   });
 
   it("uses soft catch-up instead of dropping a queued public showdown explanation", () => {

@@ -24,7 +24,12 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const { projection, tokens, websocket, connectionState } = useRoomClient();
   const state = useProjectionState(projection);
   const [audio, soundEnabled, setSoundEnabled] = useAudioController();
-  const presentation = useTablePresentation(projection, websocket, (event) => audio.playEvent(event));
+  const presentation = useTablePresentation(
+    projection,
+    websocket,
+    (event) => audio.playEvent(event),
+    () => audio.cancelPending(),
+  );
   const [pending, setPending] = useState<TransportPendingCommand | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [retryCommand, setRetryCommand] = useState<TransportPendingCommand | null>(null);

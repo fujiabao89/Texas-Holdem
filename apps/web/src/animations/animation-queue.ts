@@ -48,6 +48,7 @@ export interface AnimationQueueOptions {
   readonly clock?: AnimationClock;
   readonly onHardForward?: () => void;
   readonly onEventStarted?: (event: GameEvent) => void;
+  readonly onPresentationReset?: () => void;
 }
 
 type Listener = () => void;
@@ -96,6 +97,7 @@ export class AnimationQueue {
 
   /** Snapshot and reconnect are barriers: discard old work and never replay it. */
   alignToSnapshot(game: GameSnapshot | null): void {
+    this.notifyPresentationReset();
     this.clearTimer();
     this.active = null;
     this.queue.splice(0);
@@ -130,7 +132,7 @@ export class AnimationQueue {
   }
 
   /** Cancellation is also a final-frame path, never a stale partial frame. */
-  cancel(): void { this.commitAllFinalFrames(); }
+  cancel(): void { this.notifyPresentationReset(); this.commitAllFinalFrames(); }
 
   private pump(): void {
     if (this.active !== null) return;
@@ -182,6 +184,7 @@ export class AnimationQueue {
 
   private hardForward(): void {
     const latest = this.tailTarget;
+    this.notifyPresentationReset();
     this.clearTimer();
     this.active = null;
     this.queue.splice(0);
@@ -222,6 +225,10 @@ export class AnimationQueue {
   }
 
   private clearTimer(): void { if (this.timer !== null) this.clock.clearTimeout(this.timer); this.timer = null; }
+  private notifyPresentationReset(): void {
+    try { this.options.onPresentationReset?.(); }
+    catch { /* presentation cleanup must never block the canonical final frame */ }
+  }
   private shouldSoftCatchUp(): boolean { return this.estimatedBacklogMs() > softCatchUpBacklogMs || this.queue.length > softCatchUpTasks; }
   private shouldHardForward(): boolean { return this.estimatedBacklogMs() > hardForwardBacklogMs || this.queue.length > hardForwardEvents; }
   private hasShowdownSemanticFrame(): boolean {
