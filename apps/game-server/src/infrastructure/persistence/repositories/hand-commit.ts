@@ -255,10 +255,13 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
             })
             .where(eq(rooms.id, tournament.roomId));
         } else if (finish.roomStatus !== undefined) {
+          // 延迟落库的终局 Bundle 不得覆写已推进的房间状态（PersistenceWriter 积压/重试时
+          // 房主可能已"再来一局"把房间写回 IN_GAME，或末位真人离开已 CLOSED）：仅在房间
+          // 仍处于控制面记录的 FINISHED 时幂等重申（docs/03 §7.3）。
           await tx
             .update(rooms)
             .set({ status: finish.roomStatus })
-            .where(eq(rooms.id, tournament.roomId));
+            .where(and(eq(rooms.id, tournament.roomId), eq(rooms.status, "FINISHED")));
         }
       }
 

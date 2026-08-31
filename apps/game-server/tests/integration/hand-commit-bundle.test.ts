@@ -517,6 +517,9 @@ describeTestDatabase("hand commit bundle: 原子性与幂等", (context) => {
     const fixture = await createTournamentFixture("Eta");
     const repo = createHandCommitRepository(testDb!.database);
     const finishedAt = new Date("2026-01-01T01:00:00Z");
+    // 真实流程中 Room 队列的 TOURNAMENT_FINISHED 控制面写入先于/伴随 Bundle 落库把
+    // 房间置为 FINISHED（先提交后确认）；Bundle 侧的房间写入仅幂等重申该状态。
+    await testDb!.database.db.update(rooms).set({ status: "FINISHED" }).where(eq(rooms.id, fixture.roomId));
     const bundle: HandCommitBundle = {
       ...buildBundle({
         tournamentId: fixture.tournamentId,
@@ -564,6 +567,47 @@ describeTestDatabase("hand commit bundle: 原子性与幂等", (context) => {
     expect(participant.pokerStatus).toBe("ACTIVE");
     expect(participant.finalStack).toBe(2000n);
     expect(participant.rank).toBe(1);
+  });
+
+  it("延迟终局 Bundle 不得覆写已推进的房间状态（再来一局竞态，P1）", async () => {
+    const fixture = await createTournamentFixture("Iota");
+    const repo = createHandCommitRepository(testDb!.database);
+    // 时序：控制面已把房间写为 FINISHED → 房主"再来一局"已把房间写回 IN_GAME（新赛）
+    // → 旧赛的终局 Bundle 才在 PersistenceWriter 积压/重试后落库。
+    await testDb!.database.db.update(rooms).set({ status: "FINISHED" }).where(eq(rooms.id, fixture.roomId));
+    await testDb!.database.db.update(rooms).set({ status: "IN_GAME" }).where(eq(rooms.id, fixture.roomId));
+    const finishedAt = new Date("2026-01-01T03:00:00Z");
+    const bundle: HandCommitBundle = {
+      ...buildBundle({
+        tournamentId: fixture.tournamentId,
+        handId: randomUUID(),
+        handNumber: 1,
+        firstSequence: 1n,
+        eventCount: 2,
+        participantId: fixture.participantId,
+      }),
+      tournamentFinish: {
+        status: "FINISHED",
+        championTournamentPlayerId: fixture.participantId,
+        finishedAt,
+        retentionExpiresAt: new Date(finishedAt.getTime() + 180 * 24 * 3600 * 1000),
+        roomStatus: "FINISHED",
+      },
+    };
+    await expect(repo.commitHandBundle(bundle)).resolves.toBe("committed");
+
+    // 旧赛自身终态与手牌数据完整落库……
+    const [tournament] = await testDb!.database.db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, fixture.tournamentId));
+    expect(tournament.status).toBe("FINISHED");
+    expect(
+      await testDb!.database.db.select().from(hands).where(eq(hands.id, bundle.hand.id)),
+    ).toHaveLength(1);
+    // ……但不得把已进入新赛的房间覆写回 FINISHED（内存权威为 IN_GAME）。
+    const [room] = await testDb!.database.db.select().from(rooms).where(eq(rooms.id, fixture.roomId));
+    expect(room.status).toBe("IN_GAME");
   });
 
   it("ABANDONED_NO_HUMAN 不得宣告冠军（应用层先拒，整体回滚）", async () => {
