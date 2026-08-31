@@ -100,7 +100,7 @@ Hand History 列表使用 `GET /tournaments/{tournamentId}/hands?cursor=<opaque>
    ```json
    {
      "type": "AUTHENTICATE",
-     "protocolVersion": 1,
+     "protocolVersion": 2,
      "requestId": "uuid",
      "payload": { "roomId": "opaque-id", "playerToken": "secret" }
    }
@@ -511,7 +511,7 @@ HTTP 推荐映射：Schema 400、认证 401、权限 403、不存在 404、冲�
 - 无 Pre-action（复杂预操作留待后续）（《区块1-5 v0.1》§5.7）。
 - P0 重连总是全量 Snapshot，不支持按 `lastSequence` 补发断线期间事件；因此不会重播旧动画。
 - 幂等缓存驻留内存；若服务进程崩溃，进行中 Hand 的 Action 去重记录可能随之丢失，这与 P0 不保证进行中 Hand 无损恢复的边界一致。
-- 协议 v1 不承诺跨主版本向后兼容；不支持的客户端必须刷新/升级。
+- 协议 v2 不承诺跨主版本向后兼容；不支持的客户端必须刷新/升级。
 
 ## 16. Design Notes（为什么）
 
@@ -538,7 +538,7 @@ HTTP 推荐映射：Schema 400、认证 401、权限 403、不存在 404、冲�
 | 5 | 已裁决 | WS Ping 15 秒、无活动 45 秒判定断线 | §4.3 |
 | 6 | 已裁决 | 冻结三个 Snapshot 边界与最小字段 | §9.1–§9.3 |
 | 7 | 已裁决 | Hand History 通过 HTTP GET 拉取 | §4.2 |
-| 8 | 已裁决 | P0 主版本 1；不支持的主版本硬拒绝 | §4.1/§15 |
+| 8 | 已裁决 | P0 主版本 2；不支持的主版本硬拒绝 | §4.1/§15 |
 | 9 | 已裁决 | 新连接建立屏障后原子接管；旧连接通知后以 4001 关闭 | §10 |
 | 10 | 已裁决 | Token 仅由 HTTP 创建/加入响应签发，WS 首帧提交认证 | §4.3/§5 |
 | 11 | 已裁决 | 淘汰观战者接收全部公开投影事件，无私有牌与 LegalActions | §9.4 |

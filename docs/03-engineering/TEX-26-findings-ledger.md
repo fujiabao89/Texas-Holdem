@@ -14,5 +14,7 @@
 | F-08 | CodeRabbit `3888525119`：连续 Event 未校验 `handId` | 有效。错误 Event 可有连续序列和合法 Patch、但 envelope `handId` 与 Patch 前后手局不一致；canonical 与动画事件身份随后分叉。Clock 已有 handId 校验，Event 没有。 | P1 | 已修正：Patch 解析后要求 envelope handId 与新手局一致（终局清空时允许前一手）；不一致触发 `INVALID_EVENT` resync。新增回归。 |
 | F-09 | CodeRabbit `3888525122`：v1 内新增必填 `bestFiveCards` | 有效。旧端发送/接收没有该字段时，会得到 `INVALID_MESSAGE`，但未被明确识别为不兼容主版本。现有版本校验存在，却仍保持 wire v1。 | P1 | 已修正：wire `PROTOCOL_VERSION` 升至 2，全部生产发包复用该常量，测试与协议规范同步；旧端将进入既有 `UNSUPPORTED_PROTOCOL_VERSION` 路径。 |
 | F-10 | CodeRabbit 审查摘要：reconnect jitter 使用 `Math.random()` | 有效但低风险。随机退避不是安全令牌，不过违反仓库“生产随机性使用安全源”的约束；测试已注入确定性 random。 | P3 | 已修正：默认改为 `crypto.getRandomValues`，保持测试注入接口。此意见没有独立行级评论线程。 |
+| F-11 | CodeRabbit `3891866515`：Showdown 队列测试的 Best Five 夹具无效 | 有效。旧测试的 `bestFiveCards` 含有不在对手底牌或 Board 的牌，且未断言 overlay 透传该服务端字段；错误丢弃 Best Five 的实现仍可能通过。 | P3 | 已修正：构造有效的一对候选牌局，并断言 reveal overlay 的 `bestFiveCards` 与服务端字段完全一致。 |
+| F-12 | CodeRabbit `3891866519`：协议规范残留 v1 引用 | 有效。§4.1 已声明 wire v2，但认证示例和两个权威决策仍写 v1；按示例实现会因版本不支持而认证失败。无针对文档一致性的自动测试。 | P1 | 已修正：所有现行认证示例、兼容性说明和 P0 决策表统一为 v2。 |
 
 固定项将在验证、提交和推送后仅回复对应原评论线程“已修正”。跳过项将在原线程说明上述依据，不以“已修正”代替。

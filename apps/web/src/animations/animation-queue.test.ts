@@ -119,15 +119,18 @@ describe("AnimationQueue", () => {
     const clock = createFakeClock();
     const queue = new AnimationQueue({ clock });
     const opponentCards: Card[] = [{ rank: "Q", suit: "HEARTS" }, { rank: "J", suit: "HEARTS" }];
+    const board: Card[] = [{ rank: "A", suit: "SPADES" }, { rank: "K", suit: "SPADES" }, { rank: "2", suit: "CLUBS" }, { rank: "2", suit: "DIAMONDS" }, { rank: "7", suit: "CLUBS" }];
+    const bestFiveCards: Card[] = [board[0]!, board[1]!, opponentCards[0]!, board[2]!, board[3]!];
     const afterShowdown = gameSnapshot({
       sequence: "9007199254740992",
+      board,
       players: gameSnapshot().players.map((player) => player.playerId === "player-2" ? { ...player, revealedCards: opponentCards } : player),
     });
     const reveal = gameEvent("9007199254740993", {
       type: "PLAYER_REVEALED",
       payload: {
         playerId: "player-2", seat: 1, cards: opponentCards,
-        handRank: { category: "ONE_PAIR", tiebreakRanks: ["Q"], label: "一对", bestFiveCards: [{ rank: "A", suit: "SPADES" }, { rank: "K", suit: "SPADES" }, { rank: "Q", suit: "HEARTS" }, { rank: "J", suit: "HEARTS" }, { rank: "2", suit: "CLUBS" }] },
+        handRank: { category: "ONE_PAIR", tiebreakRanks: ["2", "A", "K", "Q"], label: "一对", bestFiveCards },
       },
     });
     const showdown = gameEvent("9007199254740992", { type: "SHOWDOWN_STARTED", payload: { contenderPlayerIds: ["player-1", "player-2"] } });
@@ -136,7 +139,7 @@ describe("AnimationQueue", () => {
     queue.enqueue(reveal, gameSnapshot({ ...afterShowdown, sequence: "9007199254740993" }));
 
     clock.advance(animationTimings.check);
-    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254740992" }, revealedPlayerIds: [], overlay: { event: { type: "PLAYER_REVEALED" } } });
+    expect(queue.getSnapshot()).toMatchObject({ game: { sequence: "9007199254740992" }, revealedPlayerIds: [], overlay: { event: { type: "PLAYER_REVEALED" }, bestFiveCards } });
     clock.advance(animationTimings.showdownReveal + animationTimings.bestFive);
     expect(queue.getSnapshot().revealedPlayerIds).toEqual(["player-2"]);
   });
