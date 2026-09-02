@@ -113,6 +113,8 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 > TEX-25 增加牌桌展示和下注的定向回归：服务端 `LegalActions` 的操作准入、2–10 Seat 展示、BB/Pot 快捷额与普通 Bet/Raise 范围、键盘跟注、All-in 两步与 `ALL_IN` 信封、command feedback 不改投影。视觉验收以 Fake WebSocket 注入的合法投影在桌面与约 390×844 视口检查椭圆桌、环绕 Seat、公共牌及悬浮操作区，不依赖真实 game-server 或 sleep。WebSocketTransport 的 Fake WebSocket/Fake Clock/注入 UUID 测试继续覆盖 pending、拒绝、重连、乱序与 Token 安全边界。
 
+> TEX-27 增加赛果/设置/Hand History 的定向单元回归：`resultRows` 只按服务端 `displayOrder` 展示且 FINISHED 门禁与房主"再来一局"条件、Hand History 列表/详情 reducer 的 cursor 分页、失败降级与陈旧响应保护、时间线分组（Pre-Flop～Result）与隐私断言（DEAL_HOLE 条目永不携带牌面值、Burn 牌与阶段标记过滤）、`ProjectionStore.currentHandEvents` 的本手缓冲（新 handId/Snapshot/重连即重置）、HTTP History 端点的路径/分页参数/room token。完整多浏览器多人与完赛旅程 E2E 继续由 TEX-28 落地。
+
 | 必测项 | 层次 | 规格来源 |
 | --- | --- | --- |
 | UI E2E：创建房间、邀请码加入、Ready、完成一手牌、完整 Tournament；下注无键盘（1/3 Pot、1/2 Pot、2/3 Pot、Pot、All-in、Slider、±）；普通 Raise Slider 范围为 `[minRaiseTo,maxRaiseTo]`，到达 `allInTo` 转独立 All-in 两步并提交 `ALL_IN`，Short All-in 不伪装成 Raise | E2E | 05 §8/§16 |

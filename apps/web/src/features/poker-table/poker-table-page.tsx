@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
 import type { Card, ErrorCode, GameSnapshot, SubmitAction } from "@texas-holdem/protocol";
 
 import { clampWager, quickAmounts, wagerRange, wagerStep, type WagerRange } from "../betting/amounts";
+import { HandHistoryDrawer } from "../hand-history/hand-history-drawer";
 import { errorMessage, formatMessage, message } from "../../messages/zh-CN";
 import type { PendingCommand as TransportPendingCommand } from "../../protocol/websocket-transport";
 import { useProjectionState } from "../../state/use-projection-state";
@@ -27,11 +28,20 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const [exactAmount, setExactAmount] = useState("");
   const [allInConfirmSequence, setAllInConfirmSequence] = useState<string | null>(null);
   const [terminalError, setTerminalError] = useState<TerminalError | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyButtonRef = useRef<HTMLButtonElement | null>(null);
+  const wasHistoryOpen = useRef(false);
   // sessionStorage is deliberately client-only. Keep SSR and hydration output
   // identical until React has switched to the browser snapshot.
   const isBrowser = useSyncExternalStore(subscribeNever, () => true, () => false);
 
   useLobbyConnection(roomId);
+
+  // Closing the drawer returns focus to its opener (docs/05 §7.6 dialog rule).
+  useEffect(() => {
+    if (wasHistoryOpen.current && !historyOpen) historyButtonRef.current?.focus();
+    wasHistoryOpen.current = historyOpen;
+  }, [historyOpen]);
 
   useEffect(() => websocket.subscribeCommandResults((next, result) => {
     if (pending?.requestId !== next.requestId) return;
@@ -104,8 +114,17 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   return <TableFrame>
     <header className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm sm:px-5">
       <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="mt-0.5 text-sm text-slate-500">{message("table.handPhase")}：{phaseName(game.handPhase)}</p></div>
-      <ConnectionStatus connectionState={connectionState} syncing={state.actionsDisabled} />
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={buttonClass} onClick={() => setHistoryOpen(true)} ref={historyButtonRef} type="button">{message("history.open")}</button>
+        <ConnectionStatus connectionState={connectionState} syncing={state.actionsDisabled} />
+      </div>
     </header>
+    {game.viewer.role === "ELIMINATED_SPECTATOR" && (
+      <p className="mx-auto w-full max-w-6xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+        {message("spectator.banner")}
+        <Link className="ml-2 underline" href="/">{message("spectator.exit")}</Link>
+      </p>
+    )}
     <section className="relative mx-auto w-full max-w-[1240px] py-10 sm:py-16" aria-label={message("table.title")}>
       <div className="relative mx-auto aspect-[1.06/1] w-full rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:aspect-[1.72/1] sm:border-[18px]">
         <div aria-hidden="true" className="absolute inset-[4%] rounded-[46%] border border-emerald-300/25 bg-[radial-gradient(ellipse_at_center,rgba(20,148,111,0.28),transparent_65%)]" />
@@ -133,6 +152,10 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     {feedback !== null && <p role="status" aria-live="polite" className="rounded border border-neutral-300 bg-neutral-50 p-3 text-sm">{feedback}</p>}
     {retryCommand !== null && <button className={buttonClass} disabled={connectionState !== "CONNECTED" || hasPendingCommand} onClick={retry}>{message("table.retry")}</button>}
     {game.tournamentStatus === "FINISHED" && <RankingSummary game={game} />}
+    {game.tournamentStatus === "FINISHED" && (
+      <Link className="mx-auto w-fit rounded-xl bg-emerald-700 px-4 py-2 text-center text-sm font-bold text-white shadow-sm hover:bg-emerald-800" href={`/room/${roomId}/result/${game.tournamentId}`}>{message("result.view")}</Link>
+    )}
+    {historyOpen && <HandHistoryDrawer key={game.tournamentId} roomId={roomId} tournamentId={game.tournamentId} onClose={() => setHistoryOpen(false)} />}
   </TableFrame>;
 }
 

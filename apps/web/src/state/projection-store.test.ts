@@ -80,3 +80,55 @@ describe("ProjectionStore", () => {
     expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: 20_000, timeBankRemainingMs: 30_000 });
   });
 });
+
+describe("ProjectionStore current-hand event buffer", () => {
+  function handEvent(sequence: string, handId: string) {
+    return {
+      ...event(sequence),
+      payload: {
+        ...event(sequence).payload,
+        handId,
+        event: { type: "PLAYER_CHECKED" as const, payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET" as const } },
+      },
+    };
+  }
+
+  it("buffers applied events of the running hand in sequence order", () => {
+    const store = new ProjectionStore();
+    store.acceptGameSnapshot(gameSnapshot());
+    store.acceptGameEvent(handEvent("9007199254740992", "hand-1"));
+    store.acceptGameEvent(handEvent("9007199254740993", "hand-1"));
+    expect(store.getSnapshot().currentHandEvents.map((entry) => [entry.handId, entry.sequence])).toEqual([
+      ["hand-1", "9007199254740992"],
+      ["hand-1", "9007199254740993"],
+    ]);
+  });
+
+  it("does not buffer ignored or resync-triggering events", () => {
+    const store = new ProjectionStore();
+    store.acceptGameSnapshot(gameSnapshot());
+    expect(store.acceptGameEvent(handEvent("9007199254740991", "hand-1"))).toBe("IGNORED");
+    expect(store.acceptGameEvent(handEvent("9007199254740995", "hand-1"))).toBe("RESYNC");
+    expect(store.getSnapshot().currentHandEvents).toEqual([]);
+  });
+
+  it("starts a fresh buffer when the next hand begins so a settled hand never leaks", () => {
+    const store = new ProjectionStore();
+    store.acceptGameSnapshot(gameSnapshot());
+    store.acceptGameEvent(handEvent("9007199254740992", "hand-1"));
+    store.acceptGameEvent(handEvent("9007199254740993", "hand-2"));
+    expect(store.getSnapshot().currentHandEvents.map((entry) => entry.handId)).toEqual(["hand-2"]);
+  });
+
+  it("clears the buffer on a game snapshot and on a reconnect barrier", () => {
+    const store = new ProjectionStore();
+    store.acceptGameSnapshot(gameSnapshot());
+    store.acceptGameEvent(handEvent("9007199254740992", "hand-1"));
+    store.acceptGameSnapshot(gameSnapshot({ sequence: "9007199254740993" }));
+    expect(store.getSnapshot().currentHandEvents).toEqual([]);
+
+    store.acceptGameEvent(handEvent("9007199254740994", "hand-1"));
+    store.acceptReconnectResult(roomSnapshot(), gameSnapshot({ sequence: "9007199254740995" }));
+    expect(store.getSnapshot().currentHandEvents).toEqual([]);
+  });
+});
