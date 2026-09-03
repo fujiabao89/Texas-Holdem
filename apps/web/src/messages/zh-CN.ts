@@ -152,6 +152,7 @@ export const zhCN = {
       winningHandRank: "获胜牌型：{label}",
       eliminated: "{name} 被淘汰，{rank}",
       tournamentEnd: "比赛结束，冠军：{name}",
+      tournamentEndNoChampion: "比赛结束，无冠军",
       withdrawn: "{name} 已退出比赛",
     },
     seatOf: "座位 {seat}",

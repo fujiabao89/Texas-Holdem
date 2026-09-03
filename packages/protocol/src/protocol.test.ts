@@ -59,7 +59,7 @@ const source = {
 
 describe("protocol wire contracts", () => {
   it("rejects unsupported versions, unknown fields, and malformed command identifiers", () => {
-    expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion: 3, requestId, payload: { roomId: "room_1", playerToken: "x" } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
+    expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion: 2, requestId, payload: { roomId: "room_1", playerToken: "x" } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
     expect(validateClientCommand({ type: "SET_READY", requestId, payload: { ready: true, actor: "alice" } })).toEqual({ success: false, errorCode: "INVALID_MESSAGE" });
     expect(validateClientCommand({ type: "SUBMIT_ACTION", requestId, payload: { tournamentId: "tournament_1", actionId, expectedSequence: 4, action: { type: "FOLD" } } })).toEqual({ success: false, errorCode: "INVALID_MESSAGE" });
     expect(validateClientCommand({ type: "SUBMIT_ACTION", requestId, payload: { tournamentId: "tournament_1", actionId, expectedSequence: "4", action: { type: "BET", betTo: 1.5 } } })).toEqual({ success: false, errorCode: "INVALID_MESSAGE" });
@@ -75,7 +75,7 @@ describe("protocol wire contracts", () => {
     const snapshot = GameSnapshotSchema.parse({ snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "18446744073709551615", ...projectPlayerView(source) });
     expect(snapshot.sequence).toBe("18446744073709551615");
     expect(GameSnapshotSchema.safeParse({ ...snapshot, sequence: "18446744073709551616" }).success).toBe(false);
-    expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion: 3, serverTime: 1, payload: snapshot })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
+    expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion: 2, serverTime: 1, payload: snapshot })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
   });
 
   it("creates stable safe error envelopes and rejects non-whitelisted details", () => {
@@ -146,6 +146,16 @@ describe("protocol wire contracts", () => {
     expect(GameEventSchema.safeParse({ type: "PLAYER_WITHDRAWN", payload: { playerId: "alice", seat: 0, forfeitedChips: 250 } }).success).toBe(true);
     expect(GameEventSchema.safeParse({ type: "TOURNAMENT_FINISHED", payload: { winnerPlayerId: "alice", rankings: [{ playerId: "alice", finishPosition: 1, tied: false }, { playerId: "bob", finishPosition: 2, tied: false }] } }).success).toBe(true);
     expect(GameEventSchema.safeParse({ type: "PLAYER_WITHDRAWN", payload: { playerId: "alice", seat: 0 } }).success).toBe(false);
+  });
+
+  it("represents championless completion explicitly without accepting empty winner IDs", () => {
+    const finish = (winnerPlayerId: unknown, rankings: unknown[]) => ({ type: "TOURNAMENT_FINISHED", payload: { winnerPlayerId, rankings } });
+    const ranking = { playerId: "alice", finishPosition: 3, tied: false };
+    expect(GameEventSchema.safeParse(finish(null, [])).success).toBe(true);
+    expect(GameEventSchema.safeParse(finish(null, [ranking])).success).toBe(true);
+    expect(GameEventSchema.safeParse(finish("", [ranking])).success).toBe(false);
+    expect(GameEventSchema.safeParse(finish(undefined, [])).success).toBe(false);
+    expect(GameEventSchema.safeParse(finish("alice", [])).success).toBe(false);
   });
 
   it("projects PlayerView and BotView without other players' hole cards or server-only fields", () => {

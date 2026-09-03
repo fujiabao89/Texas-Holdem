@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PlayerViewSchema } from "@texas-holdem/protocol";
+import { GameEventSchema, PlayerViewSchema } from "@texas-holdem/protocol";
 import {
   SeededRandomSource,
   TournamentEngine,
@@ -30,6 +30,11 @@ const SEAT_TO_PLAYER = new Map([
   [1, "p1"],
   [2, "p2"],
 ]);
+
+it("projects a championless tournament with empty standings as a schema-valid null winner", () => {
+  const event = projectWireEvent({ sequence: 0, type: "TOURNAMENT_FINISHED", championSeat: null, finalStandings: [] }, wireContext(makeEngine(), "p0"));
+  expect(GameEventSchema.parse(event)).toEqual({ type: "TOURNAMENT_FINISHED", payload: { winnerPlayerId: null, rankings: [] } });
+});
 
 function makeEngine(seatCount = 2, seed = 42): TournamentEngine {
   const rng = new SeededRandomSource(seed);

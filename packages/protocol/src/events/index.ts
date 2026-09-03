@@ -41,7 +41,7 @@ export const GameEventSchema = z.discriminatedUnion("type", [
   }) }),
   z.strictObject({ type: z.literal("PLAYER_ELIMINATED"), payload: z.strictObject({ playerId: OpaqueIdSchema, finishPosition: z.number().int().min(1), tied: z.boolean() }) }),
   z.strictObject({ type: z.literal("PLAYER_WITHDRAWN"), payload: z.strictObject({ ...PlayerAndSeatSchema, forfeitedChips: SafeIntegerSchema }) }),
-  z.strictObject({ type: z.literal("TOURNAMENT_FINISHED"), payload: z.strictObject({ winnerPlayerId: OpaqueIdSchema, rankings: z.array(z.strictObject({ playerId: OpaqueIdSchema, finishPosition: z.number().int().min(1), tied: z.boolean() })).min(1).max(10) }) }),
+  z.strictObject({ type: z.literal("TOURNAMENT_FINISHED"), payload: z.strictObject({ winnerPlayerId: OpaqueIdSchema.nullable(), rankings: z.array(z.strictObject({ playerId: OpaqueIdSchema, finishPosition: z.number().int().min(1), tied: z.boolean() })).max(10) }).refine((value) => value.winnerPlayerId === null || value.rankings.length > 0, { message: "a champion requires nonempty rankings" }) }),
 ]);
 
 const serverMessage = <T extends z.ZodType>(type: string, payload: T) => z.strictObject({

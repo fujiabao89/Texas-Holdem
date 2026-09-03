@@ -8,4 +8,6 @@
 
 在 `PLAYER_REVEALED` 中，投影器使用服务端 `evaluateHand` 的 `bestFiveCards` 输出 `handRank.bestFiveCards`；它与牌型标签同属已公开 Showdown 投影，Web 端不得重算。
 
+TEX-36：`TOURNAMENT_FINISHED` 将 Engine 的 `championSeat: null` 明确投影为 `winnerPlayerId: null`，包括空排名的终局，遵循共享 wire v3 契约；不使用空 ID 或虚构冠军。定向验证：`pnpm exec vitest run --project unit apps/game-server/src/projection/state-projector.test.ts`。
+
 逐接收者投影由执行器按 `viewerPlayerId` 组装；`DEAL_HOLE_CARD` 对非目标接收者删除 `card` 字段但保留公开的座位/发牌事实，事件 `type/tournamentId/sequence/handId` 一致（02 §9.4）。

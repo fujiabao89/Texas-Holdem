@@ -457,6 +457,7 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 - 点击一手进入按 `Pre-Flop / Flop / Turn / River / Showdown / Result` 分组的时间线，展示座位、公开动作、动作后目标投入、公共牌、已合法公开的底牌/牌型、各 Pot 与赢家；不展示原始 JSON、sequence、内部 ID、Burn 牌面或任何未公开底牌。详情通过 `GET /api/v1/tournaments/{tournamentId}/hands/{handId}` 获取。
 - 当前未结束 Hand 不进入持久化历史列表；可以在 Drawer 顶部显示“本手进行中”并只读渲染客户端已接收的合法 Event，标记“暂存，结算后归档”。重连后以服务端列表为准，丢弃本地暂存历史。
 - 列表与详情均由服务端按当前 `playerToken` 投影；原始事件永不直投客户端。加载失败保留牌桌并提供局部重试，不用全局 Error Boundary 替代。
+- TEX-36：详情中的手间前导事件（信封 `handId: null`）不进入本手时间线；保留手内撤回的 Result 条目。v3 `TOURNAMENT_FINISHED.winnerPlayerId: null` 显示“比赛结束，无冠军”，不由客户端推断冠军。
 
 ## 14. Failure Handling
 

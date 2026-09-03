@@ -70,7 +70,7 @@ describe("WebSocketTransport", () => {
     const { socket, store, states, transport } = setup();
     transport.connect("room-1", "a".repeat(43));
     socket.open();
-    socket.receive({ type: "GAME_SNAPSHOT", protocolVersion: 3, serverTime: 1, payload: gameSnapshot() });
+    socket.receive({ type: "GAME_SNAPSHOT", protocolVersion: 2, serverTime: 1, payload: gameSnapshot() });
     expect(states).toContain("STOPPED");
     expect(store.getSnapshot().game).toBeNull();
 

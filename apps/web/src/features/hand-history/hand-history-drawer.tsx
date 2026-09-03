@@ -192,7 +192,7 @@ function TimelineText({ entry, lookup }: { readonly entry: TimelineEntry; readon
     case "UNCALLED_RETURN": return <>{lookup(entry.playerId)}（{seat(entry.seat)}）· {formatMessage("history.entries.uncalledReturn", { amount: numberFormat.format(entry.amount) })}</>;
     case "POT_AWARDED": return <>{formatMessage("history.entries.potAwarded", { index: entry.potIndex + 1, amount: numberFormat.format(entry.potAmount) })}{entry.awards.map((award) => `，${formatMessage("history.entries.award", { name: lookup(award.playerId), amount: numberFormat.format(award.amount) })}`).join("")}{entry.winningHandRankLabel !== null ? `，${formatMessage("history.entries.winningHandRank", { label: entry.winningHandRankLabel })}` : ""}</>;
     case "ELIMINATION": return <>{formatMessage("history.entries.eliminated", { name: lookup(entry.playerId), rank: formatMessage(entry.tied ? "result.tiedRank" : "table.rank", { position: entry.finishPosition }) })}</>;
-    case "TOURNAMENT_END": return <>{formatMessage("history.entries.tournamentEnd", { name: lookup(entry.winnerPlayerId) })}</>;
+    case "TOURNAMENT_END": return <>{entry.winnerPlayerId === null ? message("history.entries.tournamentEndNoChampion") : formatMessage("history.entries.tournamentEnd", { name: lookup(entry.winnerPlayerId) })}</>;
     case "WITHDRAWN": return <>{formatMessage("history.entries.withdrawn", { name: lookup(entry.playerId) })}</>;
   }
 }

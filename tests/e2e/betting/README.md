@@ -4,4 +4,6 @@ TEX-25 的牌桌端到端测试。每个用例用 Playwright `routeWebSocket` �
 
 覆盖键盘提交、服务端 Event 才推进画面、All-in 两步确认、房间关闭、成员被移出与 Session Replaced。更多多人断网/网络切换联调由 TEX-28 承担。
 
+消息夹具引用共享 `PROTOCOL_VERSION`（TEX-36 起 v3），不硬编码历史 wire 版本。
+
 TEX-26 合并 TEX-27 的定向回归同时验证音效/历史按钮、单一连接状态和牌堆、历史抽屉关闭焦点返回，以及动画未播完时 canonical 行动机会已切换的倒计时；HTTP/WS 与浏览器时钟均受控，不依赖真实 game-server 或 sleep。
