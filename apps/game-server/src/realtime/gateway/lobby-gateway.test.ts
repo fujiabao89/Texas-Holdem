@@ -589,7 +589,7 @@ describe("LobbyGateway", () => {
 
     const incompatible = new FakeSocket();
     handler(incompatible);
-    incompatible.receive({ type: "AUTHENTICATE", protocolVersion: 3, requestId: "00000000-0000-4000-8000-000000000010", payload: { roomId: session.roomId, playerToken: session.playerToken } });
+    incompatible.receive({ type: "AUTHENTICATE", protocolVersion: 2, requestId: "00000000-0000-4000-8000-000000000010", payload: { roomId: session.roomId, playerToken: session.playerToken } });
     await flush();
     expect(incompatible.sent).toContainEqual(expect.objectContaining({ type: "ERROR", payload: expect.objectContaining({ code: "UNSUPPORTED_PROTOCOL_VERSION" }) }));
     expect(incompatible.closeCodes).toContain(4000);

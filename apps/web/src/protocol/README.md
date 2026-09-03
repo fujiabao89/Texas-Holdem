@@ -8,6 +8,8 @@ TEX-23 的唯一 HTTP/WebSocket 客户端入口。请求、成功响应、错误
 
 Transport 绝不把 `COMMAND_RESULT` 当作牌局状态来源。完整状态由 `state/` 中的 Snapshot/Event 消费器维护；`CLOCK_UPDATED` 只更新匹配当前行动机会的展示态。
 
+wire v3 使用共享 `PROTOCOL_VERSION`；`websocket-transport.test.ts` 保留对 v2 服务端消息的拒绝验证，不把旧主版本当兼容消息消费。
+
 TEX-26 的 `requestAuthoritativeSnapshot` 是受限恢复入口，仅可请求既有 Snapshot 屏障；它不能构造或发送任何游戏 Action。`reconnectNow` 只提前已有重连，仍保持单一连接尝试。
 
 恢复请求只会在 OPEN、已认证的同一 Socket 上发送；关闭或发送失败时保留 `CLOSED`，使既有重连流程继续接管。默认退避 jitter 使用浏览器安全随机源，测试继续注入确定性随机函数。

@@ -65,7 +65,7 @@
 
 ### 4.1 Wire 基础约定【规范性决定】
 
-- P0 协议版本为 `2`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 2`。`bestFiveCards` 成为必填公开 Showdown 字段，因此本次提升 wire 主版本；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。
+- P0 协议版本为 `3`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 3`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。
 - 传输格式为 UTF-8 JSON；字段名使用 `lowerCamelCase`，`type`/`code` 等枚举值使用 `UPPER_SNAKE_CASE`。
 - ID 是不透明字符串；客户端不得从 ID 格式推断业务含义。客户端生成的 `requestId`/`actionId` 必须是 UUID v4 或具备等价碰撞强度的值。
 - `sequence` 是无符号 64 位整数，但在 JSON 中编码为十进制字符串（如 `"42"`），避免 JavaScript `number` 精度损失。客户端应用时使用 `BigInt` 或十进制整数库比较。
@@ -93,6 +93,8 @@ HTTP 请求最小结构：创建房间为 `{ displayName, config: TournamentConf
 
 Hand History 列表使用 `GET /tournaments/{tournamentId}/hands?cursor=<opaque>&limit=20`；`limit` 默认 20、范围 1–50，按 `handNumber DESC` 稳定分页，响应 `{ tournamentId, items, nextCursor }`。`items[]` 至少为 `{ handId, handNumber, startedAt, endedAt, smallBlind, bigBlind, communityCards, endReason, potTotal, winnerPlayerIds }`，只包含已经手末原子提交的 Hand。详情响应为 `{ tournamentId, handId, startSequence, endSequence, events }`，其中 `events` 使用与请求者权限一致的 §6.3 投影，绝不返回内部完整事件。列表与详情均要求该 Tournament 所属 Room 的有效 `playerToken`。
 
+TEX-36 读取约束：重复的 `limit` / `cursor` 返回 `400 INVALID_MESSAGE`；Room 已 `CLOSED` 或成员已 `LEFT` 时返回 `401 AUTH_FAILED`（历史保留期不延长凭证有效期，见 §5 与 [03](./03-data-model.md) §5.10）。详情校验持久化事件的 `hand_sequence` 从 1 连续、全局 `sequence` 逐条加 1、末序列与该手提交 Snapshot 对齐，缺口按损坏记录返回 `500 INTERNAL_ERROR`。下一手 Commit Bundle 中先于 `HAND_STARTED` 的手间事件保留原序列，事件信封的 `handId` 为 `null`；它们不属于该手时间线，详情外层 `handId` 仍标识所查询的提交单元。
+
 ### 4.3 WebSocket 建立与认证【规范性决定】
 
 1. TCP/TLS 升级后，客户端必须在 5 秒内发送首帧 `AUTHENTICATE`：
@@ -100,7 +102,7 @@ Hand History 列表使用 `GET /tournaments/{tournamentId}/hands?cursor=<opaque>
    ```json
    {
      "type": "AUTHENTICATE",
-     "protocolVersion": 2,
+     "protocolVersion": 3,
      "requestId": "uuid",
      "payload": { "roomId": "opaque-id", "playerToken": "secret" }
    }
@@ -156,7 +158,7 @@ type ClientCommand<TType extends string, TPayload> = {
 ```ts
 type ServerMessage<TType extends string, TPayload> = {
   type: TType;
-  protocolVersion: 2;
+  protocolVersion: 3;
   serverTime: number;
   payload: TPayload;
 };
@@ -299,7 +301,7 @@ type SubmitActionPayload = {
 | `POT_AWARDED` | `{ potIndex, potAmount, awards, winningHandRank }`；`winningHandRank` 可为 `null`（无人跟注）；`awards[] = { playerId, amount }` 且金额和等于 `potAmount` |
 | `PLAYER_ELIMINATED` | `{ playerId, finishPosition, tied }` |
 | `PLAYER_WITHDRAWN` | `{ playerId, seat, forfeitedChips }` |
-| `TOURNAMENT_FINISHED` | `{ winnerPlayerId, rankings }` |
+| `TOURNAMENT_FINISHED` | `{ winnerPlayerId, rankings }`；`winnerPlayerId: null` 明确表示无冠军，此时排名可为空或仅含已淘汰者；有冠军时 ID 非空且排名至少一项 |
 
 自动 Check/Fold 不引入第二套 Event 名：仍发送 `PLAYER_CHECKED`/`PLAYER_FOLDED`，并令 `source=SYSTEM_TIMER`。P1 Bot 同理使用普通动作事件且 `source=BOT_CONTROLLER`。
 

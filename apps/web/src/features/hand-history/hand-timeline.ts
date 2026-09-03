@@ -21,7 +21,7 @@ export type TimelineEntry =
   | { readonly kind: "UNCALLED_RETURN"; readonly playerId: string; readonly seat: number; readonly amount: number }
   | { readonly kind: "POT_AWARDED"; readonly potIndex: number; readonly potAmount: number; readonly awards: readonly { readonly playerId: string; readonly amount: number }[]; readonly winningHandRankLabel: string | null }
   | { readonly kind: "ELIMINATION"; readonly playerId: string; readonly finishPosition: number; readonly tied: boolean }
-  | { readonly kind: "TOURNAMENT_END"; readonly winnerPlayerId: string }
+  | { readonly kind: "TOURNAMENT_END"; readonly winnerPlayerId: string | null }
   | { readonly kind: "WITHDRAWN"; readonly playerId: string; readonly seat: number; readonly forfeitedChips: number };
 
 export interface ActionView {
@@ -127,6 +127,8 @@ export function buildHandTimeline(events: readonly TimelineEventSource[]): reado
   const stages: { stage: TimelineStage; entries: TimelineEntry[] }[] = [];
   let current: TimelineStage = "PREFLOP";
   for (const source of events) {
+    // A commit can retain leading tournament events from the boundary between hands.
+    if (("payload" in source ? source.payload.handId : source.handId) === null) continue;
     const event = toEvent(source);
     current = nextStage(event, current);
     const entry = eventEntry(event);
