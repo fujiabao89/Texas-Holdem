@@ -220,6 +220,20 @@ describe("projectWireEvent", () => {
     expect(JSON.stringify(wire.payload)).not.toContain("card");
   });
 
+  it("PLAYER_REVEALED 只公开服务端 evaluator 给出的最佳五张牌", () => {
+    const engine = makeEngine(2, 42);
+    playToCompletion(engine);
+    const revealed = engine.getEvents().find((event): event is Extract<typeof event, { type: "PLAYER_REVEALED" }> => event.type === "PLAYER_REVEALED");
+    if (revealed === undefined) throw new Error("no showdown reveal");
+    const wire = projectWireEvent(revealed, wireContext(engine, "p0"));
+    expect(wire.type).toBe("PLAYER_REVEALED");
+    if (wire.type === "PLAYER_REVEALED") {
+      expect(wire.payload.handRank.bestFiveCards).toHaveLength(5);
+      const publicCards = [...revealed.cards, ...wireContext(engine, "p0").board].map((card) => `${rankString(card.rank)}:${card.suit.toUpperCase()}`);
+      expect(wire.payload.handRank.bestFiveCards.every((card) => publicCards.includes(`${card.rank}:${card.suit}`))).toBe(true);
+    }
+  });
+
   it("PLAYER_RAISED 恒为完整加注（isFullRaise=true）", () => {
     const engine = makeEngine(2, 42);
     engine.startNextHand();

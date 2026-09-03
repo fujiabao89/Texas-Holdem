@@ -43,6 +43,18 @@ export interface ClockProjection {
   readonly serverTime: number;
 }
 
+/** Presentation can observe only events which have passed projection checks. */
+export interface AcceptedGameEvent {
+  readonly message: GameEventMessage;
+  readonly afterCanonical: GameSnapshot;
+}
+
+/** A fresh Snapshot invalidates every queued presentation task. */
+export interface ProjectionBarrier {
+  readonly game: GameSnapshot | null;
+  readonly kind: "GAME_SNAPSHOT" | "RECONNECT_RESULT";
+}
+
 type Listener = () => void;
 
 const initialState: ProjectionState = {
@@ -62,6 +74,8 @@ const initialState: ProjectionState = {
 export class ProjectionStore {
   private state: ProjectionState = initialState;
   private readonly listeners = new Set<Listener>();
+  private readonly acceptedEventListeners = new Set<(event: AcceptedGameEvent) => void>();
+  private readonly barrierListeners = new Set<(barrier: ProjectionBarrier) => void>();
 
   getSnapshot = (): ProjectionState => this.state;
 
@@ -69,6 +83,16 @@ export class ProjectionStore {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+
+  subscribeAcceptedGameEvents(listener: (event: AcceptedGameEvent) => void): () => void {
+    this.acceptedEventListeners.add(listener);
+    return () => this.acceptedEventListeners.delete(listener);
+  }
+
+  subscribeBarriers(listener: (barrier: ProjectionBarrier) => void): () => void {
+    this.barrierListeners.add(listener);
+    return () => this.barrierListeners.delete(listener);
+  }
 
   acceptRoomSnapshot(snapshot: RoomSnapshot): void {
     const current = this.state.room;
@@ -88,6 +112,7 @@ export class ProjectionStore {
       clock: game === null ? null : clockFromSnapshot(game, serverTime),
       currentHandEvents: [],
     });
+    this.emitBarrier({ game, kind: "RECONNECT_RESULT" });
   }
 
   acceptGameSnapshot(snapshot: GameSnapshot, serverTime = 0): void {
@@ -101,6 +126,7 @@ export class ProjectionStore {
       clock: clockFromSnapshot(snapshot, serverTime),
       currentHandEvents: [],
     });
+    this.emitBarrier({ game: snapshot, kind: "GAME_SNAPSHOT" });
   }
 
   acceptGameEvent(message: GameEventMessage): "APPLIED" | "IGNORED" | "RESYNC" {
@@ -122,7 +148,9 @@ export class ProjectionStore {
         tournamentId: game.tournamentId,
         sequence: message.payload.sequence,
       });
+      if (!matchesEventHand(message.payload.handId, game.handId, next.handId)) return this.requestResync("INVALID_EVENT");
       this.replace({ ...this.state, game: next, lastSequence: next.sequence, clock: clockFromSnapshot(next, message.serverTime), currentHandEvents: appendHandEvent(this.state.currentHandEvents, message) });
+      this.emitAcceptedEvent({ message, afterCanonical: next });
       return "APPLIED";
     } catch {
       return this.requestResync("INVALID_EVENT");
@@ -152,6 +180,19 @@ export class ProjectionStore {
     this.state = next;
     for (const listener of this.listeners) listener();
   }
+
+  private emitAcceptedEvent(event: AcceptedGameEvent): void {
+    for (const listener of this.acceptedEventListeners) listener(event);
+  }
+
+  private emitBarrier(barrier: ProjectionBarrier): void {
+    for (const listener of this.barrierListeners) listener(barrier);
+  }
+}
+
+/** Event envelope identity must agree with the accepted patch's hand boundary. */
+function matchesEventHand(eventHandId: string | null, previousHandId: string | null, nextHandId: string | null): boolean {
+  return eventHandId === nextHandId || (nextHandId === null && eventHandId === previousHandId);
 }
 
 function clockFromSnapshot(snapshot: GameSnapshot, serverTime: number): ClockProjection {

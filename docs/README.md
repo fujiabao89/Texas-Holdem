@@ -1,7 +1,9 @@
 # 工程文档总索引
 
 > 状态：草稿
-> 更新：2026-08-26
+> 更新：2026-09-03
+
+> **2026-09-03 增量核对（TEX-26 合并 TEX-27）**：保留两轮手牌飞行、公共牌逐张入框翻面、服务端 Best Five 组合、本地 Kenney CC0 单通道音效与 Snapshot/重连动画屏障，同时接入 main 的赛果/设置/手牌历史。投影只提交一次，历史与动画共享已校验事件；计时、操作与入口读取 canonical。相关规格与合并回归见 [05](./05-frontend-spec.md) §5/§9–§11、[06](./06-testing-strategy.md) §3.3。
 
 本目录是工程文档的唯一入口。规范：**一个事实只有一个权威来源**，其他文档链接引用而不是重写；产品层文档（规划书）留在仓库根目录，在本索引链接并标注"产品意图，非实现事实"。
 
@@ -21,7 +23,7 @@
 | 02 | [02-protocol-spec.md](./02-protocol-spec.md) | 联机协议规格（`packages/protocol`） | HTTP/WS 通道分工、身份与凭证、消息信封与 Snapshot + Event Stream、sequence 与幂等（actionId/expectedSequence/receivedAt）、超时竞争裁决、消息目录、PlayerView/BotView 投影契约、ErrorCode 码表 | Schema / 投影契约已实现（TEX-17）；运行时接入仍为设计意图 |
 | 03 | [03-data-model.md](./03-data-model.md) | 数据模型与持久化规格（`apps/game-server` / Supabase Postgres） | 内存 vs 持久化边界、核心表（rooms/tournaments/tournament_players/hands/hand_events/game_snapshots/ai_requests）字段与约束、写入节奏与失败语义、敏感数据存放与暴露规则 | 草稿（表结构/迁移/仓储已实现 · TEX-18；运行时写入编排与恢复仍为设计意图） |
 | 04 | [04-game-server-architecture.md](./04-game-server-architecture.md) | Game Server 运行时工程设计（`apps/game-server`） | Room/Tournament 运行时、单桌串行执行器与超时裁决、Scheduler/Timer、连接管理与接管、投影执行、持久化编排、崩溃恢复、无真人关房、P1 AI 接入点 | 草稿（§4/§5/§10 已实现 · TEX-19；其余设计意图） |
-| 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | 草稿（TEX-23 基础、TEX-24 Lobby、TEX-25 牌桌、TEX-27 赛果/设置/历史已实现；动画/音效待 TEX-26） |
+| 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | 草稿（TEX-23 基础、TEX-24 Lobby、TEX-25 牌桌、TEX-26 动画/音效/重连、TEX-27 赛果/设置/历史已实现；归档历史服务端读取仍待补齐） |
 | 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 草稿（Simulator 长跑 · TEX-16 已实现；其余设计意图） |
 | 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 提交前本地审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略、输出契约与提交/推送门禁 | 治理基线 |
 | 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
@@ -45,7 +47,7 @@
 - **实现 Web 前端**：读 [05-frontend-spec.md](./05-frontend-spec.md) 全文；wire 契约与投影引用 02 §4–§11，规则语义与事件目录引用 01 §5.2/§6/§14，服务端计时与推送引用 04 §8/§9；配套读《总规划》§7。
 - **搭建测试体系**：读 [06-testing-strategy.md](./06-testing-strategy.md) 全文；规则测试范围引用 01 §5–§17，联机测试引用 02 §9/§12/§14 与 04 §5–§9，前端验收引用 05 §16；配套读《总规划》§9。
 - **执行 P0 任务**：先读 [P0 任务总览](./00-project/p0-task-overview.md)，再进入对应阶段任务卡；实现事实仍以 01–06 工程规格和 Linear 任务为准。
-- **提交或推送本地实现前**：使用 [DeepSeek Harness 审查 Agent 创建提示词](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) 创建并调用只读审查 Agent；Claude Code 与 Trae Work 的门禁规则见 `CLAUDE.md`、`TRAE.md`。
+- **用户手动启动 DeepSeek Harness 审查时**：使用 [DeepSeek Harness 审查 Agent 创建提示词](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md)；Agent 不自行调用，也不将其作为提交或推送门禁，治理规则以 [AGENTS.md](../AGENTS.md) 为准。
 - **规划文档体系**：见下方"待确认"。
 
 ## 待确认

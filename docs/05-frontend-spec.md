@@ -1,13 +1,13 @@
 # 05 · Web 前端工程规格（`apps/web`）
 
-> 状态：设计定稿（TEX-23 前端基础、TEX-24 Lobby、TEX-21 WebSocket 认证/同步/重连、TEX-25 牌桌视觉与下注、TEX-27 赛果/设置/手牌历史已核对；动画与音效待 TEX-26）
-> 实现核对：2026-08-26（TEX-27）——`apps/web` 已实现 App Router 路由、类型安全 `zh-CN` 文案、Jotai 纯 UI 状态、HTTP/WS Transport、创建/加入/Lobby、基于 `RoomSnapshot`/`GameSnapshot`/连续 Event Patch 的响应式牌桌、`LegalActions` 驱动的下注/All-in 两步确认/Time Bank/连接反馈，以及独立赛果页、设置与规则页、当前玩家视角 Hand History Drawer 和淘汰观战横幅；动画与音效仍为**设计意图**（TEX-26）
+> 状态：设计定稿（TEX-23 前端基础、TEX-24 Lobby、TEX-21 WebSocket 认证/同步/重连、TEX-25 牌桌视觉与下注、TEX-26 动画/音效/重连体验、TEX-27 赛果/设置/手牌历史已核对）
+> 实现核对：2026-09-03（TEX-26 合并 TEX-27）——`apps/web` 在既有 `RoomSnapshot`/`GameSnapshot`/连续 Event Patch 与单一 Transport 上同时保留响应式牌桌、`LegalActions` 下注控件、AnimationQueue（Snapshot 屏障、Soft/Hard catch-up、Reduced Motion 终帧）、本地 Kenney CC0 音效与重连提示，以及 TEX-27 的独立赛果页、设置/规则页、Hand History Drawer 和淘汰观战横幅。操作、计时（含行动机会身份）、历史与赛果入口始终读取 canonical projection，不等待 presentation。
 > 权威范围：本文是 Web 前端（`apps/web`）工程设计的唯一权威来源——页面与路由、客户端状态与投影消费（Snapshot + Event Stream）、横向 Seat 牌桌与响应式布局、下注交互（快捷下注 / Slider / ± 调整 / 精确输入 / All-in 两步 / Time Bank）、AnimationQueue 与事件动画、音效、计时与连接状态展示、重连 UX、错误码展示、Lobby 与房间流、淘汰观战 / 赛果 / Hand History UI、可访问性与验收标准。范围之外的事实见 [工程文档总索引](./README.md)：Engine 规则语义属 [01](./01-engine-spec.md)，wire 契约与 `PlayerView` 投影属 [02](./02-protocol-spec.md)，服务端执行与计时属 [04](./04-game-server-architecture.md)，持久化属 [03](./03-data-model.md)，AI 推理属 P1 `server/ai`。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§3.1/§5/§6/§7/§9/§10）；《德州扑克项目规划_区块1-5_v0.1.docx》§1.5/§2.8–2.10/§4/§5（仅在《总规划》未覆盖处补充）；《德州扑克项目规划_区块6-10_v0.2.docx》§6.6/§7.10/§8.2/§8.13/§9.16–9.18/§10.3/§10.11（仅在《总规划》未覆盖处补充）；规则语义与事件目录见 [01](./01-engine-spec.md)，wire 契约见 [02](./02-protocol-spec.md)，服务端执行见 [04](./04-game-server-architecture.md)
-> 对应代码：`apps/web/`（TEX-23 已建立 `src/app` 路由壳、`messages/`、`protocol/` 与 `state/`；《总规划》§6 的 Next.js 16 + React 19 + TypeScript + Tailwind CSS 4、Jotai、Radix UI、Framer Motion 依赖已配置。Seat Layout、AnimationQueue 与业务 UI 待 TEX-24+）
+> 对应代码：`apps/web/`；路由入口为 `src/app`，投影与传输为 `state/`、`protocol/`，业务页面位于 `features/`，动画与音效位于 `animations/`、`audio/`。实际依赖以 `apps/web/package.json` 为准。
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【部分已实现】** TEX-23 已落地路由壳、投影与命令状态边界；TEX-24 已落地 §6.1–§6.4 的 Home/Create/Join/Lobby、授权 HTTP 控制面与 Lobby WS 投影消费；TEX-21 在同一 Transport 上落地 Token 恢复、认证、断线退避、权威 Room/Game 快照屏障、连续 Event/Clock 消费和旧会话停止。TEX-25 已落地 §7/§8 的基础牌桌、响应式 Seat、Board/Pot、服务端 LegalActions 操作区、普通下注金额控件、All-in 两步确认、Time Bank 和连接/命令反馈；HTTP 超时/取消、受限 sessionStorage 降级和按 `appliedSequence` 回收 pending 已测试。TEX-27 已落地 §6.6 赛果页（含房主"再来一局"）、§6.7 设置/规则页、§13 当前玩家视角 Hand History Drawer 与淘汰观战横幅。动画与音效仍待 TEX-26 逐项回填；Hand History 服务端投影读取端点待独立缺陷任务补齐。
+> **【部分已实现】** TEX-23 已落地路由壳、投影与命令状态边界；TEX-24 已落地 §6.1–§6.4 的 Home/Create/Join/Lobby、授权 HTTP 控制面与 Lobby WS 投影消费；TEX-21 在同一 Transport 上落地 Token 恢复、认证、断线退避、权威 Room/Game 快照屏障、连续 Event/Clock 消费和旧会话停止。TEX-25 已落地 §7/§8 的基础牌桌、响应式 Seat、Board/Pot、服务端 LegalActions 操作区、普通下注金额控件、All-in 两步确认、Time Bank 和连接/命令反馈；HTTP 超时/取消、受限 sessionStorage 降级和按 `appliedSequence` 回收 pending 已测试。TEX-26 已落地 §9–§11 的事件动画、本地音效与重连体验。TEX-27 已落地 §6.6 赛果页（含房主"再来一局"）、§6.7 设置/规则页、§13 当前玩家视角 Hand History Drawer 与淘汰观战横幅；Hand History 服务端投影读取端点待独立缺陷任务补齐。
 
 ## 1. Purpose
 
@@ -137,6 +137,7 @@ apps/web/
 - 断线/重连：先取最新 Snapshot 覆盖副本，再消费新 Event；断线期间旧动画不重放（[02](./02-protocol-spec.md) §6/§10）。
 - 积压严重：Fast Forward 到最新 Snapshot（§9.6；《总规划》§7.2）。
 - 数据应用与动画播放解耦：Event 到达即更新数据副本，视觉由 AnimationQueue 另行走带（§9.3）——快进永远有正确终态可跳。
+- 同一连续 Event 先校验手局身份，再一次性提交 canonical 与只读 `currentHandEvents`，最后通知动画订阅；不得为动画和历史各更新一次投影。Snapshot/重连先清空本手历史，再发出动画屏障，旧 Event 不重放。
 - `packages/protocol` 必须导出以 `event.type` 为判别字段的 `ProjectedGameEvent` 联合类型、每种 Payload 的运行时 Schema 与 `GameSnapshot` Schema；前端不得针对 `payload: object` 手写类型断言。Schema 不通过、未知 Event 或 reducer 无法穷尽处理时，不应用该消息并以 `INVALID_EVENT` 请求 Snapshot。
 - reducer 必须是纯函数并对联合类型做穷尽检查，按 [02](./02-protocol-spec.md) §6.3/§9.2 应用 `PlayerViewPatch`；每个 Event 的测试至少断言 `apply(before, patch) == after`、重复 sequence 无副作用、缺序触发重同步。具体 wire 字段只在 02 / `packages/protocol` 定义，本文不复制第二套 Payload 契约。
 
@@ -315,6 +316,8 @@ apps/web/
 
 > **实现核对（TEX-25）**：牌桌只以 `WebSocketTransport` 的命令订阅获得 pending/拒绝/重试反馈；在对应 Event/Snapshot 越过 `appliedSequence` 前保持禁用。`ProjectionStore` 仍是唯一的牌局状态源，乱序/重复/过期消息由其既有序列屏障处理。
 
+> **实现核对（TEX-26）**：`ProjectionStore` 在连续 Patch 已原子写入 canonical、且 Event `handId` 与 Patch 前后手局一致后，才向 AnimationQueue 发出只读 `{ message, afterCanonical }`，并为 `GAME_SNAPSHOT`/`RECONNECT_RESULT` 发出清队列屏障。动画不写回投影、不发送 Action；Hard Fast Forward 仅经既有 Transport 的 OPEN 已认证 Socket 请求权威 Snapshot，关闭 Socket 不得抢占重连状态。`PLAYER_REVEALED.handRank.bestFiveCards` 是服务端 evaluator 公开字段，Web 端不重算牌型或赢家；`BURN_CARD` 不含、也不会生成牌面。
+
 ## 9. AnimationQueue 与事件动画
 
 ### 9.1 定位
@@ -343,10 +346,10 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 
 | 事件（目录权威 [01](./01-engine-spec.md) §14） | 视觉行为 | 依据 |
 | --- | --- | --- |
-| `HAND_STARTED` / `DEAL_HOLE_CARD` | 从牌堆位置按座位顺序发两轮；自己的牌到位后翻开，其他人保持牌背 | 《区块1-5 v0.1》§5.5 |
+| `HAND_STARTED` / `DEAL_HOLE_CARD` | 桌面始终在牌桌外左上角的白色留白区呈现一个可见 Deck，不得占用或遮挡 Board/玩家手牌；每个接收者都对同一已投影 Event 看见牌背从该 Deck 沿连续浅弧线、保持正向地飞向目标座位手牌区，`cardIndex` 决定同一手牌区的左右落点。每个 Event 必须启动独立动画实例，不得因复用已完成的 DOM/CSS animation 而跳过轨迹。第一轮和第二轮全部发完后，自己的两张服务端投影牌才依次绕纵轴翻开，其他人始终保持牌背。飞行只使用合成层 `transform` / `opacity`，不得仅播放音效或用通用提示替代可见发牌 | 《区块1-5 v0.1》§5.5 |
 | `BURN_CARD` | 牌背从 Deck 移出，进入 Muck/弃牌区或淡出；**永不翻面**（事件不携带牌面） | 《区块6-10 v0.2》§6.6；《总规划》§7.2 |
-| `FLOP_DEALT` | 三张公共牌短间隔依次出现并翻开 | 《区块1-5 v0.1》§5.5 |
-| `TURN_DEALT` / `RIVER_DEALT` | 单张牌背进入后 Flip 展示 | 同上 |
+| `FLOP_DEALT` | 三张公共牌从 Deck 方向依次到达各自的目标牌框，再逐张 Flip；一条 Event 不得直接把三张正面牌替换进 Board | 《区块1-5 v0.1》§5.5 |
+| `TURN_DEALT` / `RIVER_DEALT` | 单张牌背先进入对应目标框、停顿后 Flip 展示 | 同上 |
 | `PLAYER_CHECKED` / `PLAYER_CALLED` / `PLAYER_BET` / `PLAYER_RAISED` / `PLAYER_FOLDED` / `PLAYER_ALL_IN` | 快速、克制的筹码位移或淡出反馈 | 同上 |
 | `SHOWDOWN_STARTED` / `PLAYER_REVEALED` | 揭牌（仍有权争夺的玩家按规则公开底牌） | 《区块1-5 v0.1》§5.11 |
 | `POT_AWARDED` | Pot 分配视觉反馈（筹码移动 + 获胜者突出） | 同上 |
@@ -355,10 +358,12 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 ### 9.5 Showdown 剧本（《区块1-5 v0.1》§5.11；《区块6-10 v0.2》§9.17）
 
 ```text
-揭牌（Reveal）→ 识别牌型 → 高亮最佳五张（bestFiveCards，[01] §10）
+揭牌（Reveal）→ 展示七张已公开候选牌 → 淡出服务端未选中的候选牌
+→ 组合服务端 `bestFiveCards`（[01] §10）→ 牌型文字
 → 比较 → 突出获胜者与获胜金额 → Pot 分配视觉反馈
 ```
 
+- `PLAYER_REVEALED.handRank.bestFiveCards` 是唯一的选牌事实：客户端只按 rank+suit 身份将已公开底牌和 Board 中的五张移入组合，不能用规则代码重算牌型、选择替代牌或判断赢家。两张底牌并不必然都入选，Board 的五张也可能全部入选。
 - 先展示牌型、再突出赢家与金额、最后执行 Pot 分配；Side Pot 按各 Pot 独立展示获胜结果。
 - Hand End 短暂停留让用户看清结果，再开始下一手（《区块1-5 v0.1》§5.6）。
 - Showdown 是重点人工验收场景（《区块6-10 v0.2》§9.17）。
@@ -369,19 +374,19 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 
 | 任务 | 时长/间隔 |
 | --- | ---: |
-| 单张发牌位移 / 同轮座位间隔 / 自己翻牌 | 180ms / 70ms / 160ms |
+| 单张手牌飞入 / 两轮结束后停顿 / 自己单张翻牌 / 双牌翻面间隔 | 900ms / 260ms / 680ms / 150ms |
 | Blind/Call/Bet/Raise 筹码移动 | 220ms |
 | Check / Fold / All-in 反馈 | 140ms / 200ms / 280ms |
 | Burn 移出 | 160ms |
-| Flop 单张翻牌 / 张间隔 | 220ms / 90ms |
-| Turn、River 翻牌 | 240ms |
-| Showdown 单人 Reveal / 人间隔 | 260ms / 120ms |
-| Best Five 高亮 / 牌型标签停留 | 320ms / 600ms |
+| Flop 单张入框并翻牌 / 张间隔 | 1,000ms / 300ms |
+| Turn、River 入框并翻牌 | 1,000ms |
+| Showdown 单人 Reveal / 人间隔 | 1,400ms / 120ms |
+| Best Five 候选淡出与组合 / 牌型标签停留 | 5,000ms / 3,000ms |
 | Winner 突出 / 每个 Pot 分配 | 800ms / 450ms |
 | Hand End 最终停留 | 1,000ms |
 
-- 单个普通动作视觉反馈不得超过 300ms；Showdown 从首次 Reveal 到首个 Pot 开始分配目标不超过 4 秒，完整剧本目标不超过 6 秒。Side Pot 很多时保留信息顺序，但每个额外 Pot 的停留可缩短至 300ms。
-- AnimationQueue 预计视觉落后超过 2 秒或待播任务超过 8 个时进入 Soft Catch-up：播放速率提高到 1.75×，跳过纯装饰任务，但保留 Deal/Burn/Board/Reveal/Winner/Pot 语义帧。预计落后超过 5 秒或未播 Event 超过 20 个时进入 Hard Fast Forward，发送 `REQUEST_SNAPSHOT(reason=MANUAL)`。
+- 单个普通动作视觉反馈不得超过 300ms；公共牌必须完整保留“入框、停顿、翻面”的可读节奏。Showdown 从首次 Reveal 到首个 Pot 开始分配以看清候选牌淡出和 Best Five 组合为优先，双人常规剧本目标不超过 15 秒；Side Pot 很多时保留信息顺序，但每个额外 Pot 的停留可缩短至 300ms。
+- AnimationQueue 预计视觉落后超过 2 秒或待播任务超过 8 个时进入 Soft Catch-up：普通操作的纯展示反馈可提高到 1.75×或跳过，但 Deal/Burn/Board/Reveal/Winner/Pot 等语义帧保持声明时长，不能在 CSS 卡牌飞行/翻面完成前提交 canonical 终帧。预计落后超过 28 秒或未播 Event 超过 40 个时进入 Hard Fast Forward，发送 `REQUEST_SNAPSHOT(reason=MANUAL)`；阈值高于一手按可读节奏播放的双人 All-in 正常事件突发，因此完整的公开街牌、Reveal 与 Best Five 先在 Soft Catch-up 中播放，不能被 Hard Forward 直接跳过。
 - 服务端对单连接满足任一条件即发送 `RESYNC_REQUIRED`：未发送 `GAME_EVENT ≥64`、最老未发送 Event 等待 `≥5s`、或应用队列估算字节数加 `ws.bufferedAmount ≥256KiB`；随后丢弃该连接旧积压并用 Snapshot 重建屏障。总待发送量达到 `1MiB`，或 30 秒内始终无法回落到 `256KiB` 以下时，以 Close Code `1013` 关闭并由客户端退避重连（[04](./04-game-server-architecture.md) §9.5）。
 - Fast Forward 的原子操作顺序为：暂停取任务 → 清空队列与 Overlay → 应用新 Snapshot 到牌局规范态 → 将动画展示态整体对齐到该 Snapshot → 恢复接收屏障后的 Event。不得出现新规范态搭配旧牌面/筹码 Overlay 的混合帧。
 - Soft Catch-up 不提示用户；Hard Fast Forward 使用 120ms 淡出/淡入，并在完成后显示 3 秒 Toast“牌局进度已同步至最新状态”。如果正在展示 Showdown，先保留最终 Board、赢家和各 Pot 结果的静态摘要至少 1 秒，再完成跳转。
@@ -400,7 +405,7 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 
 - 至少提供**全局音效开关**；细分开关（如牌型提示音）可后续加入（《区块1-5 v0.1》§5.12）。
 - 浏览器自动播放策略：AudioContext 在首次用户交互后解锁；播放失败静默降级，不影响牌局【设计意图】。
-- P0 基础牌局素材固定采用 [Kenney Casino Audio](https://kenney.nl/assets/casino-audio)，按钮/提醒缺口采用 [Kenney UI Audio](https://kenney.nl/assets/ui-audio)；两套资产页面均标示 Creative Commons CC0，[Kenney 官方授权说明](https://kenney.nl/support)确认资产可商用且无需署名（2026-08-21 核验）。Wolfcha 素材不纳入（《区块6-10 v0.2》§6.1）。
+- P0 基础牌局素材采用 [Kenney Casino Audio](https://kenney.nl/assets/casino-audio)，过牌敲桌采用 [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds)，按钮/提醒缺口可采用 [Kenney UI Audio](https://kenney.nl/assets/ui-audio)；这些资产页面均标示 Creative Commons CC0，[Kenney 官方授权说明](https://kenney.nl/support)确认资产可商用且无需署名（Casino/UI 于 2026-08-21 核验，Impact Sounds 于 2026-08-29 核验）。Wolfcha 素材不纳入（《区块6-10 v0.2》§6.1）。同一短音效必须复用预加载的本地元素，同一页面所有控制器共享单通道抢占：新 cue 到来时停止旧 cue 再立即播放；标签页进入后台、关闭音效、Snapshot/重连屏障、Hard Fast Forward 或卸载时立即停止当前 cue 并清除延迟 cue，不能让旧街道声音进入新权威状态。连续发牌不得为每个 Event 新建并解码音频元素；一条 Flop Event 可以按其三张牌实际到位、翻开的节奏发出三个本地 cue，Turn/River 也在落牌时播放，而不在权威 Event 刚入队时抢先发声。过牌、跟注、下注、加注、All-in、弃牌必须使用不同 cue；加注采用用户确认的“散落 8”，All-in 采用“散落 9”。
 - 素材必须下载后随应用本地托管，禁止运行时热链第三方。引入时在 `public/audio/THIRD_PARTY_NOTICES.md` 记录资产名、原始 URL、下载日期、原始文件名、采用文件、SHA-256 与许可证副本路径；即使 CC0 无强制署名，Settings / Credits 仍显示“Audio assets: Kenney”。
 - 允许裁剪、响度归一化和格式转换，但不得叠加来源不明的采样。交付 `mp3` 主格式，并保留原始授权包与 License 文件；单个短音效目标小于 100 KiB，首屏不预载全部素材，轮到自己/All-in/Showdown 等关键音效在进入牌桌后空闲预取。
 - P0 不依赖浏览器 TTS 或远程语音服务；牌型使用可区分但克制的非语音短音，并始终有同步中文文字。未来增加真人/合成语音时须重新记录来源、生成条款与商业使用权。
@@ -540,7 +545,7 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 | 配置与快捷金额 | 四个配置预设快照测试；全部行动/Time Bank 档位 Schema 测试；Bet 与 facing-bet Raise 对 1/3、1/2、2/3、Pot 的公式、舍入、夹取、去重及边界值表驱动测试 |
 | 命令幂等 | 双击只产生一个逻辑命令；结果未知的重发复用同一 `requestId/actionId/Payload`；状态已推进后不重放旧动作；`APPLIED` 后持续锁定至对应 sequence 可见，`COMMAND_RESULT` 不直接修改牌局规范态 |
 | 事件与计时 | Event reducer 穷尽类型；重复 Event 无副作用、缺序/非法 Payload 触发 Snapshot；乱序或已过期的 `CLOCK_UPDATED` 不覆盖当前行动机会，倒计时归零不产生 Action |
-| 动画 | Deal 两轮发牌顺滑、Seat 时序正确；Burn 牌背移出不露牌面；Flop/Turn/River 翻牌顺序与 Event 一致；Showdown 按 Reveal → Best Five → 牌型 → Winner → Pot 剧本（《区块6-10 v0.2》§9.17） |
+| 动画 | Deal 两轮逐张从共享 Deck 平滑飞向全部 Seat，左右落点正确且两轮结束前不翻本人牌；随后本人双牌依次纵轴翻开；Burn 牌背移出不露牌面；Flop/Turn/River 翻牌顺序与 Event 一致；Showdown 按 Reveal → Best Five → 牌型 → Winner → Pot 剧本（《区块6-10 v0.2》§9.17） |
 | 响应式 | ~390×844、~360×800、平板、1366×768、1920×1080；10 人桌姓名/Stack/D/SB/BB/当前 Actor/操作区不重叠（《区块6-10 v0.2》§9.18） |
 | 重连 | 刷新、断网、网络切换、移动端后台恢复可用（《总规划》§9.1） |
 | Fast Forward | Soft/Hard 阈值可用 Fake Clock 触发；Hard 路径无规范态/旧 Overlay 混合帧；`RESYNC_REQUIRED` 与 Close `1013` 均可恢复 |
@@ -600,7 +605,7 @@ E2E 固定使用 **Playwright**，可访问性自动扫描使用 **axe-core**；
 | 5 | 行动 `15/20/30/45/60/不限时`；Time Bank `关/30/60/120`，单次最多 30 秒且每次行动最多成功一次 | §6.2/§8.6 |
 | 6 | 固定快捷档位及 Bet/Raise 的 `*To` 公式 | §8.3 |
 | 7 | step=`max(1, round(BB/10))`，半数向上、边界精确可达 | §8.3 |
-| 8 | 2s/8 任务 Soft Catch-up；5s/20 Event Hard Fast Forward；服务端 64 Event/5s/256KiB，硬上限 1MiB/30s | §9.6 |
+| 8 | 2s/8 任务 Soft Catch-up（仅普通反馈加速）；28s/40 Event Hard Fast Forward；服务端 64 Event/5s/256KiB，硬上限 1MiB/30s | §9.6 |
 | 9 | Kenney Casino Audio + UI Audio（CC0），本地托管并留授权证据 | §10 |
 | 10 | `serverTime + performance.now()` 展示锚点 | §11.1 |
 | 11 | Playwright + axe-core；跨应用 E2E 位于 `tests/e2e/` | §16；[06](./06-testing-strategy.md) §2/§9 |

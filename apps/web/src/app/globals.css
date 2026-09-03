@@ -1,1 +1,125 @@
 @import "tailwindcss";
+
+/* TEX-26 presentation only: these animations never alter canonical state. */
+@keyframes board-deal-flight {
+  0% { opacity: 0; transform: translate(120%, 95%) rotate(16deg) scale(0.72); }
+  62% { opacity: 1; transform: translate(-5%, -4%) rotate(-2deg) scale(1.04); }
+  100% { opacity: 1; transform: translate(0) rotate(0) scale(1); }
+}
+
+@keyframes board-card-flip {
+  0%, 38% { transform: rotateY(0deg); }
+  100% { transform: rotateY(180deg); }
+}
+
+@keyframes hole-card-deal-flight {
+  0% { opacity: 1; transform: translate3d(-50%, -50%, 0) rotate(-2deg) scale(0.7); }
+  58% { opacity: 1; transform: translate3d(calc(-50% + var(--hole-mid-x)), calc(-50% + var(--hole-mid-y)), 0) rotate(-0.8deg) scale(0.9); }
+  91% { opacity: 1; transform: translate3d(calc(-50% + var(--hole-delta-x)), calc(-50% + var(--hole-delta-y)), 0) rotate(0.5deg) scale(1.015); }
+  100% { opacity: 1; transform: translate3d(calc(-50% + var(--hole-delta-x)), calc(-50% + var(--hole-delta-y)), 0) rotate(0) scale(1); }
+}
+
+@keyframes hole-card-turnover {
+  0% { transform: rotateY(0deg) translateY(0) scale(1); }
+  44% { transform: rotateY(88deg) translateY(-0.2rem) scale(1.025); }
+  56% { transform: rotateY(92deg) translateY(-0.2rem) scale(1.025); }
+  100% { transform: rotateY(180deg); }
+}
+
+@keyframes hole-card-arrival {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes hole-card-flight-handoff {
+  0% { visibility: visible; }
+  100% { visibility: hidden; }
+}
+
+@keyframes showdown-source-card {
+  0% { opacity: 0; transform: translateY(2.25rem) scale(0.75); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes showdown-discard-card {
+  0%, 62% { opacity: 1; filter: saturate(1); transform: scale(1); }
+  100% { opacity: 0.22; filter: saturate(0.15); transform: scale(0.72); }
+}
+
+@keyframes showdown-best-card {
+  0% { opacity: 0; transform: translateY(-1.5rem) scale(0.55); }
+  70% { opacity: 1; transform: translateY(0.12rem) scale(1.07); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes showdown-best-label {
+  0%, 68% { opacity: 0; transform: translateY(-0.35rem); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.board-deal-flight {
+  animation: board-deal-flight 760ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--deal-delay) both;
+  perspective: 800px;
+}
+
+.board-deal-flip {
+  animation: board-card-flip 620ms cubic-bezier(0.3, 0.75, 0.25, 1) calc(var(--deal-delay) + 310ms) both;
+  transform-style: preserve-3d;
+}
+
+.board-deal-back,
+.board-deal-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.board-deal-face { transform: rotateY(180deg); }
+
+.hole-deal-flight {
+  animation: hole-card-deal-flight var(--hole-deal-duration) cubic-bezier(0.2, 0.72, 0.18, 1) both;
+  left: var(--hole-origin-x);
+  top: var(--hole-origin-y);
+  perspective: 800px;
+  backface-visibility: hidden;
+  contain: layout style paint;
+  will-change: transform, opacity;
+}
+
+/* The final task remains mounted while both private cards turn over. Hide its
+   travelling card exactly when the seat copy appears, so two card backs never
+   stack for a frame and cover the face animation beneath it. */
+.hole-deal-flight-final {
+  animation: hole-card-deal-flight var(--hole-deal-duration) cubic-bezier(0.2, 0.72, 0.18, 1) both,
+    hole-card-flight-handoff 1ms linear var(--hole-deal-duration) forwards;
+}
+
+.hole-reveal-arrival {
+  animation: hole-card-arrival 1ms linear var(--hole-arrival-delay) both;
+}
+
+.hole-group-flip {
+  animation: hole-card-turnover var(--hole-reveal-duration) cubic-bezier(0.34, 0.1, 0.24, 1) var(--hole-reveal-delay) both;
+  transform-style: preserve-3d;
+  perspective: 900px;
+  will-change: transform;
+}
+
+.hole-deal-back,
+.hole-deal-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.hole-deal-face { transform: rotateY(180deg); }
+
+.showdown-showcase { min-width: min(21rem, 100%); }
+.showdown-source-card { animation: showdown-source-card 700ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--showdown-delay) both; }
+.showdown-discard-card { animation-name: showdown-source-card, showdown-discard-card; animation-duration: 700ms, 1.2s; animation-timing-function: cubic-bezier(0.2, 0.85, 0.25, 1), ease-out; animation-delay: var(--showdown-delay), 1s; animation-fill-mode: both, forwards; }
+.showdown-best-card { animation: showdown-best-card 750ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--best-delay) both; }
+.showdown-best-label { animation: showdown-best-label 600ms ease-out 2s both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .board-deal-flight,
+  .board-deal-flip,
+  .hole-deal-flight,
+  .hole-reveal-arrival,
+  .showdown-source-card,
+  .showdown-discard-card,
+  .showdown-best-card,
+  .showdown-best-label { animation: none; }
+
+  .hole-group-flip { animation: none; transform: rotateY(180deg); }
+  .hole-reveal-arrival { opacity: 1; }
+}

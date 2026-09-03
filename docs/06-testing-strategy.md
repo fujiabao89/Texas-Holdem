@@ -113,7 +113,11 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 > TEX-25 增加牌桌展示和下注的定向回归：服务端 `LegalActions` 的操作准入、2–10 Seat 展示、BB/Pot 快捷额与普通 Bet/Raise 范围、键盘跟注、All-in 两步与 `ALL_IN` 信封、command feedback 不改投影。视觉验收以 Fake WebSocket 注入的合法投影在桌面与约 390×844 视口检查椭圆桌、环绕 Seat、公共牌及悬浮操作区，不依赖真实 game-server 或 sleep。WebSocketTransport 的 Fake WebSocket/Fake Clock/注入 UUID 测试继续覆盖 pending、拒绝、重连、乱序与 Token 安全边界。
 
+> TEX-26 增加 Fake Clock 驱动的 AnimationQueue 与 AudioAdapter 回归：连续/重复 Event 的顺序与 canonical/presentation 分离、Snapshot/重连/Hard Forward 清队列、取消/异常/Reduced Motion 终帧、每张手牌从可见 Deck 到目标座位的停留、两轮完成前本人牌不翻面、最终一张落定后仅使用服务端 `viewer.holeCards` 驱动双牌翻面、最终飞行牌与 Seat 牌背原子交接且不能叠层闪背、对手永远仅牌背、Burn 无牌面、公共牌逐张“入框后翻面”、Showdown 只在各自 `PLAYER_REVEALED` 完成后显示对手牌、服务端 `bestFiveCards` 的七张候选淡出/五张组合展示、Soft/Hard catch-up 不影响 LegalActions/Clock/命令，且 Showdown 帧结束后仍会重新判断过量积压、Soft Catch-up 不会在第三张公共牌 CSS 入框/翻面结束前提交完整 Board，音效开关和 autoplay/播放失败降级。发牌几何 Unit 用例覆盖由牌桌外左上角共享 Deck 到上、侧、下座位的精确位移和浅弧线、同一座位两张牌的左右落点，并断言不同玩家/牌序得到独立动画 key；组件验收测量 Deck 与牌桌的实际边界以锁定同一飞行起点，实际飞行只动画 `transform` / `opacity`，避免布局动画造成卡顿，Deck 不得遮挡 Board 或任何玩家手牌。AudioAdapter 断言复用本地预加载元素、新 cue 抢占旧 cue 且两者不重叠、两个已挂载控制器仍共享独占通道、后台牌桌立即停止且不再排队播放，并以 Fake Clock 验证 Snapshot/重连/Hard Forward 会清除旧 cue，再将一条 Flop Event 的三个 cue 及 Turn/River 的单 cue 对齐各自落牌/翻面时点。Transport/Projection 的 Fake WebSocket 测试覆盖受限 Snapshot 请求、关闭 Socket 的快照请求不抢占重连和 `SESSION_REPLACED` 冻结；不依赖真实网络、game-server 或 sleep。
+
 > TEX-27 增加赛果/设置/Hand History 的定向单元回归：`resultRows` 只按服务端 `displayOrder` 展示且 FINISHED 门禁与房主"再来一局"条件、Hand History 列表/详情 reducer 的 cursor 分页、失败降级与陈旧响应保护、时间线分组（Pre-Flop～Result）与隐私断言（DEAL_HOLE 条目永不携带牌面值、Burn 牌与阶段标记过滤）、`ProjectionStore.currentHandEvents` 的本手缓冲（新 handId/Snapshot/重连即重置）、HTTP History 端点的路径/分页参数/room token。完整多浏览器多人与完赛旅程 E2E 继续由 TEX-28 落地。
+
+> TEX-26/TEX-27 合并回归：同一 Event 必须只提交一次 canonical 与本手历史，再通知动画订阅；重复或身份不匹配的 Event 不进入任一消费者，Snapshot/重连先清历史再清动画。牌桌 E2E 同时检查历史/音效入口与单一连接状态、历史关闭焦点返回，以及动画积压时 canonical 行动机会切换仍立即重置倒计时。
 
 | 必测项 | 层次 | 规格来源 |
 | --- | --- | --- |

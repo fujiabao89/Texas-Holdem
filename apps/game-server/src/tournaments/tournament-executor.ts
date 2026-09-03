@@ -16,12 +16,13 @@
  * 属 TEX-22。
  */
 
-import type {
-  ClockUpdatedPayload,
-  CommandResultPayload,
-  ErrorCode,
-  GameEventMessage,
-  SubmitAction,
+import {
+  PROTOCOL_VERSION,
+  type ClockUpdatedPayload,
+  type CommandResultPayload,
+  type ErrorCode,
+  type GameEventMessage,
+  type SubmitAction,
 } from "@texas-holdem/protocol";
 import {
   consumeTimeBank,
@@ -692,7 +693,7 @@ export class TournamentExecutor {
         const patch = projectViewPatch(this.projectionInputFor(viewerPlayerId, perEventState));
         messages.push({
           type: "GAME_EVENT",
-          protocolVersion: 1,
+          protocolVersion: PROTOCOL_VERSION,
           serverTime: this.state.clock(),
           payload: {
             tournamentId: this.state.tournamentId,

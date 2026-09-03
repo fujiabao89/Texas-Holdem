@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PROTOCOL_VERSION } from "@texas-holdem/protocol";
 
 import { gameSnapshot, roomSnapshot } from "../testing-fixtures";
 import { ProjectionStore } from "./projection-store";
@@ -6,7 +7,7 @@ import { ProjectionStore } from "./projection-store";
 function event(sequence: string, tournamentId = "tournament-1") {
   return {
     type: "GAME_EVENT" as const,
-    protocolVersion: 1 as const,
+    protocolVersion: PROTOCOL_VERSION,
     serverTime: 1,
     payload: {
       tournamentId,
@@ -41,6 +42,49 @@ describe("ProjectionStore", () => {
     expect(store.getSnapshot().game?.currentActorPlayerId).toBe("player-2");
   });
 
+  it("notifies presentation only after a continuous event commits, while snapshots are barriers", () => {
+    const store = new ProjectionStore();
+    const accepted: string[] = [];
+    const barriers: string[] = [];
+    store.subscribeAcceptedGameEvents((next) => accepted.push(`${next.message.payload.sequence}:${next.afterCanonical.sequence}`));
+    store.subscribeBarriers((next) => barriers.push(`${next.kind}:${next.game?.sequence ?? "none"}`));
+    store.acceptGameSnapshot(gameSnapshot());
+    expect(store.acceptGameEvent(event("9007199254740992"))).toBe("APPLIED");
+    expect(store.acceptGameEvent(event("9007199254740992"))).toBe("IGNORED");
+    store.acceptReconnectResult(roomSnapshot(), gameSnapshot({ sequence: "9007199254741000" }));
+    expect(accepted).toEqual(["9007199254740992:9007199254740992"]);
+    expect(barriers).toEqual(["GAME_SNAPSHOT:9007199254740991", "RECONNECT_RESULT:9007199254741000"]);
+  });
+
+  it("commits canonical and history once before notifying animation, and clears history before barriers", () => {
+    const store = new ProjectionStore();
+    store.acceptGameSnapshot(gameSnapshot());
+    const notifications: string[] = [];
+    store.subscribe(() => notifications.push("state"));
+    store.subscribeAcceptedGameEvents((accepted) => {
+      notifications.push("animation");
+      expect(store.getSnapshot().game).toBe(accepted.afterCanonical);
+      expect(store.getSnapshot().currentHandEvents).toEqual([{
+        handId: accepted.message.payload.handId,
+        sequence: accepted.message.payload.sequence,
+        event: accepted.message.payload.event,
+      }]);
+    });
+    store.subscribeBarriers((barrier) => {
+      notifications.push(barrier.kind);
+      expect(store.getSnapshot().game).toBe(barrier.game);
+      expect(store.getSnapshot().currentHandEvents).toEqual([]);
+    });
+
+    expect(store.acceptGameEvent(event("9007199254740992"))).toBe("APPLIED");
+    expect(store.acceptGameEvent(event("9007199254740992"))).toBe("IGNORED");
+    expect(notifications).toEqual(["state", "animation"]);
+    store.acceptGameSnapshot(gameSnapshot({ sequence: "9007199254740993" }));
+    expect(store.acceptGameEvent(event("9007199254740994"))).toBe("APPLIED");
+    store.acceptReconnectResult(roomSnapshot(), gameSnapshot({ sequence: "9007199254740995" }));
+    expect(notifications).toEqual(["state", "animation", "state", "GAME_SNAPSHOT", "state", "animation", "state", "RECONNECT_RESULT"]);
+  });
+
   it("ignores duplicate events and pauses actions on gaps, disorder, and a mismatched tournament", () => {
     const store = new ProjectionStore();
     store.acceptGameSnapshot(gameSnapshot());
@@ -65,6 +109,21 @@ describe("ProjectionStore", () => {
     };
     expect(store.acceptGameEvent(privateCard)).toBe("RESYNC");
     expect(store.getSnapshot().game?.sequence).toBe("9007199254740991");
+  });
+
+  it("rejects a continuous patch whose envelope hand identity cannot be reconciled", () => {
+    const store = new ProjectionStore();
+    const accepted: string[] = [];
+    store.subscribeAcceptedGameEvents((next) => accepted.push(next.message.payload.sequence));
+    store.acceptGameSnapshot(gameSnapshot());
+    const mismatched = {
+      ...event("9007199254740992"),
+      payload: { ...event("9007199254740992").payload, handId: "other-hand" },
+    };
+
+    expect(store.acceptGameEvent(mismatched)).toBe("RESYNC");
+    expect(store.getSnapshot()).toMatchObject({ lastSequence: "9007199254740991", actionsDisabled: true, resyncReason: "INVALID_EVENT", currentHandEvents: [] });
+    expect(accepted).toEqual([]);
   });
 
   it("accepts only a current, non-stale display clock without changing game state", () => {
@@ -116,7 +175,15 @@ describe("ProjectionStore current-hand event buffer", () => {
     const store = new ProjectionStore();
     store.acceptGameSnapshot(gameSnapshot());
     store.acceptGameEvent(handEvent("9007199254740992", "hand-1"));
-    store.acceptGameEvent(handEvent("9007199254740993", "hand-2"));
+    const nextHand = handEvent("9007199254740993", "hand-2");
+    expect(store.acceptGameEvent({
+      ...nextHand,
+      payload: {
+        ...nextHand.payload,
+        event: { type: "HAND_STARTED", payload: { handNumber: 2, dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0, blindLevel: 0 } },
+        patch: { handId: "hand-2", handPhase: "PREFLOP", dealerSeat: 1, board: [] },
+      },
+    })).toBe("APPLIED");
     expect(store.getSnapshot().currentHandEvents.map((entry) => entry.handId)).toEqual(["hand-2"]);
   });
 

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { GameEvent, GameEventMessage } from "@texas-holdem/protocol";
+import { PROTOCOL_VERSION, type Card, type GameEvent, type GameEventMessage } from "@texas-holdem/protocol";
 
 import type { AppliedHandEvent } from "../../state/projection-store";
 import { buildHandTimeline, handHistoryWinnerNames, playerNameLookup } from "./hand-timeline";
 import type { HandHistoryItem } from "./hand-history-model";
 
 function message(event: GameEvent, sequence: string, handId: string | null = "hand-1"): GameEventMessage {
-  return { type: "GAME_EVENT", protocolVersion: 1, serverTime: 0, payload: { tournamentId: "tournament-1", sequence, handId, event, patch: {} } };
+  return { type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 0, payload: { tournamentId: "tournament-1", sequence, handId, event, patch: {} } };
 }
 
 function applied(event: GameEvent, sequence: string, handId: string | null = "hand-1"): AppliedHandEvent {
@@ -15,7 +15,9 @@ function applied(event: GameEvent, sequence: string, handId: string | null = "ha
 }
 
 const holeCard = { rank: "A" as const, suit: "SPADES" as const };
-const handRank = { category: "ONE_PAIR" as const, tiebreakRanks: ["A" as const], label: "一对 A" };
+const revealedCards: Card[] = [holeCard, { rank: "A", suit: "HEARTS" }];
+const bestFiveCards: Card[] = [...revealedCards, { rank: "K", suit: "HEARTS" }, { rank: "9", suit: "SPADES" }, { rank: "7", suit: "CLUBS" }];
+const handRank = { category: "ONE_PAIR" as const, tiebreakRanks: ["A", "K", "9", "7"] as Card["rank"][], bestFiveCards, label: "一对 A" };
 
 /** A full projected hand: blinds, deal, streets, showdown and settlement. */
 function fullHandEvents(): GameEventMessage[] {
@@ -26,7 +28,7 @@ function fullHandEvents(): GameEventMessage[] {
     message({ type: "DEAL_HOLE_CARD", payload: { playerId: "player-1", seat: 0, cardIndex: 0, card: holeCard } }, "4"),
     message({ type: "DEAL_HOLE_CARD", payload: { playerId: "player-2", seat: 1, cardIndex: 0 } }, "5"),
     message({ type: "BURN_CARD", payload: { street: "FLOP" } }, "6"),
-    message({ type: "FLOP_DEALT", payload: { cards: [holeCard, { rank: "K", suit: "HEARTS" }, { rank: "7", suit: "CLUBS" }] } }, "7"),
+    message({ type: "FLOP_DEALT", payload: { cards: [{ rank: "3", suit: "CLUBS" }, { rank: "K", suit: "HEARTS" }, { rank: "7", suit: "CLUBS" }] } }, "7"),
     message({ type: "PLAYER_CHECKED", payload: { playerId: "player-2", seat: 1, source: "HUMAN_SOCKET" } }, "8"),
     message({ type: "PLAYER_BET", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET", amount: 20, betTo: 20 } }, "9"),
     message({ type: "PLAYER_FOLDED", payload: { playerId: "player-2", seat: 1, source: "HUMAN_SOCKET" } }, "10"),
@@ -35,7 +37,7 @@ function fullHandEvents(): GameEventMessage[] {
     message({ type: "BURN_CARD", payload: { street: "RIVER" } }, "13"),
     message({ type: "RIVER_DEALT", payload: { card: { rank: "9", suit: "SPADES" } } }, "14"),
     message({ type: "SHOWDOWN_STARTED", payload: { contenderPlayerIds: ["player-1"] } }, "15"),
-    message({ type: "PLAYER_REVEALED", payload: { playerId: "player-1", seat: 0, cards: [holeCard, { rank: "K", suit: "SPADES" }], handRank } }, "16"),
+    message({ type: "PLAYER_REVEALED", payload: { playerId: "player-1", seat: 0, cards: revealedCards, handRank } }, "16"),
     message({ type: "UNCALLED_BET_RETURNED", payload: { playerId: "player-1", seat: 0, amount: 20 } }, "17"),
     message({ type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 15, awards: [{ playerId: "player-1", amount: 15 }], winningHandRank: handRank } }, "18"),
     message({ type: "PLAYER_ELIMINATED", payload: { playerId: "player-2", finishPosition: 2, tied: false } }, "19"),
@@ -96,7 +98,7 @@ describe("buildHandTimeline", () => {
     // The showdown marker still advances the stage for later entries.
     const withReveal = buildHandTimeline([
       message({ type: "SHOWDOWN_STARTED", payload: { contenderPlayerIds: ["player-1"] } }, "1"),
-      message({ type: "PLAYER_REVEALED", payload: { playerId: "player-1", seat: 0, cards: [holeCard, holeCard], handRank } }, "2"),
+      message({ type: "PLAYER_REVEALED", payload: { playerId: "player-1", seat: 0, cards: revealedCards, handRank } }, "2"),
     ]);
     expect(withReveal.map((stage) => stage.stage)).toEqual(["SHOWDOWN"]);
   });
