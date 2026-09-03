@@ -1,4 +1,4 @@
-﻿import { buildApp } from "./app";
+import { buildApp } from "./app";
 import { parseAppConfig } from "./config";
 import {
   createDatabase,
@@ -40,7 +40,16 @@ function createRngFactory(testSeed: string | undefined): () => RandomSource {
   return () => new SeededRandomSource(seed + tournamentOrdinal++);
 }
 
-const rngFactory = createRngFactory(process.env.TEX_TEST_RNG_SEED);
+const rngTestSeed = process.env.TEX_TEST_RNG_SEED;
+// P3-4 运行守卫：生产（NODE_ENV=production）严禁设置 TEX_TEST_RNG_SEED——否则所有
+// 锦标赛洗牌可预测（公平性风险，且 seed 序列跨进程/重启会归零）。真实链路 E2E 以
+// 非 production 环境启动，不受影响；部署误配时直接拒绝启动而非静默接受。
+if (rngTestSeed !== undefined && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "TEX_TEST_RNG_SEED is forbidden when NODE_ENV=production: it would make every tournament shuffle predictable",
+  );
+}
+const rngFactory = createRngFactory(rngTestSeed);
 
 const config = parseAppConfig();
 const database = createDatabase(parseDatabaseConfig());

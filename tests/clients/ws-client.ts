@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 可编程 WebSocket 测试客户端（TEX-28 Multiplayer/WS 层）。
  *
  * 通过真实 `ws` 连接接入被测服务的 `/api/v1/ws`；每条入站帧都以

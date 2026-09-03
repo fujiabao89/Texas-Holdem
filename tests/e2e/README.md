@@ -18,7 +18,7 @@ pnpm test:e2e -- --grep "创建房间"   # 按标题过滤（业务用例落地�
 `pnpm test:e2e:real` 走完整真实链路：真实浏览器（独立 BrowserContext 身份隔离）→ 真实 apps/web → 真实本地 game-server → 真实 PostgreSQL（每次运行独立 `tex_e2e_real_<runId>` schema，结束清理）。与上面基于 Playwright WebSocket mock 的套件互补，**禁止**以 `route.fulfill`、伪造 Snapshot/Event 或直接改浏览器 store 替代被测业务链路（docs/06 §5）。
 
 - 配置：[playwright.real.config.ts](./playwright.real.config.ts)（`retries: 0`、独立 `.artifacts-real` 产物目录、独立端口段）；`tests/meta` 有入口与配置自测。
-- 依赖：环境变量 `TEX_TEST_DATABASE_URL`（缺失时整套受控跳过并明确报告）；服务由 Playwright `webServer` 托管启停；洗牌由 `TEX_TEST_RNG_SEED` 固定（main.ts 测试入口，生产默认安全随机）。
+- 依赖：环境变量 `TEX_TEST_DATABASE_URL`（缺失时启动即失败并提示设置指引——真实链路不允许静默降级或跳过）；服务由 Playwright `webServer` 托管启停；洗牌由 `TEX_TEST_RNG_SEED` 固定（main.ts 测试入口，生产默认安全随机）。
 - 用例：[real/multiplayer-journey.spec.ts](./real/multiplayer-journey.spec.ts)（双人完整锦标赛+再来一局、三人全下摊牌/最佳五张/筹码守恒）、[real/security.spec.ts](./real/security.spec.ts)（WS 逐帧字段级隔离以 DB 私有事实为权威对照、token 不落 URL/持久存储、HTTP 错误信封脱敏）、[real/accessibility.spec.ts](./real/accessibility.spec.ts)（纯键盘主流程 + axe critical/serious 门禁 + Reduced Motion 业务结果不变）。
 - 浏览器矩阵：chromium 全量；firefox/webkit 仅 `@key` 关键流程（配置内置 `grep`）。本断言门槛不宣称完整 WCAG 2.2 AA 通过（moderate/minor 与人工边界见 docs/06 §8）。
 - 已知边界：Hand History 归档读取端点（TEX-36）未落地前，归档历史真实联调不宣称通过（见 docs/03-engineering/TEX-28-findings-ledger.md F-2）。

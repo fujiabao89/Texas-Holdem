@@ -1,4 +1,4 @@
-﻿/**
+/**
  * buildHandCommitBundle 结果更新回归（TEX-28 P1：同手多淘汰 rank 唯一性）。
  *
  * 引擎 §12 对同手淘汰组共享 placementRange 并以 displayOrder 打破并列；docs/03

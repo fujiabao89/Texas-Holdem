@@ -1,4 +1,4 @@
-﻿/**
+/**
  * TEX-28 真实链路 E2E 的运行身份（runId / 隔离 schema / 端口）。
  *
  * Playwright 配置（主进程）在每次运行时生成唯一 runId 并写入

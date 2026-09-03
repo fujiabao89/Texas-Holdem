@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 进程内全链路 server harness（TEX-28 Multiplayer/WS 层）。
  *
  * 以生产装配方式（apps/game-server/src/main.ts 的同一接线）在测试进程内构建

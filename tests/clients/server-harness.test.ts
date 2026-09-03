@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Server harness 基础设施自测（TEX-28）。
  *
  * 验证 harness 以生产装配（main.ts 同一接线 + 内存持久化 Fake）真实拉起
@@ -6,9 +6,11 @@
  * 重连后的 gameSnapshot 屏障与后续事件流。这是 Multiplayer/WS 层用例的
  * 可信基础；本文件不重复业务断言，只证明基础设施可用且无协议违规。
  *
- * 已知缺陷 F-1（见 docs/03-engineering/TEX-28-findings-ledger.md）：开局时
- * 已连接的客户端收不到首手事件。本冒烟测试按当前真实可用的协议路径
- * （开局后重连，RECONNECT_RESULT 携带 gameSnapshot）驱动，不伪造任何消息。
+ * 开局首手事件送达：F-1（开局竞态丢弃首手事件）已由 F-7 源头修复
+ * （见 docs/03-engineering/TEX-28-findings-ledger.md：运行时注册后置于 Room 提交
+ * IN_GAME，room-executor F-7 单测 + 真实链路 e2e 三浏览器守护开局前连接能收到
+ * HAND_STARTED/BLIND/DEAL）。本冒烟测试仍按真实可用的「开局后重连，
+ * RECONNECT_RESULT 携带 gameSnapshot」路径驱动协议栈，不伪造任何消息。
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type ServerHarness, startServerHarness } from "./server-harness";
@@ -89,7 +91,9 @@ describe("server harness smoke", () => {
     const tournamentId = started.data.tournamentId;
     expect(tournamentId).toBeTruthy();
 
-    // 5. F-1 规避路径：开局后重连，RECONNECT_RESULT 携带权威 gameSnapshot。
+    // 5. 开局后重连（仍是受支持的真实协议路径）：RECONNECT_RESULT 携带权威 gameSnapshot。
+    //    （F-1 开局竞态已由 F-7 修复：开局前保持连接的 socket 也会收到首手事件，
+    //    由 room-executor F-7 单测与真实链路 e2e 守护，此处不重复断言。）
     const aliceGame = await WsTestClient.open(harness.wsUrl);
     const aliceReconnect = await aliceGame.authenticate(alice.roomId, alice.playerToken);
     if (!aliceGame.isReconnectResult(aliceReconnect)) throw new Error(`alice reconnect: ${JSON.stringify(aliceReconnect)}`);

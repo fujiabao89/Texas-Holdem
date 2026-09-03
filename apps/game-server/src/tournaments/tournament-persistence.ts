@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Tournament 手末 Commit Bundle 构造（docs/03-data-model.md §5.5–§5.7；docs/04 §12）。
  *
  * 执行器在整手结算后把「该手全部事件 + 对齐 Snapshot + 结果更新」组装为不可变

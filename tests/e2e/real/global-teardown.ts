@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 真实链路 E2E 全局 teardown（TEX-28）。
  *
  * 只清理本次运行创建的资源：终止 game-server 的 PostgreSQL 连接（按
