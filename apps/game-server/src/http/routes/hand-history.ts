@@ -7,7 +7,7 @@
  *
  * 鉴权：`Authorization: Bearer <playerToken>`。playerId 由服务端经
  * `room_players.token_digest`（HMAC，常数时间比较）反查，不信任请求身份；
- * 归档历史在房间关闭/进程重启后仍可解析（内存 RoomManager 只覆盖进程存活期）。
+ * 读取不依赖内存 RoomManager；房间关闭或成员离开后凭证失效。
  * Token 不进入 URL、查询参数或日志。
  *
  * 隐私红线（docs/02 §6.3；docs/03 §6/§9）：`hand_events.payload` 是含 Burn 牌面
@@ -21,8 +21,8 @@
  * 插入，列表天然只包含已提交的 Hand。
  *
  * 404 语义：Tournament 不存在与 hand 不属于该 Tournament 均返回 404；协议
- * ErrorCode 无 `TOURNAMENT_NOT_FOUND`/`HAND_NOT_FOUND` 专用码（TEX-36 不改
- * protocol Schema），复用稳定码 `ROOM_NOT_FOUND`（客户端按 `error.code`
+ * ErrorCode 无 `TOURNAMENT_NOT_FOUND`/`HAND_NOT_FOUND` 专用码；此处不新增错误码，
+ * 复用稳定码 `ROOM_NOT_FOUND`（客户端按 `error.code`
  * 分支，传输类别仍为 404）。
  *
  * patch 语义：历史详情每条事件为 schema 合法的 `GameEventMessage`，其
@@ -137,7 +137,8 @@ function parseEngineCards(value: unknown, field: string): readonly Card[] {
 /** 单一查询参数（重复参数按非法处理）。 */
 function singleQueryParam(query: Record<string, unknown>, key: string): string | undefined {
   const value = query[key];
-  return typeof value === "string" ? value : undefined;
+  if (value === undefined || typeof value === "string") return value;
+  throw new RoomDomainError("INVALID_MESSAGE");
 }
 
 interface AuthorizedViewer {
@@ -182,7 +183,7 @@ async function authorizeViewer(
   return { playerId, participants };
 }
 
-/** 逐候选常数时间比较（BOT 无凭证跳过；归档房间全员 LEFT 仍可匹配）。 */
+/** 对仓储筛选出的有效成员逐候选常数时间比较（BOT 无凭证跳过）。 */
 function resolveViewerByToken(
   members: readonly RoomMemberCredentialRecord[],
   roomId: string,
@@ -352,13 +353,24 @@ export function registerHandHistoryRoutes(app: FastifyInstance, deps: HandHistor
         if (events.length === 0) {
           throw new CorruptHandRecordError("committed hand has no events");
         }
+        for (let index = 0; index < events.length; index++) {
+          if (events[index].handSequence !== index + 1 ||
+            (index > 0 && events[index].sequence !== events[index - 1].sequence + 1n)) {
+            throw new CorruptHandRecordError("event sequence gap");
+          }
+        }
+        if (events[events.length - 1].sequence !== hand.endSequence) {
+          throw new CorruptHandRecordError("events do not reach the committed snapshot");
+        }
+        const handStartIndex = events.findIndex((event) => event.type === "HAND_STARTED");
+        if (handStartIndex < 0) throw new CorruptHandRecordError("missing hand start");
 
         const seatToPlayer = new Map(
           auth.participants.map((participant) => [participant.seatIndex, participant.playerId] as const),
         );
         const board = parseEngineCards(hand.communityCards, "communityCards");
         const serverTime = deps.now();
-        const projectedEvents = events.map((event) => {
+        const projectedEvents = events.map((event, index) => {
           const engineEvent = { ...(event.payload as object), type: event.type } as PokerEvent;
           const wireEvent = projectWireEvent(engineEvent, {
             seatToPlayer,
@@ -373,7 +385,7 @@ export function registerHandHistoryRoutes(app: FastifyInstance, deps: HandHistor
             payload: {
               tournamentId,
               sequence: event.sequence.toString(),
-              handId,
+              handId: index < handStartIndex ? null : handId,
               event: wireEvent,
               patch: {},
             },

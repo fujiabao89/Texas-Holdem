@@ -247,7 +247,7 @@ export function projectWireEvent(event: PokerEvent, ctx: WireProjectionContext):
       return {
         type: "TOURNAMENT_FINISHED",
         payload: {
-          winnerPlayerId: winnerSeat !== null ? seatOfPlayer(winnerSeat) : "",
+          winnerPlayerId: winnerSeat !== null ? seatOfPlayer(winnerSeat) : null,
           rankings: event.finalStandings.map((fs) => ({
             playerId: seatOfPlayer(fs.seatIndex),
             finishPosition: fs.placementRange.from,

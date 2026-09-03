@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from "../../../packages/protocol/src";
 import { expect, test } from "../fixtures/observability";
 
 const roomSnapshot = {
@@ -16,8 +17,8 @@ test("TEX-26 Session Replaced 对话框可键盘访问", async ({ page }) => {
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
       if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") {
-        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot } }));
-        socket.send(JSON.stringify({ type: "SESSION_REPLACED", protocolVersion: 2, serverTime: 2, payload: {} }));
+        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot } }));
+        socket.send(JSON.stringify({ type: "SESSION_REPLACED", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: {} }));
       }
     });
   });

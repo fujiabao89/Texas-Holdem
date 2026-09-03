@@ -1,9 +1,14 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
+import { SeededRandomSource } from "@texas-holdem/poker-engine";
 import {
   HandHistoryDetailResponseSchema,
   HandHistoryListResponseSchema,
+  type SubmitAction,
 } from "@texas-holdem/protocol";
+import { createFakeClock } from "../../../../tests/support/fake-clock";
+import { createTournamentRuntimeState, type PlayerSeed } from "../../src/tournaments/tournament-runtime";
+import { TournamentExecutor } from "../../src/tournaments/tournament-executor";
 import { describeTestDatabase } from "../../../../tests/support/test-db";
 import { generateInviteCode, qualifiedTableName, randomUUID, setupIntegrationDatabase, type IntegrationDatabase } from "./helpers";
 import { normalizeDisplayNameKey } from "../../src/infrastructure/persistence/display-name";
@@ -125,6 +130,38 @@ describeTestDatabase("hand history projection read: 鉴权/分页/隐私/损坏"
     return tournamentId;
   }
 
+  async function runtimeFixture(label: string, count: number) {
+    const { roomId, players } = await createRoomFixture(label, count);
+    const tournamentId = await createTournamentFixture(roomId, players);
+    await createRoomRepository(testDb!.database).setRoomStatus(roomId, "IN_GAME");
+    const locked = await testDb!.adminPool.query<{ id: string; player_id: string; seat_index: number }>(
+      `SELECT id, player_id, seat_index FROM ${qualifiedTableName(testDb!.schemaName, "tournament_players")} WHERE tournament_id = $1 ORDER BY seat_index`, [tournamentId],
+    );
+    const seeds: PlayerSeed[] = locked.rows.map((row) => ({
+      playerId: row.player_id, tournamentPlayerId: row.id, seatIndex: row.seat_index,
+      kind: "HUMAN", startingStack: 1000, displayName: `seat-${row.seat_index}`,
+    }));
+    const clock = createFakeClock({ now: NOW });
+    const runtime = createTournamentRuntimeState({
+      roomId, tournamentId, players: seeds, rng: new SeededRandomSource(42), engineOptions: { firstDealerSeat: 0 },
+      config: { maxPlayers: 6, startingStack: 1000, smallBlind: 10, bigBlind: 20, blindMode: "fixed", blindStructure: [{ smallBlind: 10, bigBlind: 20 }], actionTime: 30, timeBank: 60 },
+    }, { clock: () => clock.now(), scheduler: clock, ids: { uuid: randomUUID, now: () => clock.now(), randomBytes: (count) => new Uint8Array(count) } });
+    const bundles: HandCommitBundle[] = [];
+    const executor = new TournamentExecutor(runtime, { output: {
+      emitEvents() {}, emitClockUpdated() {}, submitRoomCommand() {},
+      enqueueCommitBundles(batch) { bundles.push(...batch); },
+    } });
+    async function action(action: SubmitAction) {
+      const seat = runtime.engine.getState().hand!.currentActor!;
+      const result = await executor.submit({
+        type: "SUBMIT_ACTION", playerId: runtime.seatToPlayer.get(seat)!, action,
+        requestId: randomUUID(), actionId: randomUUID(), expectedSequence: String(runtime.lastWireSequence), receivedAt: NOW, ingressOrdinal: 0,
+      });
+      expect(result, JSON.stringify(result)).toMatchObject({ status: "APPLIED" });
+    }
+    return { roomId, tournamentId, players, clock, runtime, executor, bundles, action };
+  }
+
   /** 极简两手牌事件的 bundle（HAND_STARTED + PLAYER_FOLDED）。 */
   function simpleBundle(tournamentId: string, handId: string, handNumber: number, firstSequence: bigint): HandCommitBundle {
     const events: HandCommitEvent[] = [
@@ -239,11 +276,117 @@ describeTestDatabase("hand history projection read: 鉴权/分页/隐私/损坏"
     await commit.commitHandBundle(simpleBundle(tournamentId, randomUUID(), 1, 1n));
     const listUrl = `/api/v1/tournaments/${tournamentId}/hands`;
 
-    for (const query of ["limit=0", "limit=51", "limit=abc", "limit=-1", "cursor=%21%21%21", "cursor=aGVsbG8td29ybGQ"]) {
+    for (const query of ["limit=0", "limit=51", "limit=abc", "limit=-1", "cursor=%21%21%21", "cursor=aGVsbG8td29ybGQ", "limit=1&limit=50", "cursor=aGFuZHM6Mg&cursor=aGFuZHM6MQ", "cursor=aGFuZHM6Mg&cursor=invalid"]) {
       const response = await injectGet(`${listUrl}?${query}`, tokenOf(playerA));
       expect(response.statusCode, query).toBe(400);
       expect(response.json().error.code, query).toBe("INVALID_MESSAGE");
     }
+  });
+
+  it("已结束但未关闭的房间可读；成员离开或房间关闭后两个端点拒绝旧凭证", async () => {
+    const { roomId, players } = await createRoomFixture("expiry", 2);
+    const tournamentId = await createTournamentFixture(roomId, players);
+    const handId = randomUUID();
+    await createHandCommitRepository(testDb!.database).commitHandBundle(simpleBundle(tournamentId, handId, 1, 1n));
+    const roomRepo = createRoomRepository(testDb!.database);
+    await roomRepo.setRoomStatus(roomId, "FINISHED");
+    const urls = [`/api/v1/tournaments/${tournamentId}/hands`, `/api/v1/tournaments/${tournamentId}/hands/${handId}`];
+    for (const url of urls) expect((await injectGet(url, tokenOf(players[0]))).statusCode).toBe(200);
+    await roomRepo.markRoomPlayerLeft(roomId, players[0].playerId, "USER_LEFT", new Date(NOW));
+    for (const url of urls) {
+      const response = await injectGet(url, tokenOf(players[0]));
+      expect(response.statusCode).toBe(401);
+      expect(response.json().error.code).toBe("AUTH_FAILED");
+      expect((await injectGet(url, tokenOf(players[1]))).statusCode).toBe(200);
+    }
+    await roomRepo.setRoomStatus(roomId, "CLOSED", {
+      closedReason: "ABANDONED_NO_HUMAN", closedAt: new Date(NOW), retentionExpiresAt: new Date(NOW + 86_400_000),
+    });
+    for (const url of urls) {
+      const response = await injectGet(url, tokenOf(players[1]));
+      expect(response.statusCode).toBe(401);
+      expect(response.json().error.code).toBe("AUTH_FAILED");
+    }
+  });
+
+  it("真实运行时：手间撤回保留连续事件，但不归入下一手", async () => {
+    const fixture = await runtimeFixture("edge", 4);
+    try {
+      await fixture.executor.submit({ type: "START" });
+      await fixture.executor.submit({ type: "PAUSE_AFTER_HAND", paused: true });
+      for (let i = 0; i < 3; i++) await fixture.action({ type: "FOLD" });
+      expect(fixture.bundles).toHaveLength(1);
+      await fixture.executor.submit({ type: "WITHDRAW_PLAYER", playerId: fixture.players[0].playerId, reason: "USER_LEFT" });
+      await fixture.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false });
+      await fixture.executor.submit({ type: "PAUSE_AFTER_HAND", paused: true });
+      for (let i = 0; i < 2; i++) await fixture.action({ type: "FOLD" });
+      expect(fixture.bundles).toHaveLength(2);
+      for (const bundle of fixture.bundles) await createHandCommitRepository(testDb!.database).commitHandBundle(bundle);
+      const bundle = fixture.bundles[1];
+      expect(bundle.events[0].type).toBe("PLAYER_WITHDRAWN");
+      const response = await injectGet(`/api/v1/tournaments/${fixture.tournamentId}/hands/${bundle.hand.id}`, tokenOf(fixture.players[1]));
+      expect(response.statusCode).toBe(200);
+      const { data } = HandHistoryDetailResponseSchema.parse(response.json());
+      expect(data.events).toHaveLength(bundle.events.length);
+      expect(data.events[0].payload.handId).toBeNull();
+      expect(data.events[1].payload.event.type).toBe("HAND_STARTED");
+      expect(data.events[1].payload.handId).toBe(bundle.hand.id);
+    } finally { fixture.clock.dispose(); }
+  });
+
+  it("真实运行时：最后两名活动玩家撤回后，仍在房间的淘汰观战者可读无冠军终局", async () => {
+    const fixture = await runtimeFixture("nochamp", 3);
+    try {
+      await fixture.executor.submit({ type: "START" });
+      await fixture.executor.submit({ type: "PAUSE_AFTER_HAND", paused: true });
+      await fixture.action({ type: "ALL_IN" });
+      await fixture.action({ type: "CALL" });
+      await fixture.action({ type: "FOLD" });
+      const eliminated = fixture.runtime.engine.getState().participants.find((p) => p.status === "ELIMINATED")!;
+      expect(eliminated).toBeDefined();
+      await fixture.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false });
+      const allInSeat = fixture.runtime.engine.getState().hand!.currentActor!;
+      await fixture.action({ type: "ALL_IN" });
+      await fixture.executor.submit({ type: "WITHDRAW_PLAYER", playerId: fixture.players[allInSeat].playerId, reason: "USER_LEFT" });
+      const other = fixture.runtime.engine.getState().participants.find((p) => p.status === "ACTIVE")!;
+      await fixture.executor.submit({ type: "WITHDRAW_PLAYER", playerId: fixture.players[other.seatIndex].playerId, reason: "USER_LEFT" });
+      expect(fixture.runtime.engine.getState().champion).toBeNull();
+      expect(fixture.runtime.status).toBe("FINISHED");
+      const finalBundle = fixture.bundles.at(-1)!;
+      expect(finalBundle.tournamentFinish?.roomStatus).toBe("FINISHED");
+      for (const bundle of fixture.bundles) await createHandCommitRepository(testDb!.database).commitHandBundle(bundle);
+      const response = await injectGet(`/api/v1/tournaments/${fixture.tournamentId}/hands/${finalBundle.hand.id}`, tokenOf(fixture.players[eliminated.seatIndex]));
+      expect(response.statusCode).toBe(200);
+      const detail = HandHistoryDetailResponseSchema.parse(response.json());
+      expect(detail.data.events.at(-1)?.payload.event).toMatchObject({ type: "TOURNAMENT_FINISHED", payload: { winnerPlayerId: null } });
+    } finally { fixture.clock.dispose(); }
+  });
+
+  it.each(["first", "middle", "last", "hand-sequence", "global-sequence"])("损坏记录：%s 事件缺口返回 500，完整记录仍可读取", async (damage) => {
+    const { roomId, players } = await createRoomFixture("gaps", 2);
+    const tournamentId = await createTournamentFixture(roomId, players);
+    const handId = randomUUID();
+    const base = simpleBundle(tournamentId, handId, 1, 1n);
+    await createHandCommitRepository(testDb!.database).commitHandBundle({
+      ...base,
+      events: [...base.events, { sequence: 3n, handSequence: 3, type: "PLAYER_WITHDRAWN", payload: { seatIndex: 1, forfeitedChips: 980 }, schemaVersion: 1 }],
+      snapshot: { ...base.snapshot, sequence: 3n },
+    });
+    const url = `/api/v1/tournaments/${tournamentId}/hands/${handId}`;
+    expect((await injectGet(url, tokenOf(players[0]))).statusCode).toBe(200);
+    const table = qualifiedTableName(testDb!.schemaName, "hand_events");
+    if (damage === "hand-sequence") {
+      await testDb!.adminPool.query(`UPDATE ${table} SET hand_sequence = 4 WHERE hand_id = $1 AND hand_sequence = 3`, [handId]);
+    } else if (damage === "global-sequence") {
+      await testDb!.adminPool.query(`UPDATE ${table} SET sequence = 4 WHERE hand_id = $1 AND hand_sequence = 3`, [handId]);
+    } else {
+      const sequence = damage === "first" ? 1 : damage === "middle" ? 2 : 3;
+      await testDb!.adminPool.query(`DELETE FROM ${table} WHERE hand_id = $1 AND hand_sequence = $2`, [handId, sequence]);
+    }
+    const response = await injectGet(url, tokenOf(players[0]));
+    expect(response.statusCode).toBe(500);
+    expect(response.json().error.code).toBe("INTERNAL_ERROR");
+    expect(response.body).not.toContain("sequence");
   });
 
   it("详情：接收者视角投影——本人底牌带牌面、他人底牌无牌面、Burn 无牌面、Showdown 公开；Schema 合法", async () => {

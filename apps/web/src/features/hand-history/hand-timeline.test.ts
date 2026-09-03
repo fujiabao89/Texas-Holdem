@@ -46,6 +46,16 @@ function fullHandEvents(): GameEventMessage[] {
 }
 
 describe("buildHandTimeline", () => {
+  it("preserves an explicit no-champion outcome for display", () => {
+    expect(buildHandTimeline([message({ type: "TOURNAMENT_FINISHED", payload: { winnerPlayerId: null, rankings: [] } }, "1")])).toEqual([
+      { stage: "RESULT", entries: [{ kind: "TOURNAMENT_END", winnerPlayerId: null }] },
+    ]);
+  });
+  it("keeps boundary withdrawals out of the next hand's Pre-Flop / Result stages", () => {
+    const boundary: GameEvent = { type: "PLAYER_WITHDRAWN", payload: { playerId: "player-3", seat: 2, forfeitedChips: 500 } };
+    expect(buildHandTimeline([message(boundary, "0", null), ...fullHandEvents()])).toEqual(buildHandTimeline(fullHandEvents()));
+    expect(buildHandTimeline([applied(boundary, "0", null), ...fullHandEvents()])).toEqual(buildHandTimeline(fullHandEvents()));
+  });
   it("groups a full hand into Pre-Flop / Flop / Turn / River / Showdown / Result stages", () => {
     const stages = buildHandTimeline(fullHandEvents());
     expect(stages.map((stage) => stage.stage)).toEqual(["PREFLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN", "RESULT"]);

@@ -1,13 +1,13 @@
-import { and, asc, desc, eq, lt } from "drizzle-orm";
+import { and, asc, desc, eq, lt, ne } from "drizzle-orm";
 import type { Database } from "../database";
-import { handEvents, hands, roomPlayers, tournamentPlayers, tournaments } from "../schema";
+import { gameSnapshots, handEvents, hands, roomPlayers, rooms, tournamentPlayers, tournaments } from "../schema";
 
 /**
  * Hand History 投影读取仓储（docs/03-data-model.md §5.5/§5.6/§6；docs/02 §4.2；TEX-36）。
  *
  * 只读：`hands` 行只在手末 Commit Bundle 单事务内与 `hand_events`/`game_snapshots`
- * 一同插入（§7.3），因此本表中的行即「已经手末原子提交的 Hand」——无需额外
- * Snapshot 存在性联查。
+ * 一同插入（§7.3），因此列表只返回已经提交的 Hand；详情同时读取 Snapshot
+ * 末序列以发现提交后的事件缺失，不读取或对外发送 Snapshot 私有状态。
  *
  * 隐私红线（docs/03 §6/§9）：`hand_events.payload` 与 `hands.community_cards`/
  * `hands.summary` 是服务器私有原始数据（含 Burn 牌面、未公开底牌）；本仓储只负责
@@ -16,8 +16,8 @@ import { handEvents, hands, roomPlayers, tournamentPlayers, tournaments } from "
  *
  * 鉴权读取（`findTournamentRoom`/`listRoomMemberCredentials`/`listParticipants`）
  * 支撑 `Authorization: Bearer <playerToken>` → playerId 的数据库侧解析：内存
- * RoomManager 只覆盖进程存活期，归档历史（房间关闭/进程重启后）必须经
- * `room_players.token_digest`（HMAC）解析。
+ * RoomManager 只覆盖进程存活期，已提交历史经 `room_players.token_digest`（HMAC）
+ * 解析；只接受未关闭房间的 ACTIVE 成员凭证。
  */
 
 /** `hands` 行（服务器私有；`communityCards`/`summary` 为 Engine 原始 JSON）。 */
@@ -59,7 +59,7 @@ export interface HandHistoryEventRecord {
 export interface HandHistoryReadRepository {
   /** Tournament 存在时返回其所属 Room；不存在返回 null（→ 404）。 */
   findTournamentRoom(tournamentId: string): Promise<{ readonly roomId: string } | null>;
-  /** Room 全体成员凭证（不筛 status：归档房间全员 LEFT 后仍可凭 token 查历史）。 */
+  /** 未关闭 Room 的 ACTIVE 成员凭证；保留的历史摘要不延长 token 有效期。 */
   listRoomMemberCredentials(roomId: string): Promise<readonly RoomMemberCredentialRecord[]>;
   /** Tournament 全部锁定参赛者（含已淘汰/撤回）。 */
   listParticipants(tournamentId: string): Promise<readonly TournamentParticipantRecord[]>;
@@ -70,7 +70,7 @@ export interface HandHistoryReadRepository {
     limit: number,
   ): Promise<readonly HandHistoryHandRecord[]>;
   /** 手不存在或不属于该 Tournament 时返回 null（→ 404）。 */
-  findHand(tournamentId: string, handId: string): Promise<HandHistoryHandRecord | null>;
+  findHand(tournamentId: string, handId: string): Promise<(HandHistoryHandRecord & { readonly endSequence: bigint | null }) | null>;
   /** 该手全部已提交事件，按 Tournament 作用域 `sequence` 升序。 */
   listHandEvents(tournamentId: string, handId: string): Promise<readonly HandHistoryEventRecord[]>;
 }
@@ -95,7 +95,8 @@ export function createHandHistoryRepository(database: Database): HandHistoryRead
         tokenKeyId: roomPlayers.tokenKeyId,
       })
       .from(roomPlayers)
-      .where(eq(roomPlayers.roomId, roomId));
+      .innerJoin(rooms, eq(rooms.id, roomPlayers.roomId))
+      .where(and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.status, "ACTIVE"), ne(rooms.status, "CLOSED")));
     return rows;
   }
 
@@ -141,7 +142,7 @@ export function createHandHistoryRepository(database: Database): HandHistoryRead
     return rows;
   }
 
-  async function findHand(tournamentId: string, handId: string): Promise<HandHistoryHandRecord | null> {
+  async function findHand(tournamentId: string, handId: string): Promise<(HandHistoryHandRecord & { readonly endSequence: bigint | null }) | null> {
     const [row] = await database.db
       .select({
         id: hands.id,
@@ -154,8 +155,10 @@ export function createHandHistoryRepository(database: Database): HandHistoryRead
         endReason: hands.endReason,
         startedAt: hands.startedAt,
         endedAt: hands.endedAt,
+        endSequence: gameSnapshots.sequence,
       })
       .from(hands)
+      .leftJoin(gameSnapshots, and(eq(gameSnapshots.tournamentId, hands.tournamentId), eq(gameSnapshots.handId, hands.id)))
       .where(and(eq(hands.tournamentId, tournamentId), eq(hands.id, handId)));
     return row ?? null;
   }
