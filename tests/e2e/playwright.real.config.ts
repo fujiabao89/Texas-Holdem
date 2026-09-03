@@ -61,8 +61,11 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // 启动器：重建隔离 schema → 版本化迁移 → 生产入口启动真实 game-server。
-      command: "pnpm --filter @texas-holdem/game-server exec tsx ../../tests/e2e/real/support/launch-game-server.ts",
+      // 启动器：先构建 game-server 引用的 workspace 包（poker-engine/protocol 的
+      // dist 入口），再重建隔离 schema → 版本化迁移 → 生产入口启动真实 game-server；
+      // 清洁检出无 dist 时缺构建会 MODULE_NOT_FOUND（与 mock 配置一致的做法）。
+      command:
+        "pnpm --filter @texas-holdem/poker-engine build && pnpm --filter @texas-holdem/protocol build && pnpm --filter @texas-holdem/game-server exec tsx ../../tests/e2e/real/support/launch-game-server.ts",
       url: `${serverBaseUrl}/health`,
       reuseExistingServer: false,
       timeout: 120_000,
