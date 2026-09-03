@@ -24,23 +24,15 @@ import { createTournamentEventBus } from "./realtime/tournament-event-bus";
 import { createBackpressureLatch } from "./persistence/backpressure";
 import { createPersistenceWriter } from "./persistence/persistence-writer";
 import { recoverActiveTournaments } from "./persistence/recovery";
-import { SecureRandomSource, SeededRandomSource, type RandomSource } from "@texas-holdem/poker-engine";
+import { createTestRngFactory } from "./test-rng-factory";
 
 /**
  * TEX-28 测试种子注入：生产默认安全随机（SecureRandomSource）；仅当隔离测试入口
  * 显式设置 TEX_TEST_RNG_SEED 时切换为确定性洗牌（每个 Tournament 派生独立子流），
- * 使真实链路 E2E 失败可按 seed 100% 重放（docs/06 §6）。生产环境严禁设置该变量。
+ * 使真实链路 E2E 失败可按 seed 100% 重放（docs/06 §6）。seed 上界与派生边界由
+ * `test-rng-factory.ts` 统一校验（SeededRandomSource 仅接受 [0, 2^32)）。生产环境
+ * 严禁设置该变量。
  */
-function createRngFactory(testSeed: string | undefined): () => RandomSource {
-  if (testSeed === undefined) return () => new SecureRandomSource();
-  const seed = Number(testSeed);
-  if (!Number.isSafeInteger(seed) || seed < 0) {
-    throw new Error("TEX_TEST_RNG_SEED must be a non-negative safe integer when set");
-  }
-  let tournamentOrdinal = 0;
-  return () => new SeededRandomSource(seed + tournamentOrdinal++);
-}
-
 const rngTestSeed = process.env.TEX_TEST_RNG_SEED;
 // P3-4 运行守卫：生产（NODE_ENV=production）严禁设置 TEX_TEST_RNG_SEED——否则所有
 // 锦标赛洗牌可预测（公平性风险，且 seed 序列跨进程/重启会归零）。真实链路 E2E 以
@@ -50,7 +42,7 @@ if (rngTestSeed !== undefined && process.env.NODE_ENV === "production") {
     "TEX_TEST_RNG_SEED is forbidden when NODE_ENV=production: it would make every tournament shuffle predictable",
   );
 }
-const rngFactory = createRngFactory(rngTestSeed);
+const rngFactory = createTestRngFactory(rngTestSeed);
 
 const config = parseAppConfig();
 const database = createDatabase(parseDatabaseConfig());

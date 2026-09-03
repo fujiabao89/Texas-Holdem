@@ -12,3 +12,18 @@
 | F-6 | 真实链路 E2E（chromium）实测发现 | 有效。lobby-page.tsx 渲染期调用 `tokens.get(roomId)`（内部读 sessionStorage），SSR 输出 `aria-live={null}`/缺省分支与客户端 `aria-live="polite"` 不一致，触发 hydration mismatch（poker-table/result 已用 `useSyncExternalStore(subscribeNever, …)` 处理，lobby 缺失）。修复：照搬 `isBrowser` 门——非浏览器渲染 loading 分支，`isBrowser` 后才读 sessionStorage。 | P2（已修复） | 已在本分支修复；hydration 相关真实链路（chromium/firefox/webkit）通过。 |
 | F-7 | F-1 同源服务端竞态（根因 A）的源头修复与复证（TEX-28 收尾） | 有效（复证根因 A）。真实链路 debug 帧级实证：开局前已连接的大厅 socket 仅收到 PLAYER_ALL_IN 起的事件，缺失 HAND_STARTED/BLIND_POSTED/DEAL_HOLE_CARD。机制：原 `createRuntimeTournamentStarter.start()` 在 Room 队列 `persist()` 内同时落库并 `manager.create()`（→ `executor.submit(START)` 微任务 drain 产出首手事件），早于 `RoomRuntime.process` 的 `this.state = next`（IN_GAME 提交）；lobby-gateway 按 room 快照 `activeTournamentId` 过滤时首手事件被静默丢弃。源头修复：把控制面落库与运行时注册解耦——`createPersistenceTournamentStarter`（提交前落库）+ `createRuntimeTournamentRegistrar`（仅 `manager.create`）；`RoomRuntime.process` 在 `state = next` 提交之后经 `onStartCommitted` 同步注册并驱动 START，使首手事件恒晚于含 `activeTournamentId` 的 room 快照。回归：room-executor F-7 单测（注册回调触发时 `status=IN_GAME && activeTournamentId=本局`）+ 真实链路 chromium 开局前 socket 收到 4×DEAL_HOLE_CARD。 | P1（已修复） | 本分支修复（main.ts/server-harness/tournament-manager.test 同步接线）；真实链路三浏览器全量 15/15 通过。 |
 固定项将在验证、提交和推送后仅回复对应原评论线程“已修正”。跳过项将在原线程说明依据，不以“已修正”代替。
+
+## PR #33 复审意见核验（Codex / CodeRabbit / Greptile，2026-09-03）
+
+对 PR #33 上 Codex、CodeRabbit、Greptile 意见逐条对照当前代码核验。处置规则：仅修复经核验为真、且应阻塞本 PR 的项；其余记录依据后跳过。
+
+| ID | 来源 | 意见要点 | 核验 | 严重度 | 处置 |
+| --- | --- | --- | --- | --- | --- |
+| R-1 | CodeRabbit @ci.yml:127 | 把可变 tag `postgres:16-alpine` 固定到已批准 digest | 有效（supply-chain 卫生）；本地无权威 digest 可离线引用 | P3 | 跳过：非正确性阻断；后续以批准 digest 固定（需 Docker Hub 权威值，不在本会话随意捏造） |
+| R-2 | Codex P2 / Greptile P1 / CodeRabbit Major @main.ts | `TEX_TEST_RNG_SEED` 校验放行 ≥2^32，而 `SeededRandomSource` 仅接受 [0,2^32)；派生 seed+ordinal 亦会越界 → 在 Room 已提交 IN_GAME 后注册运行时处抛错，房间无运行时 | 有效。`random-source.ts:38` 超界 throw；greptile 附复现 | P1（数据完整性） | **已修复**：抽 `test-rng-factory.ts`——配置 seed 须 ∈[0,2^32) 否则启动拒绝；派生 `(seed+ordinal) % 2^32` 永不越界；`main.ts` 改用之并保留 NODE_ENV=production 守卫；新增 `test-rng-factory.test.ts`（4294967296 拒绝、4294967295 及递增边界不抛） |
+| R-3 | Codex P1 @recovery.ts | 恢复向前回退仍以 `finish.placementRange.from` 重建同手多淘汰组成员 rank → 重复 rank 撞 `tournament_players_tournament_rank_unique`，恢复屏障失败 | 有效。F-4 写入为 `from + (displayOrder-1)`，recovery 未镜像 | P1 | **已修复**：recovery rank 改为 `from + (displayOrder - 1)`（镜像 tournament-persistence F-4） |
+| R-4 | Codex P1 @security.spec.ts | 隐私断言以 socket 全生命周期与跨 hand 的 DB 真值并集判定，「某 hand 泄露的对手牌因另一 hand 公开而被接受」；ownHoleCards 跨 hand 累积 | 部分有效：按 handId 分组才最严。当前 security 用例为小筹码全下（一手终结，DB truth 覆盖全部 hand），现行并集在该数据下不掩盖真实泄露 | P2（测试强度） | 跳过：需按帧 handId 与每 hand 真值分组重构审计，超出本 PR 最小范围；记为后续增强，不阻断（非产品缺陷，当前用例单 hand 不产生误放行） |
+| R-5 | CodeRabbit @projection-store.ts | 同 roomId 检测 playerToken 变化并重置投影，避免 game===null 时复用旧身份 FINISHED 快照/holeCards | 核验：`acceptReconnectResult` 按 room 保留 FINISHED 未带 viewer 身份。可达性：需在同一 store 生命周期内同 room 切换玩家身份且旧 FINISHED 仍在，当前流程（离开清 token、新局 GAME_SNAPSHOT 整体替换、换房间不保留）不触发；精确修复需将 viewer 身份纳入 store 判定（API 变更） | P2 | 跳过：当前产品流程不可达、无回归路径；记录为后续（投影需携带 viewer 身份以支持同房换号） |
+| R-6 | Codex P2 / CodeRabbit @run-identity.ts | 中断运行残留 `.run-identity.json` 后，下次主进程不覆盖旧身份，worker/teardown 查询/清理旧 schema | 有效（仅本地中断重跑场景）。CI 全新检出无残留；teardown 正常会清文件 | P2（测试基建） | 跳过：需「协调进程原子覆盖 + worker 只读」重构，超出本 PR 最小范围；本地中断后清理 `.run-identity.json` 即恢复，记为后续 |
+| R-7 | CodeRabbit @accessibility.spec.ts | 让 Bob 与 Alice 等待全下按钮并行 bounded action，兼容任一为首位行动者 | 核验：当前确定性 seed 下通过（chromium/FF/WK 均绿），未触发；actor 泛化属健壮性改进 | P3（测试健壮性） | 跳过：seed 确定、非现失败；换 seed 场景后续增强 |
+| R-8 | CodeRabbit pre-merge 检查 | docstring 覆盖率 34.85% < 80% | 仓库未启用该阈值为门禁；属风格/流程项 | P3 | 跳过：非仓库门禁，不影响通过；不因覆盖率硬凑注释 |
