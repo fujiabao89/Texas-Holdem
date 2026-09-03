@@ -19,6 +19,7 @@
 - **JSON 可序列化**：`commitHandBundle` 的 `payload`/`state` 与 `configJson` 必须是 JSON 可序列化值。`bigint`/`undefined` 等需先转换（如十进制字符串/`Number`，`checksum.ts` 的 canonical 序列化即如此特判）；`bigint` 直传会在插入时抛错并整体回滚，且错误信息不指向真实原因。`Date` 无需转换：canonical 序列化将其编码为 ISO-8601 UTC 字符串（`checksum.ts` 特判，避免落入通用对象分支变成 `{}`）。
 - **playerUpdates 归属**：结果更新按 `id + tournament_id` 匹配并断言恰好命中 1 行，杜绝跨赛修改赛果与静默 0 行更新；调用方无需也无法绕过（§7.4）。
 - **roomClosure**：`tournamentFinish.roomStatus = "CLOSED"` 时必填（`closedAt`/`closedReason`/`retentionExpiresAt`），且仅在该状态允许——缺失或错配在写入前被 `PersistenceError` 拒绝；只写 `status` 会违反 `rooms_closed_*` CHECK（pg `23514`）并回滚整个 Bundle（§5.1）。内容同样前置校验（与 DB CHECK 对齐但拒绝在写入前）：`closedAt`/`retentionExpiresAt` 必须是有效 Date 且 `retentionExpiresAt >= closedAt`；`closedReason` 必须是非空原因码且不含控制字符（空串可绕过 NOT NULL、控制字符是堆栈/自由文本痕迹，DB 均拦不住）。`tournamentFinish` 自身的 `retentionExpiresAt >= finishedAt` 同理前置拒绝（§5.3）。
+- **终局房间状态守卫**：非 CLOSED 的 `roomStatus` 更新前先以 `SELECT ... FOR UPDATE` 锁定 Room 行再在后续语句判定（READ COMMITTED 下单条 UPDATE 的语句快照看不到并发开局刚提交的新赛，EPQ 只重检目标行元组、子查询仍按旧快照求值）。判据：房间 `FINISHED`（控制面 `TOURNAMENT_FINISHED` 先提交后确认的正常时序，幂等重申）或房间 `IN_GAME` 且同房间无其他运行中比赛（控制面瞬时失败被 main.ts 丢弃后由本 Bundle 兜底补写）时写入；房间 `IN_GAME` 且新赛已运行（再来一局竞态）或 `CLOSED`/`LOBBY` 时跳过，延迟落库的终局 Bundle（PersistenceWriter 积压/重试）不得覆写已推进的房间状态。
 - **昵称**：`createRoomWithHost` 与 `createTournamentWithPlayers` 均在入库前执行 `validateDisplayName`（2–16 grapheme clusters、无控制字符）。
 - **inviteCode**：`createRoomWithHost` 不做应用层字符集校验，非法值（含 MULTIPLAYER 缺失，即 NULL）由 DB CHECK（`rooms_invite_code_check`，对 NULL 显式拒绝）兜底并以 pg `23514`（Drizzle 错误的 `cause.code`）抛出；用户侧友好校验/错误翻译由上层（TEX-19）负责。
 

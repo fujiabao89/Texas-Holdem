@@ -21,6 +21,7 @@
 - **幂等**：`actionId + Payload 摘要` 驻留内存账本（§7.3）；相同 Payload 复用原结果，不同 Payload → `IDEMPOTENCY_KEY_REUSE`。
 - **无真人关房**：所有真人 `WITHDRAWN` → `ABANDONED_NO_HUMAN` + Room `CLOSE_ROOM`（§6.5）；最后存活者的冠军语义由 Engine 裁决。WS 发起的 `WITHDRAW_PLAYER` 也在执行点复核连接 epoch，Timer 撤回不携带该私有字段。
 - **手末提交边界**：手间事件（如两手之间的 `PLAYER_WITHDRAWN`）作为下一手 bundle 的前导事件落入同一原子提交；DB Writer（TEX-22）需据此验证（见 `tournament-persistence.ts` 注释）。
+- **Wire 主版本**：输出 `GAME_EVENT` 始终复用 `@texas-holdem/protocol` 的 `PROTOCOL_VERSION`，使包含必填公开 `bestFiveCards` 的 Showdown 合约不会与旧客户端静默混用。
 
 ## 测试
 

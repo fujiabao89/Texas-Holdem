@@ -2,6 +2,8 @@ import {
   CreateRoomRequestSchema,
   CreateRoomResponseSchema,
   ErrorEnvelopeSchema,
+  HandHistoryDetailResponseSchema,
+  HandHistoryListResponseSchema,
   IdempotencyKeySchema,
   JoinRoomRequestSchema,
   JoinRoomResponseSchema,
@@ -14,6 +16,8 @@ import {
   type CreateRoomRequest,
   type CreateRoomResponse,
   type ErrorCode,
+  type HandHistoryDetailResponse,
+  type HandHistoryListResponse,
   type JoinRoomRequest,
   type JoinRoomResponse,
   type LeaveRoomResponse,
@@ -48,6 +52,14 @@ export interface HttpRequestOptions {
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
 }
+
+/** Cursor-paged hand history list options (docs/02 §4.2: limit default 20, range 1–50). */
+export interface HandHistoryListOptions extends HttpRequestOptions {
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+export const HAND_HISTORY_PAGE_SIZE = 20;
 
 export interface SafeHttpDiagnostic {
   readonly method: "GET" | "POST" | "PATCH";
@@ -88,6 +100,21 @@ export class HttpTransport {
 
   leaveRoom(roomId: string, requestOptions: HttpRequestOptions = {}): Promise<HttpResult<LeaveRoomResponse>> {
     return this.request("POST", `/api/v1/rooms/${encodeURIComponent(roomId)}/leave`, {}, LeaveRoomRequestSchema, LeaveRoomResponseSchema, { ...requestOptions, roomId });
+  }
+
+  /** Read-only hand history list, `handNumber DESC` cursor pagination (docs/02 §4.2). */
+  listHandHistory(tournamentId: string, roomId: string, options: HandHistoryListOptions = {}): Promise<HttpResult<HandHistoryListResponse>> {
+    const limit = options.limit ?? HAND_HISTORY_PAGE_SIZE;
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (options.cursor !== undefined) query.set("cursor", options.cursor);
+    const path = `/api/v1/tournaments/${encodeURIComponent(tournamentId)}/hands?${query.toString()}`;
+    return this.request("GET", path, undefined, undefined, HandHistoryListResponseSchema, { ...options, roomId });
+  }
+
+  /** Permission-projected hand detail (docs/02 §4.2); never raw internal events. */
+  getHandHistoryDetail(tournamentId: string, handId: string, roomId: string, requestOptions: HttpRequestOptions = {}): Promise<HttpResult<HandHistoryDetailResponse>> {
+    const path = `/api/v1/tournaments/${encodeURIComponent(tournamentId)}/hands/${encodeURIComponent(handId)}`;
+    return this.request("GET", path, undefined, undefined, HandHistoryDetailResponseSchema, { ...requestOptions, roomId });
   }
 
   async request<TRequest, TResponse>(

@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne, notExists, or, sql } from "drizzle-orm";
 import type { Database } from "../database";
 import { gameSnapshots, handEvents, hands, rooms, tournaments, tournamentPlayers } from "../schema";
 import {
@@ -255,10 +255,51 @@ export function createHandCommitRepository(database: Database): HandCommitReposi
             })
             .where(eq(rooms.id, tournament.roomId));
         } else if (finish.roomStatus !== undefined) {
+          // 延迟落库的终局 Bundle 不得覆写已推进的房间状态，但必须保留对控制面
+          // TOURNAMENT_FINISHED 瞬时失败（main.ts 记录后丢弃、由本 Bundle 兜底）的
+          // 补偿能力（docs/03 §7.3）：
+          // - 房间 FINISHED：正常时序（控制面先提交后确认），幂等重申；
+          // - 房间 IN_GAME 且同房间无其他运行中比赛：控制面写失败、房间仍挂在本赛
+          //   上 → 兜底写入终态；
+          // - 房间 IN_GAME 且已有新赛运行（再来一局竞态）或房间 CLOSED/LOBBY：
+          //   已推进，跳过不覆写。
+          // 先以 SELECT ... FOR UPDATE 锁定 Room 行，再在下一条语句判定：READ
+          // COMMITTED 下单条 UPDATE 的语句快照看不到并发 startTournament 刚提交
+          // 的新赛——UPDATE 等 Room 行锁被唤醒后 EPQ 仅以新元组重检目标行，子查询
+          // 仍按旧快照求值，NOT EXISTS 会漏看新赛而把已开局的房间覆写回 FINISHED。
+          // 持锁后并发开局对本行的 UPDATE 在本事务提交前无法介入；开局先行提交时，
+          // 本锁等待释放后以新快照判定，必然看到已提交的新赛。
+          await tx
+            .select({ one: sql`1` })
+            .from(rooms)
+            .where(eq(rooms.id, tournament.roomId))
+            .for("update");
           await tx
             .update(rooms)
             .set({ status: finish.roomStatus })
-            .where(eq(rooms.id, tournament.roomId));
+            .where(
+              and(
+                eq(rooms.id, tournament.roomId),
+                or(
+                  eq(rooms.status, "FINISHED"),
+                  and(
+                    eq(rooms.status, "IN_GAME"),
+                    notExists(
+                      tx
+                        .select({ one: sql`1` })
+                        .from(tournaments)
+                        .where(
+                          and(
+                            eq(tournaments.roomId, tournament.roomId),
+                            ne(tournaments.id, bundle.tournamentId),
+                            eq(tournaments.status, "IN_GAME"),
+                          ),
+                        ),
+                    ),
+                  ),
+                ),
+              ),
+            );
         }
       }
 

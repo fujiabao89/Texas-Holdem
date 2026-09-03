@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { SeededRandomSource } from "@texas-holdem/poker-engine";
-import type { ClockUpdatedPayload, GameEventMessage, TournamentConfig } from "@texas-holdem/protocol";
+import { PROTOCOL_VERSION, type ClockUpdatedPayload, type GameEventMessage, type TournamentConfig } from "@texas-holdem/protocol";
 
 import { IdempotencyStore } from "../../http/middleware/idempotency";
 import type { IdSource } from "../../rooms/id-source";
@@ -173,7 +173,7 @@ async function flush(): Promise<void> {
 }
 
 function authenticate(socket: FakeSocket, roomId: string, playerToken: string, requestId = "00000000-0000-4000-8000-000000000001"): void {
-  socket.receive({ type: "AUTHENTICATE", protocolVersion: 1, requestId, payload: { roomId, playerToken } });
+  socket.receive({ type: "AUTHENTICATE", protocolVersion: PROTOCOL_VERSION, requestId, payload: { roomId, playerToken } });
 }
 
 describe("LobbyGateway", () => {
@@ -589,7 +589,7 @@ describe("LobbyGateway", () => {
 
     const incompatible = new FakeSocket();
     handler(incompatible);
-    incompatible.receive({ type: "AUTHENTICATE", protocolVersion: 2, requestId: "00000000-0000-4000-8000-000000000010", payload: { roomId: session.roomId, playerToken: session.playerToken } });
+    incompatible.receive({ type: "AUTHENTICATE", protocolVersion: 3, requestId: "00000000-0000-4000-8000-000000000010", payload: { roomId: session.roomId, playerToken: session.playerToken } });
     await flush();
     expect(incompatible.sent).toContainEqual(expect.objectContaining({ type: "ERROR", payload: expect.objectContaining({ code: "UNSUPPORTED_PROTOCOL_VERSION" }) }));
     expect(incompatible.closeCodes).toContain(4000);

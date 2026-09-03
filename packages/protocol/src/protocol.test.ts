@@ -18,6 +18,7 @@ import {
   projectPlayerView,
   ProtocolErrorSchema,
   PlayerViewSchema,
+  PROTOCOL_VERSION,
   RoomSnapshotSchema,
   ServerMessageSchema,
   TournamentConfigSchema,
@@ -58,7 +59,7 @@ const source = {
 
 describe("protocol wire contracts", () => {
   it("rejects unsupported versions, unknown fields, and malformed command identifiers", () => {
-    expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion: 2, requestId, payload: { roomId: "room_1", playerToken: "x" } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
+    expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion: 3, requestId, payload: { roomId: "room_1", playerToken: "x" } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
     expect(validateClientCommand({ type: "SET_READY", requestId, payload: { ready: true, actor: "alice" } })).toEqual({ success: false, errorCode: "INVALID_MESSAGE" });
     expect(validateClientCommand({ type: "SUBMIT_ACTION", requestId, payload: { tournamentId: "tournament_1", actionId, expectedSequence: 4, action: { type: "FOLD" } } })).toEqual({ success: false, errorCode: "INVALID_MESSAGE" });
     expect(validateClientCommand({ type: "SUBMIT_ACTION", requestId, payload: { tournamentId: "tournament_1", actionId, expectedSequence: "4", action: { type: "BET", betTo: 1.5 } } })).toEqual({ success: false, errorCode: "INVALID_MESSAGE" });
@@ -74,7 +75,7 @@ describe("protocol wire contracts", () => {
     const snapshot = GameSnapshotSchema.parse({ snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "18446744073709551615", ...projectPlayerView(source) });
     expect(snapshot.sequence).toBe("18446744073709551615");
     expect(GameSnapshotSchema.safeParse({ ...snapshot, sequence: "18446744073709551616" }).success).toBe(false);
-    expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion: 2, serverTime: 1, payload: snapshot })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
+    expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion: 3, serverTime: 1, payload: snapshot })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
   });
 
   it("creates stable safe error envelopes and rejects non-whitelisted details", () => {
@@ -115,7 +116,7 @@ describe("protocol wire contracts", () => {
   it("enforces invitation format, token entropy, and CLOSED room invitation removal", () => {
     expect(JoinRoomRequestSchema.safeParse({ inviteCode: "ABC234", displayName: "Alice" }).success).toBe(true);
     expect(JoinRoomRequestSchema.safeParse({ inviteCode: "ABCO01", displayName: "Alice" }).success).toBe(false);
-    expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion: 1, requestId, payload: { roomId: "room_1", playerToken: "short" } }).success).toBe(false);
+    expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion: PROTOCOL_VERSION, requestId, payload: { roomId: "room_1", playerToken: "short" } }).success).toBe(false);
     expect(RoomSnapshotSchema.safeParse({ ...roomSnapshot, status: "CLOSED", inviteCode: "ABC234" }).success).toBe(false);
     expect(RoomSnapshotSchema.safeParse({ ...roomSnapshot, status: "CLOSED", inviteCode: null }).success).toBe(true);
   });
@@ -132,6 +133,13 @@ describe("protocol wire contracts", () => {
     const payload = { type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 100, awards: [{ playerId: "alice", amount: 60 }, { playerId: "bob", amount: 40 }], winningHandRank: null } };
     expect(GameEventSchema.safeParse(payload).success).toBe(true);
     expect(GameEventSchema.safeParse({ ...payload, payload: { ...payload.payload, awards: [{ playerId: "alice", amount: 99 }] } }).success).toBe(false);
+  });
+
+  it("requires server-projected bestFiveCards for a public showdown reveal", () => {
+    const payload = { type: "PLAYER_REVEALED", payload: { playerId: "alice", seat: 0, cards: [aliceCard, bobCard], handRank: { category: "STRAIGHT", tiebreakRanks: ["A"], label: "Straight", bestFiveCards: [aliceCard, bobCard, aliceCard, bobCard, aliceCard] } } };
+    expect(GameEventSchema.safeParse(payload).success).toBe(true);
+    const { bestFiveCards: _bestFiveCards, ...withoutBestFive } = payload.payload.handRank;
+    expect(GameEventSchema.safeParse({ ...payload, payload: { ...payload.payload, handRank: withoutBestFive } }).success).toBe(false);
   });
 
   it("accepts withdrawal and tournament finish event catalog entries", () => {
@@ -163,12 +171,12 @@ describe("protocol wire contracts", () => {
     expect(PlayerViewSchema.safeParse({ ...projectPlayerView(source), viewer: { ...projectPlayerView(source).viewer, playerId: "bob" } }).success).toBe(false);
     const privateSpectator = { ...validSnapshot, viewer: { ...validSnapshot.viewer, role: "ELIMINATED_SPECTATOR", holeCards: [aliceCard], legalActions: validSnapshot.viewer.legalActions } };
     expect(GameSnapshotSchema.safeParse(privateSpectator).success).toBe(false);
-    expect(ServerMessageSchema.safeParse({ type: "GAME_SNAPSHOT", protocolVersion: 1, serverTime: 1, payload: privateSpectator }).success).toBe(false);
+    expect(ServerMessageSchema.safeParse({ type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: privateSpectator }).success).toBe(false);
   });
 
   it("removes private deal card event payloads without changing event identity", () => {
     const event = GameEventMessageSchema.parse({
-      type: "GAME_EVENT", protocolVersion: 1, serverTime: 1,
+      type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
       payload: { tournamentId: "tournament_1", sequence: "9", handId: "hand_1", event: { type: "DEAL_HOLE_CARD", payload: { playerId: "alice", seat: 0, cardIndex: 0, card: aliceCard } }, patch: { viewer: { holeCards: [aliceCard] } } },
     });
     const bobEvent = projectGameEventForViewer(event, "bob");
@@ -186,6 +194,6 @@ describe("protocol wire contracts", () => {
     expect(after.currentActorPlayerId).toBe("bob");
     expect(after.players.find((player) => player.playerId === "alice")?.stack).toBe(990);
     expect(() => applyPlayerViewPatch(before, { players: [{ playerId: "mallory", stack: 1 }] })).toThrow("unknown player");
-    expect(ServerMessageSchema.safeParse({ type: "GAME_EVENT", protocolVersion: 1, serverTime: 1, payload: { tournamentId: "tournament_1", sequence: "1", handId: "hand_1", event: { type: "BURN_CARD", payload: { street: "FLOP", card: aliceCard } }, patch: {} } }).success).toBe(false);
+    expect(ServerMessageSchema.safeParse({ type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { tournamentId: "tournament_1", sequence: "1", handId: "hand_1", event: { type: "BURN_CARD", payload: { street: "FLOP", card: aliceCard } }, patch: {} } }).success).toBe(false);
   });
 });

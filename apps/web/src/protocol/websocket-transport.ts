@@ -49,6 +49,8 @@ export interface WebSocketTransportOptions {
   readonly onCommandResult?: (pending: PendingCommand) => void;
   readonly onProtocolError?: (code: ErrorCode) => void;
   readonly clock?: WebSocketClock;
+  /** Injectable so reconnect jitter remains deterministic in tests. */
+  readonly random?: () => number;
 }
 
 export type CommandResultListener = (pending: PendingCommand, result: CommandResultPayload) => void;
@@ -157,6 +159,21 @@ export class WebSocketTransport {
     this.pending.set(command.requestId, command);
   }
 
+  /** Presentation-only recovery request; it cannot send an Action command. */
+  requestAuthoritativeSnapshot(reason: ResyncReason = "MANUAL"): boolean {
+    this.options.projectionStore.requestResync(reason);
+    const requested = this.requestSnapshot(reason);
+    if (requested) this.transition("RESYNCING");
+    return requested;
+  }
+
+  /** Browser online/visibility hints may advance an existing retry, never fork one. */
+  reconnectNow(): void {
+    if (this.state === "STOPPED" || this.roomId === null || this.playerToken === null) return;
+    this.cancelRetry();
+    if (this.state === "CLOSED") this.openConnection(this.roomId, this.playerToken);
+  }
+
   private handleMessage(raw: string): void {
     let decoded: unknown;
     try {
@@ -196,9 +213,7 @@ export class WebSocketTransport {
         return;
       }
       case "RESYNC_REQUIRED":
-        this.options.projectionStore.requestResync("MANUAL");
-        this.transition("RESYNCING");
-        this.requestSnapshot("MANUAL");
+        this.requestAuthoritativeSnapshot("MANUAL");
         return;
       case "COMMAND_RESULT":
         this.handleCommandResult(message.payload as CommandResultPayload);
@@ -291,10 +306,20 @@ export class WebSocketTransport {
   private requestSnapshot(reason: ResyncReason): boolean {
     const game = this.options.projectionStore.getSnapshot().game;
     const lastSequence = this.options.projectionStore.getSnapshot().lastSequence;
-    if (game === null || lastSequence === null || this.socket === null || this.state === "STOPPED") return false;
+    if (
+      game === null ||
+      lastSequence === null ||
+      this.socket === null ||
+      this.socket.readyState !== 1 ||
+      (this.state !== "CONNECTED" && this.state !== "RESYNCING")
+    ) return false;
     const command = this.prepareCommand({ type: "REQUEST_SNAPSHOT", payload: { tournamentId: game.tournamentId, lastSequence, reason } });
-    this.socket.send(command.serialized);
-    return true;
+    try {
+      this.socket.send(command.serialized);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private closeForProtocolError(): void {
@@ -330,8 +355,10 @@ export class WebSocketTransport {
 
   private scheduleReconnect(): void {
     if (this.retryTimer !== null || this.roomId === null || this.playerToken === null) return;
-    const delays = [500, 1_000, 2_000, 4_000, 8_000, 10_000] as const;
-    const delay = delays[Math.min(this.retryAttempt, delays.length - 1)]!;
+    const delays = [0, 500, 1_000, 2_000, 4_000, 8_000, 10_000] as const;
+    const baseDelay = delays[Math.min(this.retryAttempt, delays.length - 1)]!;
+    const jitter = 0.8 + (this.options.random?.() ?? secureRandom()) * 0.4;
+    const delay = Math.round(baseDelay * jitter);
     this.retryAttempt += 1;
     this.retryTimer = (this.options.clock ?? browserClock).setTimeout(() => {
       this.retryTimer = null;
@@ -350,3 +377,9 @@ const browserClock: WebSocketClock = {
   setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
+
+function secureRandom(): number {
+  const value = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(value);
+  return value[0]! / 0x1_0000_0000;
+}

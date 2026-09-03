@@ -63,7 +63,15 @@ export function useLobbyConnection(roomId: string): void {
   useEffect(() => {
     const token = tokens.get(roomId);
     if (token !== null) websocket.connect(roomId, token);
-    return () => websocket.disconnect();
+    const retryNow = () => websocket.reconnectNow();
+    const onVisibilityChange = () => { if (document.visibilityState === "visible") retryNow(); };
+    window.addEventListener("online", retryNow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("online", retryNow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      websocket.disconnect();
+    };
   }, [roomId, tokens, websocket]);
 }
 

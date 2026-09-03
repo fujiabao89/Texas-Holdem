@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** Wire major version. A different major version is never parsed optimistically. */
-export const PROTOCOL_VERSION = 1 as const;
+export const PROTOCOL_VERSION = 2 as const;
 
 const UINT64_MAX = BigInt("18446744073709551615");
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -54,6 +54,8 @@ export const HandRankSchema = z.strictObject({
     "STRAIGHT_FLUSH",
   ]),
   tiebreakRanks: z.array(CardSchema.shape.rank).min(1).max(5),
+  /** Server-adjudicated public cards; web clients must never derive these. */
+  bestFiveCards: z.array(CardSchema).length(5),
   label: z.string().min(1).max(100),
 });
 
