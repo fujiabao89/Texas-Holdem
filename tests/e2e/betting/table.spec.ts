@@ -1,6 +1,7 @@
 import { criticalViolations } from "../fixtures/a11y";
 import { expect, test } from "../fixtures/observability";
 import type { Page } from "@playwright/test";
+import { message } from "../../../apps/web/src/messages/zh-CN";
 
 const roomSnapshot = {
   snapshotVersion: 1, roomId: "room-1", roomRevision: "1", status: "IN_GAME", inviteCode: "ABC234", hostPlayerId: "player-1",
@@ -259,4 +260,72 @@ test("Session Replaced 停止操作并显示明确反馈", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "此牌局已在其他设备打开" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "在此设备重新接管" })).toBeVisible();
+});
+
+test("TEX-26 合并后历史和音效入口共存且连接状态与牌堆不重复", async ({ page }) => {
+  const commands: string[] = [];
+  await seedTableSession(page);
+  await page.route("**/api/v1/tournaments/tournament-1/hands?*", (route) => route.fulfill({
+    json: { data: { tournamentId: "tournament-1", items: [], nextCursor: null } },
+  }));
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      const command = JSON.parse(raw.toString()) as { type: string };
+      commands.push(command.type);
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await expect(page.getByRole("status").filter({ hasText: "实时连接正常" })).toHaveCount(1);
+  await expect(page.getByText("牌堆", { exact: true })).toHaveCount(1);
+  const sound = page.getByRole("button", { name: "全局音效" });
+  await expect(sound).toHaveCount(1);
+  await sound.click();
+  await expect(sound).toHaveAttribute("aria-pressed", "false");
+  const history = page.getByRole("button", { name: message("history.open") });
+  await expect(history).toHaveCount(1);
+  await history.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: message("history.title") });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: message("history.close") })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(history).toBeFocused();
+  await expect(page.getByRole("button", { name: "跟注 5" })).toBeEnabled();
+  expect(commands.filter((type) => type === "AUTHENTICATE")).toHaveLength(1);
+  expect(commands.filter((type) => type === "SUBMIT_ACTION" || type === "USE_TIME_BANK")).toEqual([]);
+});
+
+test("TEX-26 动画积压时倒计时立即采用 canonical 行动机会", async ({ page }) => {
+  await seedTableSession(page);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.clock.install({ time: new Date("2026-09-03T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-09-03T00:00:01Z"));
+  let send: ((message: unknown) => void) | undefined;
+  const commands: string[] = [];
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    send = (message) => socket.send(JSON.stringify(message));
+    socket.onMessage((raw) => {
+      const command = JSON.parse(raw.toString()) as { type: string };
+      commands.push(command.type);
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: 2, serverTime: 0, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ board: [], handPhase: "PREFLOP", actionDeadline: 10_000 }) } }));
+    });
+  });
+  await page.goto("/room/room-1/table");
+  const clock = page.getByRole("region", { name: "延时储备" });
+  await expect(clock).toContainText("剩余时间：10 秒");
+  await page.clock.runFor(9_000);
+  await expect(clock).toContainText("剩余时间：1 秒");
+  // A delayed authoritative update starts a different action opportunity. Its
+  // countdown must not be clamped to the old actor while the board is animating.
+  send!({ type: "GAME_EVENT", protocolVersion: 2, serverTime: 1_000, payload: {
+    tournamentId: "tournament-1", sequence: "2", handId: "hand-1",
+    event: { type: "FLOP_DEALT", payload: { cards: gameSnapshot().board } },
+    patch: { board: gameSnapshot().board, handPhase: "FLOP", currentActorPlayerId: "player-2", actionDeadline: 10_000, viewer: { legalActions: null } },
+  } });
+  await expect(page.getByText("正在发出公共牌", { exact: true })).toHaveCount(1);
+  await expect(clock).toContainText("剩余时间：9 秒");
+  await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+  expect(commands.filter((type) => type === "SUBMIT_ACTION" || type === "USE_TIME_BANK")).toEqual([]);
 });

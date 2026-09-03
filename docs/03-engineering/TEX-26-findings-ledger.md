@@ -18,3 +18,23 @@
 | F-12 | CodeRabbit `3891866519`：协议规范残留 v1 引用 | 有效。§4.1 已声明 wire v2，但认证示例和两个权威决策仍写 v1；按示例实现会因版本不支持而认证失败。无针对文档一致性的自动测试。 | P1 | 已修正：所有现行认证示例、兼容性说明和 P0 决策表统一为 v2。 |
 
 固定项将在验证、提交和推送后仅回复对应原评论线程“已修正”。跳过项将在原线程说明上述依据，不以“已修正”代替。
+
+## 2026-09-03：PR #28 合并 main 冲突核验
+
+合并基线：TEX-26 `255a554f` + main/TEX-27 `17e5ac78`。用户交接正在进行的手工合并；保留已解决 README 的有效内容。本轮没有新的机器人审查评论，不触发 Greptile 或 DeepSeek Harness。
+
+| ID | 来源 / 核验 | 精确场景与既有覆盖 | 严重度 | 处置 |
+| --- | --- | --- | --- | --- |
+| M-01 | 牌桌 JSX 冲突与用户合并截图 | 直接接受两边会重复牌桌容器、连接状态；只接受一边则丢失飞牌 ref 或历史入口。已有 E2E 未联合覆盖两个任务的按钮和焦点恢复。 | P1 | 合并为单一牌桌/Deck/连接状态，保留历史、音效、飞牌与重连 effect；新增控件共存、单连接、不发 Action 和键盘关闭历史后焦点返回回归。 |
+| M-02 | ProjectionStore 提交冲突 | TEX-26 在提交后通知动画，TEX-27 在提交时记录本手历史；需要一次 replace 同时写入两者。旧历史换手夹具只改 envelope handId，与 TEX-26 已有身份校验不兼容。 | P1 | 保留先校验身份、一次提交 canonical/Clock/history、再通知动画；联合断言通知顺序、重复幂等、Snapshot/重连先清历史再发屏障。换手夹具改为 HAND_STARTED 与 handId Patch 同步推进；不放宽校验。 |
+| M-03 | 首轮 pnpm typecheck 实际失败 | main 的 hand-timeline 测试硬编码 wire v1，HandRank 缺少 v2 要求的 bestFiveCards；Vitest 转译运行可通过，但类型检查失败。 | P1 | 仅更新测试夹具：复用 PROTOCOL_VERSION、补合法公开候选 Best Five、移除重复牌；协议与历史生产实现均不改。 |
+| M-04 | 牌桌 canonical/presentation 边界复核 | ClockStatus 的 clockKey 在合并前 TEX-26 就读取 presentation；新行动机会事件已应用但动画仍展示旧 actor 时，同截止值的延迟时钟更新可能被旧机会剩余值夹住。原测试仅覆盖 Time Bank 余额。 | P1 | 最小修复为 ClockStatus 的 fallback 与行动机会 key 均读 canonical；新增受控浏览器时钟回归，旧机会剩 1 秒时，新机会立即显示权威 9 秒且公共牌仍在播放、不发 Action。 |
+| M-05 | README / 权威规格冲突 | 两边分别把对方功能标记为未实现；docs 索引还残留与 AGENTS.md 相反的自动 DeepSeek 提交门禁描述。 | P3 | 合并两边实施事实、保留归档历史服务端端点缺口；索引按 AGENTS.md 明确仅用户手动启动审查，不增加门禁。 |
+
+验证（2026-09-03）：
+
+- `pnpm test:unit apps/web apps/game-server/src/rooms/room-executor.test.ts apps/game-server/src/realtime`：16 个文件、125 项通过，包含动画/音频、投影/Token/Transport、历史/赛果及已有服务端 Room/实时回归。
+- `$env:TEX_E2E_PORT='3116'; pnpm test:e2e tests/e2e/betting/table.spec.ts tests/e2e/reconnect/tex-26.spec.ts --workers=2`：16 项通过，独立测试端口、Fake WebSocket/HTTP 与可控浏览器时钟；无重试。
+- `pnpm lint`、`pnpm typecheck`、`pnpm build`、`git diff --check`：通过。首轮 typecheck 的 M-03 错误已修复，重跑通过；构建后的 `next-env.d.ts` 无差异，不提交生成变化。
+- README 与 `docs/05`、`docs/06`、文档索引同步。AGENTS/CLAUDE/CONTRIBUTING、任务卡/路线图及其他运维/安全文档已检查，无需更新：无任务范围、服务端生命周期、Transport/Token 契约、素材或部署配置变更。
+- main 带入的 `room-executor.ts` 与 `hand-commit.ts` 保持与 `17e5ac78` 一致，没有本轮额外服务端实现。真实 PostgreSQL Integration、真实设备动画/音效人工验收未重跑；归档历史服务端端点的已知缺口仍由独立任务处理。

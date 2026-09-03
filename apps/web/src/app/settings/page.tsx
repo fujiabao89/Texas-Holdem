@@ -1,5 +1,5 @@
-import { RouteShell } from "../../components/route-shell";
+import { SettingsPageContent } from "../../features/settings/settings-page-content";
 
 export default function SettingsPage() {
-  return <RouteShell />;
+  return <SettingsPageContent />;
 }

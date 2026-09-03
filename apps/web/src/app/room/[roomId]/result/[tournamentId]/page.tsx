@@ -1,5 +1,6 @@
-import { RouteShell } from "../../../../../components/route-shell";
+import { ResultPageContent } from "../../../../../features/result/result-page-content";
 
-export default function ResultPage() {
-  return <RouteShell />;
+export default async function ResultPage({ params }: { readonly params: Promise<{ roomId: string; tournamentId: string }> }) {
+  const { roomId, tournamentId } = await params;
+  return <ResultPageContent roomId={roomId} tournamentId={tournamentId} />;
 }

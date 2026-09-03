@@ -1,6 +1,7 @@
 import {
   applyPlayerViewPatch,
   GameSnapshotSchema,
+  type GameEvent,
   type GameEventMessage,
   type GameSnapshot,
   type ClockUpdatedPayload,
@@ -10,6 +11,17 @@ import {
 
 export type ResyncReason = "GAP" | "INVALID_EVENT" | "STALE_ACTION" | "MANUAL";
 
+/**
+ * Read-only copy of an already-applied game event, kept for the hand-history
+ * drawer's "current hand in progress" rendering. Raw payloads stay here; the
+ * timeline presentation derives from them without touching canonical state.
+ */
+export interface AppliedHandEvent {
+  readonly handId: string | null;
+  readonly sequence: string;
+  readonly event: GameEvent;
+}
+
 export interface ProjectionState {
   readonly room: RoomSnapshot | null;
   readonly game: GameSnapshot | null;
@@ -18,6 +30,8 @@ export interface ProjectionState {
   readonly resyncReason: ResyncReason | null;
   /** Display-only clock data, never a source of game authority. */
   readonly clock: ClockProjection | null;
+  /** Applied events of the hand currently buffered; any snapshot resets it. */
+  readonly currentHandEvents: readonly AppliedHandEvent[];
 }
 
 export interface ClockProjection {
@@ -50,6 +64,7 @@ const initialState: ProjectionState = {
   actionsDisabled: false,
   resyncReason: null,
   clock: null,
+  currentHandEvents: [],
 };
 
 /**
@@ -95,6 +110,7 @@ export class ProjectionStore {
       actionsDisabled: false,
       resyncReason: null,
       clock: game === null ? null : clockFromSnapshot(game, serverTime),
+      currentHandEvents: [],
     });
     this.emitBarrier({ game, kind: "RECONNECT_RESULT" });
   }
@@ -108,6 +124,7 @@ export class ProjectionStore {
       actionsDisabled: false,
       resyncReason: null,
       clock: clockFromSnapshot(snapshot, serverTime),
+      currentHandEvents: [],
     });
     this.emitBarrier({ game: snapshot, kind: "GAME_SNAPSHOT" });
   }
@@ -132,7 +149,7 @@ export class ProjectionStore {
         sequence: message.payload.sequence,
       });
       if (!matchesEventHand(message.payload.handId, game.handId, next.handId)) return this.requestResync("INVALID_EVENT");
-      this.replace({ ...this.state, game: next, lastSequence: next.sequence, clock: clockFromSnapshot(next, message.serverTime) });
+      this.replace({ ...this.state, game: next, lastSequence: next.sequence, clock: clockFromSnapshot(next, message.serverTime), currentHandEvents: appendHandEvent(this.state.currentHandEvents, message) });
       this.emitAcceptedEvent({ message, afterCanonical: next });
       return "APPLIED";
     } catch {
@@ -192,6 +209,16 @@ function clockFromSnapshot(snapshot: GameSnapshot, serverTime: number): ClockPro
 function asPlayerView(snapshot: GameSnapshot): PlayerView {
   const { snapshotVersion: _snapshotVersion, reason: _reason, tournamentId: _tournamentId, sequence: _sequence, ...view } = snapshot;
   return view;
+}
+
+/**
+ * Buffers an applied event for the drawer's in-progress hand. Events of a new
+ * handId start a fresh buffer, so a settled hand never leaks into the next one.
+ */
+function appendHandEvent(events: readonly AppliedHandEvent[], message: GameEventMessage): readonly AppliedHandEvent[] {
+  const entry: AppliedHandEvent = { handId: message.payload.handId, sequence: message.payload.sequence, event: message.payload.event };
+  const currentHandId = events.length > 0 ? events[0].handId : entry.handId;
+  return currentHandId === entry.handId ? [...events, entry] : [entry];
 }
 
 function hasUnauthorizedPrivateCard(message: GameEventMessage, game: GameSnapshot): boolean {

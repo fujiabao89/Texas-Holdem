@@ -127,16 +127,31 @@ export class RoomRuntime {
         return { next: kickPlayer(before, command.actorPlayerId, command.targetPlayerId), persisted: true };
       case "TRANSFER_HOST":
         return { next: transferHost(before), persisted: true };
-      case "START_TOURNAMENT":
+      case "START_TOURNAMENT": {
+        // 再来一局（docs/02-protocol-spec.md「开始比赛/再来一局」）：FINISHED 房间经
+        // 既定 FINISHED→LOBBY 迁移后再开局，单命令内原子完成，不暴露中间 LOBBY。
+        // expectedRevision 始终校验客户端实际看到的提交前状态；迁移后以新 revision 接力。
+        let base = before;
+        let expectedRevision = command.expectedRevision;
+        if (before.status === "FINISHED") {
+          if (command.expectedRevision !== before.roomRevision) {
+            throw new RoomDomainError("STALE_ROOM_STATE", {
+              details: { currentRoomRevision: String(before.roomRevision) },
+            });
+          }
+          base = returnToLobby(before);
+          expectedRevision = base.roomRevision;
+        }
         return {
-          next: startTournamentTransition(before, {
+          next: startTournamentTransition(base, {
             actorPlayerId: command.actorPlayerId,
-            expectedRevision: command.expectedRevision,
+            expectedRevision,
             tournamentId: command.tournamentId,
           }),
           persisted: true,
           tournamentId: command.tournamentId,
         };
+      }
       case "TOURNAMENT_FINISHED":
         return { next: markTournamentFinished(before, command.tournamentId), persisted: true };
       case "RETURN_TO_LOBBY":

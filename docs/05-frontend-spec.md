@@ -1,13 +1,13 @@
 # 05 · Web 前端工程规格（`apps/web`）
 
-> 状态：设计定稿（TEX-23 前端基础、TEX-24 Lobby、TEX-21 WebSocket 认证/同步/重连、TEX-25 牌桌视觉与下注、TEX-26 动画/音效/重连体验已核对；赛果与历史待后续任务）
-> 实现核对：2026-08-26（TEX-26）——`apps/web` 已在既有 `RoomSnapshot`/`GameSnapshot`/连续 Event Patch 与单一 Transport 上实现 AnimationQueue（连续 Event 后的 presentation、Snapshot 屏障、Soft/Hard catch-up、Reduced Motion 终帧）、本地 Kenney CC0 音效与开关、断线/接管/退出提示；操作、倒计时与命令仍只读 canonical projection。独立赛果页和历史仍为**设计意图**。
+> 状态：设计定稿（TEX-23 前端基础、TEX-24 Lobby、TEX-21 WebSocket 认证/同步/重连、TEX-25 牌桌视觉与下注、TEX-26 动画/音效/重连体验、TEX-27 赛果/设置/手牌历史已核对）
+> 实现核对：2026-09-03（TEX-26 合并 TEX-27）——`apps/web` 在既有 `RoomSnapshot`/`GameSnapshot`/连续 Event Patch 与单一 Transport 上同时保留响应式牌桌、`LegalActions` 下注控件、AnimationQueue（Snapshot 屏障、Soft/Hard catch-up、Reduced Motion 终帧）、本地 Kenney CC0 音效与重连提示，以及 TEX-27 的独立赛果页、设置/规则页、Hand History Drawer 和淘汰观战横幅。操作、计时（含行动机会身份）、历史与赛果入口始终读取 canonical projection，不等待 presentation。
 > 权威范围：本文是 Web 前端（`apps/web`）工程设计的唯一权威来源——页面与路由、客户端状态与投影消费（Snapshot + Event Stream）、横向 Seat 牌桌与响应式布局、下注交互（快捷下注 / Slider / ± 调整 / 精确输入 / All-in 两步 / Time Bank）、AnimationQueue 与事件动画、音效、计时与连接状态展示、重连 UX、错误码展示、Lobby 与房间流、淘汰观战 / 赛果 / Hand History UI、可访问性与验收标准。范围之外的事实见 [工程文档总索引](./README.md)：Engine 规则语义属 [01](./01-engine-spec.md)，wire 契约与 `PlayerView` 投影属 [02](./02-protocol-spec.md)，服务端执行与计时属 [04](./04-game-server-architecture.md)，持久化属 [03](./03-data-model.md)，AI 推理属 P1 `server/ai`。
 > 依据：《德州扑克项目总规划.md》v1.0（2026-08-20，§3.1/§5/§6/§7/§9/§10）；《德州扑克项目规划_区块1-5_v0.1.docx》§1.5/§2.8–2.10/§4/§5（仅在《总规划》未覆盖处补充）；《德州扑克项目规划_区块6-10_v0.2.docx》§6.6/§7.10/§8.2/§8.13/§9.16–9.18/§10.3/§10.11（仅在《总规划》未覆盖处补充）；规则语义与事件目录见 [01](./01-engine-spec.md)，wire 契约见 [02](./02-protocol-spec.md)，服务端执行见 [04](./04-game-server-architecture.md)
-> 对应代码：`apps/web/`（TEX-23 已建立 `src/app` 路由壳、`messages/`、`protocol/` 与 `state/`；《总规划》§6 的 Next.js 16 + React 19 + TypeScript + Tailwind CSS 4、Jotai、Radix UI、Framer Motion 依赖已配置。Seat Layout、AnimationQueue 与业务 UI 待 TEX-24+）
+> 对应代码：`apps/web/`；路由入口为 `src/app`，投影与传输为 `state/`、`protocol/`，业务页面位于 `features/`，动画与音效位于 `animations/`、`audio/`。实际依赖以 `apps/web/package.json` 为准。
 > 上级索引：[工程文档总索引](./README.md)
 
-> **【部分已实现】** TEX-23 已落地路由壳、投影与命令状态边界；TEX-24 已落地 §6.1–§6.4 的 Home/Create/Join/Lobby、授权 HTTP 控制面与 Lobby WS 投影消费；TEX-21 在同一 Transport 上落地 Token 恢复、认证、断线退避、权威 Room/Game 快照屏障、连续 Event/Clock 消费和旧会话停止。TEX-25 已落地 §7/§8 的基础牌桌、响应式 Seat、Board/Pot、服务端 LegalActions 操作区、普通下注金额控件、All-in 两步确认、Time Bank 和连接/命令反馈；HTTP 超时/取消、受限 sessionStorage 降级和按 `appliedSequence` 回收 pending 已测试。动画、音效、独立赛果页和历史仍待后续任务逐项回填。
+> **【部分已实现】** TEX-23 已落地路由壳、投影与命令状态边界；TEX-24 已落地 §6.1–§6.4 的 Home/Create/Join/Lobby、授权 HTTP 控制面与 Lobby WS 投影消费；TEX-21 在同一 Transport 上落地 Token 恢复、认证、断线退避、权威 Room/Game 快照屏障、连续 Event/Clock 消费和旧会话停止。TEX-25 已落地 §7/§8 的基础牌桌、响应式 Seat、Board/Pot、服务端 LegalActions 操作区、普通下注金额控件、All-in 两步确认、Time Bank 和连接/命令反馈；HTTP 超时/取消、受限 sessionStorage 降级和按 `appliedSequence` 回收 pending 已测试。TEX-26 已落地 §9–§11 的事件动画、本地音效与重连体验。TEX-27 已落地 §6.6 赛果页（含房主"再来一局"）、§6.7 设置/规则页、§13 当前玩家视角 Hand History Drawer 与淘汰观战横幅；Hand History 服务端投影读取端点待独立缺陷任务补齐。
 
 ## 1. Purpose
 
@@ -137,6 +137,7 @@ apps/web/
 - 断线/重连：先取最新 Snapshot 覆盖副本，再消费新 Event；断线期间旧动画不重放（[02](./02-protocol-spec.md) §6/§10）。
 - 积压严重：Fast Forward 到最新 Snapshot（§9.6；《总规划》§7.2）。
 - 数据应用与动画播放解耦：Event 到达即更新数据副本，视觉由 AnimationQueue 另行走带（§9.3）——快进永远有正确终态可跳。
+- 同一连续 Event 先校验手局身份，再一次性提交 canonical 与只读 `currentHandEvents`，最后通知动画订阅；不得为动画和历史各更新一次投影。Snapshot/重连先清空本手历史，再发出动画屏障，旧 Event 不重放。
 - `packages/protocol` 必须导出以 `event.type` 为判别字段的 `ProjectedGameEvent` 联合类型、每种 Payload 的运行时 Schema 与 `GameSnapshot` Schema；前端不得针对 `payload: object` 手写类型断言。Schema 不通过、未知 Event 或 reducer 无法穷尽处理时，不应用该消息并以 `INVALID_EVENT` 请求 Snapshot。
 - reducer 必须是纯函数并对联合类型做穷尽检查，按 [02](./02-protocol-spec.md) §6.3/§9.2 应用 `PlayerViewPatch`；每个 Event 的测试至少断言 `apply(before, patch) == after`、重复 sequence 无副作用、缺序触发重同步。具体 wire 字段只在 02 / `packages/protocol` 定义，本文不复制第二套 Payload 契约。
 
