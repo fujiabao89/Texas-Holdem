@@ -53,6 +53,9 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    // CI 冷启动（next dev 按需编译 + game-server 预热）下首个交互可能超过默认 30s
+    // action 超时：放宽到 60s，仅等待可观察状态，不做 sleep（docs/06 §5）。
+    actionTimeout: 60_000,
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
@@ -82,8 +85,9 @@ export default defineConfig({
       },
     },
     {
-      // `@texas-holdem/protocol` 从 dist/ 发布入口；清洁检出需先构建（与 mock 套件一致）。
-      command: `pnpm --filter @texas-holdem/protocol build && pnpm --filter @texas-holdem/web dev --port ${webPort}`,
+      // protocol/poker-engine 的 dist 由上方 game-server webServer 单次构建（其健康检查
+      // 依赖构建完成）；此处不再重复 build，避免两个并发 tsc 写同一 dist 的竞态。
+      command: `pnpm --filter @texas-holdem/web dev --port ${webPort}`,
       url: webBaseUrl,
       reuseExistingServer: false,
       timeout: 120_000,
