@@ -116,3 +116,46 @@ jobs:
           name: e2e-failure-artifacts
           path: tests/e2e/.artifacts
           if-no-files-found: ignore
+  # TEX-28：真实链路 E2E（真实浏览器 → 真实 web → 真实 game-server →
+  # 真实 PostgreSQL service 容器）。与 mock 套件（e2e job）互补；
+  # 浏览器矩阵：chromium 全量 + firefox/webkit 仅 @key 关键流程（配置内置）。
+  e2e-real:
+    name: e2e-real
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tex_test
+          POSTGRES_PASSWORD: tex_test_pw
+          POSTGRES_DB: tex_e2e
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U tex_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Run real-link Playwright E2E
+        shell: bash
+        env:
+          TEX_TEST_DATABASE_URL: postgres://tex_test:tex_test_pw@127.0.0.1:55432/tex_e2e
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium firefox webkit
+          pnpm run test:e2e:real
+
+      - name: Upload real-link E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-real-failure-artifacts
+          path: tests/e2e/.artifacts-real
+          if-no-files-found: ignore

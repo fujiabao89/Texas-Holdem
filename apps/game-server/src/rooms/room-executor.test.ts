@@ -82,7 +82,7 @@ function fakeIds(): IdSource {
   };
 }
 
-function makeRuntime(maxPlayers = 10) {
+function makeRuntime(maxPlayers = 10, extraDeps: Partial<RoomRuntimeDeps> = {}) {
   const state = createRoomState({
     roomId: "room-1",
     inviteCode: "ABC123",
@@ -90,7 +90,7 @@ function makeRuntime(maxPlayers = 10) {
     config: { ...makeConfig(), maxPlayers },
   });
   const persistence = fakePersistence();
-  const deps: RoomRuntimeDeps = { persistence, ids: fakeIds() };
+  const deps: RoomRuntimeDeps = { persistence, ids: fakeIds(), ...extraDeps };
   const runtime = new RoomRuntime(state, deps);
   return { runtime, persistence, state };
 }
@@ -139,6 +139,29 @@ describe("RoomRuntime（串行执行器）", () => {
     expect(results.filter((r) => r === "ok")).toHaveLength(2);
     expect(results.filter((r) => r === "ROOM_FULL")).toHaveLength(3);
     expect(runtime.current.members.size).toBe(3);
+  });
+
+  it("开局运行时注册发生在 Room 提交 IN_GAME 之后（TEX-28 F-7 回归）", async () => {
+    const registerLog: string[] = [];
+    const { runtime, persistence } = makeRuntime(10, {
+      onStartCommitted: (request) => {
+        // 注册回调被触发时，Room 内存态必须已提交 IN_GAME 且 activeTournamentId 就位：
+        // 首手事件随之在快照提交后产出，网关按 room 快照路由不会丢弃开局事件。
+        registerLog.push(`status=${runtime.current.status};active=${runtime.current.activeTournamentId};t=${request.tournamentId}`);
+      },
+    });
+    await readyForStart(runtime);
+    const expectedRevision = runtime.current.roomRevision;
+    await runtime.submit({
+      type: "START_TOURNAMENT",
+      actorPlayerId: "host-1",
+      expectedRevision,
+      tournamentId: "t-f7",
+    });
+    expect(registerLog).toEqual(["status=IN_GAME;active=t-f7;t=t-f7"]);
+    expect(runtime.current.status).toBe("IN_GAME");
+    // 控制面落库仍在注册之前（§5.7 先提交后确认：持久化成功才提交内存态）。
+    expect(persistence.calls).toContain("start:t-f7");
   });
 
   it("并发开局最多产生一个活跃 Tournament：其余被拒且不落库", async () => {

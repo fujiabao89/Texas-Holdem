@@ -17,6 +17,9 @@ const baseURL = process.env.TEX_E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: ".",
+  // real/ 为真实链路套件（需 PostgreSQL 隔离 schema），由 playwright.real.config.ts 独立运行，
+  // 不得混入本 UI 投影 mock 套件（无真实 game-server/DB webServer）。
+  testIgnore: /real\//,
   outputDir: ".artifacts",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),

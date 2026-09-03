@@ -1,4 +1,4 @@
-import { buildApp } from "./app";
+﻿import { buildApp } from "./app";
 import { parseAppConfig } from "./config";
 import {
   createDatabase,
@@ -14,7 +14,7 @@ import { createRoomManager, type RoomManager } from "./rooms/room-manager";
 import { createRoomPersistence } from "./rooms/room-persistence";
 import {
   createPersistenceTournamentStarter,
-  createRuntimeTournamentStarter,
+  createRuntimeTournamentRegistrar,
 } from "./rooms/tournament-starter";
 import { createMonotonicEpochClock, createNodeTimerScheduler } from "./scheduler/timer-scheduler";
 import { createTournamentManager, type TournamentManager } from "./tournaments/tournament-manager";
@@ -23,7 +23,24 @@ import { createTournamentEventBus } from "./realtime/tournament-event-bus";
 import { createBackpressureLatch } from "./persistence/backpressure";
 import { createPersistenceWriter } from "./persistence/persistence-writer";
 import { recoverActiveTournaments } from "./persistence/recovery";
-import { SecureRandomSource } from "@texas-holdem/poker-engine";
+import { SecureRandomSource, SeededRandomSource, type RandomSource } from "@texas-holdem/poker-engine";
+
+/**
+ * TEX-28 测试种子注入：生产默认安全随机（SecureRandomSource）；仅当隔离测试入口
+ * 显式设置 TEX_TEST_RNG_SEED 时切换为确定性洗牌（每个 Tournament 派生独立子流），
+ * 使真实链路 E2E 失败可按 seed 100% 重放（docs/06 §6）。生产环境严禁设置该变量。
+ */
+function createRngFactory(testSeed: string | undefined): () => RandomSource {
+  if (testSeed === undefined) return () => new SecureRandomSource();
+  const seed = Number(testSeed);
+  if (!Number.isSafeInteger(seed) || seed < 0) {
+    throw new Error("TEX_TEST_RNG_SEED must be a non-negative safe integer when set");
+  }
+  let tournamentOrdinal = 0;
+  return () => new SeededRandomSource(seed + tournamentOrdinal++);
+}
+
+const rngFactory = createRngFactory(process.env.TEX_TEST_RNG_SEED);
 
 const config = parseAppConfig();
 const database = createDatabase(parseDatabaseConfig());
@@ -100,15 +117,13 @@ tournamentManager = createTournamentManager({
   },
 });
 
-const starter = createRuntimeTournamentStarter({
-  persistence: baseStarter,
+// TEX-28 F-7：运行时注册与控制面落库解耦——Room 提交 IN_GAME 之后才注册
+// Tournament 运行时（首手事件晚于快照提交，网关不丢开局事件）。
+const registerRuntime = createRuntimeTournamentRegistrar({
   manager: tournamentManager,
-  clock: tournamentClock,
-  ids,
-  scheduler,
-  rngFactory: () => new SecureRandomSource(),
+  rngFactory,
 });
-const persistence = createRoomPersistence({ roomRepository, startTournament: starter.start });
+const persistence = createRoomPersistence({ roomRepository, startTournament: baseStarter.start });
 roomManager = createRoomManager({
   persistence,
   roomRepository,
@@ -117,6 +132,7 @@ roomManager = createRoomManager({
   tokenKeyId: config.token.keyId,
   isConnectionCurrent: connectionEpochs.isCurrent,
   isPersistenceAvailable,
+  onStartCommitted: registerRuntime.register,
 });
 
 const app = buildApp({
@@ -142,7 +158,7 @@ async function recoverOnStartup(): Promise<void> {
     clock: tournamentClock,
     ids,
     scheduler,
-    rngFactory: () => new SecureRandomSource(),
+    rngFactory,
     onUnrecoverable: (tournamentId, reason) => {
       console.error(`unrecoverable tournament=${tournamentId} isolated: ${reason}`);
     },

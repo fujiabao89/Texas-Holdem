@@ -103,16 +103,22 @@ export class ProjectionStore {
   /** A reconnect result is a fresh server-authoritative barrier for both projections. */
   acceptReconnectResult(room: RoomSnapshot, game: GameSnapshot | null, serverTime = 0): void {
     if (game !== null) GameSnapshotSchema.parse(game);
+    // 服务端在锦标赛结束后清空 activeTournamentId，重连只会带回 gameSnapshot:null
+    // （docs/02 §9.3）。终局快照不可变：同房间的 FINISHED 快照照单清空会让
+    // 牌桌 → 结果页的页内导航（重连）丢失唯一的结果数据源，结果页永远落入
+    // 「快照不可用」（TEX-28 F-3）。新一局开始时 GAME_SNAPSHOT 屏障会整体替换。
+    const previousGame = this.state.room?.roomId === room.roomId ? this.state.game : null;
+    const retained = game === null && previousGame?.tournamentStatus === "FINISHED" ? previousGame : game;
     this.replace({
       room,
-      game,
-      lastSequence: game?.sequence ?? null,
+      game: retained,
+      lastSequence: retained?.sequence ?? null,
       actionsDisabled: false,
       resyncReason: null,
-      clock: game === null ? null : clockFromSnapshot(game, serverTime),
+      clock: retained === null ? null : clockFromSnapshot(retained, serverTime),
       currentHandEvents: [],
     });
-    this.emitBarrier({ game, kind: "RECONNECT_RESULT" });
+    this.emitBarrier({ game: retained, kind: "RECONNECT_RESULT" });
   }
 
   acceptGameSnapshot(snapshot: GameSnapshot, serverTime = 0): void {

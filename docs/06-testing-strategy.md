@@ -34,7 +34,7 @@ Unit Test → Poker Rule Test → Integration Test → Multiplayer/WebSocket Tes
 | Poker Rule Test | Engine 规则正确性（下注/Pot/淘汰/事件） | `packages/poker-engine/tests/**/*.test.ts` | Vitest + fast-check；`pnpm test:rules`【工程基线，TEX-12 已落地；引擎落地前受控跳过】 | §3.1/§4 |
 | Integration Test | Engine × 串行执行器 × Scheduler × 持久化 | `apps/game-server/tests/integration` | Vitest + 隔离测试库；`pnpm test:integration`【工程基线，TEX-12 已落地；持久化用例（迁移/控制面/Commit Bundle/约束/最小权限）已按 TEX-18 落地，缺测试库配置时受控跳过】 | §3.2/§6 |
 | Multiplayer/WebSocket Test | 多客户端一致性、Snapshot/Event、重连 | `apps/game-server/tests/ws` + `tests/clients/` | Vitest + 可编程 WS 客户端；`pnpm test:ws`【工程基线，TEX-12 已落地；WS 实现落地前受控跳过】 | §6 |
-| E2E Test | 完整用户旅程（创建房间 → 完赛） | `tests/e2e/` | Playwright + axe-core；`pnpm test:e2e`【工程基线，TEX-12 已落地（含冒烟与失败产物）；业务旅程随前端任务回填】 | §9 |
+| E2E Test | 完整用户旅程（创建房间 → 完赛） | `tests/e2e/`（mock WS 投影注入）+ `tests/e2e/real/`（真实链路） | Playwright + axe-core；`pnpm test:e2e` / `pnpm test:e2e:real`【工程基线，TEX-12 已落地；业务旅程随前端任务回填；TEX-28 已落地真实链路套件（真实浏览器 → web → game-server → PostgreSQL，runId 隔离 Schema + `TEX_TEST_RNG_SEED` 确定性重放），未配置 `TEX_TEST_DATABASE_URL` 时快速失败不静默降级】 | §9 |
 | Long-running Simulation | 随机长跑与不变量自动断言 | `tests/simulator/`（模块自测归 unit 层） | 独立 Node CLI；`pnpm test:sim -- --seed ...` / `--tier smoke\|nightly\|rc`【已落地 · TEX-16：长跑主循环、每转移不变量断言、Watchdog、Smoke/Nightly/RC 三档与失败产物】 | §5 |
 | Load / Soak Test | 多 Room/WS、突发命令、重连风暴与稳定性 | `tests/load/` | Artillery；`pnpm test:load`【工程基线，未实现】 | §10 |
 | Manual UI/Animation/UX Review | 真实设备人工验收 | 人工 | 不适用 | §9 |
@@ -213,12 +213,20 @@ AI 接入边界见 04 §14（AI 只能选择 Engine 合法 Action）；成本与
 
 ## 9. UI E2E 与人工验收
 
+**真实链路套件（TEX-28 已落地，`tests/e2e/real/`，`pnpm test:e2e:real`）**：mock WS 投影注入的 `tests/e2e/`（含冒烟与失败产物）验证前端投影与交互；`real/` 套件走完整真实链路——真实浏览器（每玩家独立 BrowserContext，身份与 sessionStorage 隔离）→ 真实 `apps/web` → 真实本地 `game-server` → 真实 PostgreSQL。约束与边界：
+
+- 每次运行生成唯一 `runId` 并创建隔离数据库 Schema（迁移先行），teardown 终止本运行连接并清理 Schema；无 `TEX_TEST_DATABASE_URL` 时启动器直接失败，禁止静默降级。
+- 服务端随机性经 `TEX_TEST_RNG_SEED` 注入固定种子（生产默认安全随机源），牌局可确定性重放；测试只用真实 UI 与服务端权威结果推进，禁止 `route.fulfill`、伪造 Snapshot 或修改浏览器 store。
+- 覆盖：多人完整旅程（创建 → 邀请码加入 → 入座 → 准备 → 开局 → 行动 → 结算 → 结果页 → 再来一局）、字段级安全（DB 真值 vs 客户端收到的消息集：对手未公开底牌永不到达；playerToken 不落 URL/持久存储；错误信封无堆栈/SQL）、无障碍（纯键盘主流程 + axe serious 门槛 + Reduced Motion 业务终态不变）。
+- 配置 `retries: 0`（§2.1：重试通过不得记为门禁通过）；Chromium/Firefox/WebKit 三浏览器矩阵执行关键用例（`@key`）。
+- 已知边界：归档历史读取（TEX-36 端点）未覆盖——见 `docs/03-engineering/TEX-28-findings-ledger.md` F-2；服务端终局后结果的刷新/直达可达性留待服务端数据源裁决——F-3。
+
 - E2E 覆盖创建房间、邀请码加入、Ready、完成一手牌与完整 Tournament；P1 增加单人开局（《区块6-10 v0.2》§9.16）。
 - 前端验收标准表的权威在 [05](./05-frontend-spec.md) §16（下注无键盘、All-in 两步、动画剧本、响应式矩阵、重连、信息隔离），本文不重述。
 - 动画与音效为人工验收：Showdown 剧本（Reveal → Best Five → 牌型 → Winner → Pot）是重点场景（《区块6-10 v0.2》§9.17）。
 - E2E 使用稳定的角色/语义定位和专用测试 API 构造状态；不得依赖 CSS class、固定文案或大量点击把比赛随机推进到目标状态。测试 API 仅在测试环境启用且必须通过正常 Engine 入口提交 Fixture。
-- 每个页面和关键 Dialog 运行 axe-core 自动扫描；创建/加入/Ready/下注/离开主流程另以纯键盘执行，并断言焦点进入/返回、可见焦点、可访问名称、`aria-live` 节制与 Reduced Motion 下相同业务终态。自动扫描通过不替代真实键盘、读屏抽查和颜色对比人工验收。
-- 失败时自动保留浏览器 Trace、截图、视频、Console、Network/WS 摘要与服务端关联 `runId`；任何未处理 Console Error、Page Error、请求 5xx 均使测试失败，明确列入白名单者除外。
+- 每个页面和关键 Dialog 运行 axe-core 自动扫描；创建/加入/Ready/下注/离开主流程另以纯键盘执行，并断言焦点进入/返回、可见焦点、可访问名称、`aria-live` 节制与 Reduced Motion 下相同业务终态。自动扫描通过不替代真实键盘、读屏抽查和颜色对比人工验收。（扫描前等待文档 complete 且 SSR `<title>` 就绪，规避 WebKit 冷启动的 document-title 竞态误报。）
+- 失败时自动保留浏览器 Trace、截图、视频、Console、Network/WS 摘要与服务端关联 `runId`；任何未处理 Console Error、Page Error、请求 5xx 均使测试失败，明确列入白名单者除外。（页面导航/关闭导致的 WS CONNECTING 中断为固有浏览器传输噪声，Firefox/Chromium/WebKit 各有其文案，由 observability fixture 默认白名单豁免；其余诊断仍强制门禁。）
 - Release 人工验收须记录候选版本、设备/OS/浏览器版本、场景、验收人、时间和证据链接；“可接受”不能只有口头结论。设备矩阵见 §9.1。
 
 ### 9.1 Release 设备与浏览器矩阵【已裁决】
@@ -284,6 +292,7 @@ CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工�
 
 已落地事实（2026-08-21，TEX-12）：`.github/workflows/ci.yml` 的 `quality` job 在 lint/typecheck/build 后按层独立调用 `pnpm test:unit`、`test:rules`、`test:integration`、`test:ws` 与 Simulator Smoke；独立 `e2e` job 安装 Chromium 后运行 `pnpm test:e2e`（当前为基础设施冒烟与 §9 门禁自测），失败时经 `actions/upload-artifact` 上传失败产物；E2E 禁用重试（§2.1），未处理 console error / pageerror / 5xx 由 observability fixture 强制失败（白名单除外）。完整 Integration、Multiplayer/WS、全量 E2E 与 Nightly/RC 阶段按上表随对应业务任务启用。
 
+真实链路 E2E CI 落地事实（2026-09-03，TEX-28）：`ci.yml` 增设独立 `e2e-real` job——以 `postgres:16-alpine` service 容器（127.0.0.1:55432）提供真实 PostgreSQL，注入 `TEX_TEST_DATABASE_URL` 后运行 `pnpm test:e2e:real`（安装 chromium/firefox/webkit；chromium 全量 + firefox/webkit 关键 `@key` 用例，配置内置），失败上传 `tests/e2e/.artifacts-real` 产物；每次运行经 runId 隔离 Schema 自清理，与 mock 套件 `e2e` job 互补。
 Simulator CI 落地事实（2026-08-24，TEX-16）：PR Smoke 由 `ci.yml` 以 `pnpm test:sim -- --tier smoke --sha "$GITHUB_SHA"` 真实运行（已知失败 seed 回归集 + 提交 SHA 派生 ≥200 场，约 20s）；Nightly 经 `.github/workflows/simulator.yml` 的 `schedule`（每日 02:00 北京时间）或 `workflow_dispatch` 运行——按**每种 Blind Mode 各**派生 ≥10,000 个强制该模式的 seed（合计 ≥30,000，满足 §5 逐模式下限），并上传绑定提交 SHA 的 JSON Artifact（tier、gitSha、seed 范围、覆盖统计与失败现场；RC 将同类报告绑定候选提交保存，普通运行报告不提交仓库）；RC 需 seed 台账（`--ledger`），在本地/受控环境手动执行，不进入普通 PR CI。Nightly/RC 是合并后/候选发布阶段门禁，不阻塞 PR 创建。
 
 场景加权裁决（2026-08-24）：初始加权为明确冻结值（见 `tests/simulator/README.md`「场景加权策略」）；在至少连续 3 次 Nightly 数据后，依据实际覆盖缺口调整权重，并在该文档记录原因与前后数据。引擎缺陷不在 Simulator 任务分支修复：模拟器确认的 P0/P1 规则缺陷创建独立 Linear 缺陷任务并阻塞验收，P2/P3 记录为后续任务。

@@ -16,6 +16,19 @@ import { test as base, expect } from "@playwright/test";
 
 const MAX_ENTRY_LENGTH = 500;
 
+/**
+ * 页面导航/关闭时 WebSocket 传输 teardown 的固有浏览器噪声（非产品缺陷信号）：
+ * 应用在用例内主动导航（大厅↔牌桌）或用例结束时关闭页面，正处于 CONNECTING 的
+ * 连接随导航/卸载被中止，Firefox/Chromium 会打印上述消息。默认白名单覆盖，
+ * 其余诊断（真实 error/pageerror/5xx）仍按 docs/06 §9 门禁。
+ * 注：Firefox 用弯引号 "can’t"，需同时匹配 ' 与 ’。
+ */
+const DEFAULT_ALLOWED_WS_NOISE: readonly (string | RegExp)[] = [
+  /[Cc]an['’]t establish a connection/,
+  /was interrupted while the page was loading/,
+  "WebSocket is closed before the connection is established",
+];
+
 export interface RequestSummary {
   readonly method: string;
   readonly path: string;
@@ -66,7 +79,7 @@ function isAllowed(message: string, allowlist: readonly (string | RegExp)[]): bo
 export const test = base.extend<{ diagnostics: DiagnosticsSummary }>({
   diagnostics: [
     async ({ page }, use, testInfo) => {
-      const allowlist: (string | RegExp)[] = [];
+      const allowlist: (string | RegExp)[] = [...DEFAULT_ALLOWED_WS_NOISE];
       const summary: DiagnosticsSummary = {
         consoleErrors: [],
         pageErrors: [],
