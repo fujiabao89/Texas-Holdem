@@ -26,7 +26,7 @@ Conversation [CodeRabbit 5521648393](https://github.com/fujiabao89/Texas-Holdem/
 - `TEX_TEST_DATABASE_URL=<本地隔离测试库> pnpm test`：68 文件、632 项通过，包含 unit/rules/integration/ws 四层；没有跳过数据库集成层。
 - `CI=true TEX_E2E_PORT=3137 pnpm test:e2e --workers=2 --reporter=list`：27 项通过（41.4 秒，retries=0；3 个 observability 门禁用例按设计预期失败，计入成功自测）。
 - 同一 Chromium 会话的实际路由缓存诊断：两轮 A→B→A 共 6 次授权查询、6 个正确接收者响应；使用合成凭证，无真实玩家数据。仅验证当前默认 fetch，不外推其他缓存配置。
-- CI 与评论闭环结果在推送后确认；以上是本地可复现验证记录。
+- 修复提交 `3ddf45ee4dc37c7c58d58d6932fcf036e10d95bd` 的 [CI #33730598975](https://github.com/fujiabao89/Texas-Holdem/actions/runs/33730598975) 全部通过，包含 quality、e2e、workflow-lint、repository-hygiene；PR Policy 与 CodeQL 同样通过。CI 未配置数据库时不能替代上述本地真实 PostgreSQL 验证。
 
 ## 文档与范围
 
@@ -34,4 +34,16 @@ Conversation [CodeRabbit 5521648393](https://github.com/fujiabao89/Texas-Holdem/
 
 ## 原线程闭环
 
-推送前不得宣称已修正或已闭环。F-01/02/03/04/05/07/08/09 在验证、提交并推送后分别回复“已修正”；F-06 原线程回复未复现及非阻塞依据。回复完成状态将在推送后补记。
+修复提交 `3ddf45ee4dc37c7c58d58d6932fcf036e10d95bd` 推送后，以下 9 个原始线程均已回复并标为 resolved。修复/重复意见回复“已修正”并说明验证；F-06 只回复未复现及非阻塞依据，没有宣称已修复。
+
+| Finding | 原线程内的回复 | 结果 |
+| --- | --- | --- |
+| F-01 | [3922331828](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922331828) | 已修正、已关闭 |
+| F-02 | [3922332001](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922332001) | 已修正、已关闭 |
+| F-03 | [3922332300](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922332300) | 已修正、已关闭 |
+| F-04 | [3922332579](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922332579) | 已修正、已关闭 |
+| F-05 | [3922332830](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922332830) | 重复项已随 F-04 修正、已关闭 |
+| F-06 | [3922333031](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922333031) | 跳过依据已说明、已关闭 |
+| F-07 | [3922333254](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922333254) | 重复项已随 F-01 修正、已关闭 |
+| F-08 | [3922333485](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922333485) | 已修正、已关闭 |
+| F-09 | [3922333711](https://github.com/fujiabao89/Texas-Holdem/pull/30#discussion_r3922333711) | 重复项已随 F-04 修正、已关闭 |
