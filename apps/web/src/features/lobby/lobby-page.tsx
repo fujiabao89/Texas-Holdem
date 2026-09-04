@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import type { RoomSnapshot, TournamentConfig } from "@texas-holdem/protocol";
 
 import { errorMessage, message } from "../../messages/zh-CN";
@@ -14,7 +14,11 @@ export function LobbyPage({ roomId }: { readonly roomId: string }) {
   const room = useRoomSnapshot();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // sessionStorage is deliberately client-only. Keep SSR and hydration output
+  // identical until React has switched to the browser snapshot.
+  const isBrowser = useSyncExternalStore(subscribeNever, () => true, () => false);
   useLobbyConnection(roomId);
+  if (!isBrowser) return <LobbyFrame><p aria-live="polite">{message("room.loading")}</p></LobbyFrame>;
   if (tokens.get(roomId) === null) return <LobbyFrame><p role="alert">{message("room.missingSession")}</p><Link className="underline" href="/join">{message("room.joinTitle")}</Link></LobbyFrame>;
   if (room === null || room.roomId !== roomId) return <LobbyFrame><p aria-live="polite">{message("room.loading")}</p></LobbyFrame>;
   if (room.status === "CLOSED") return <LobbyFrame><p role="alert">{message("room.closed")}</p><Link className="underline" href="/">{message("room.back")}</Link></LobbyFrame>;
@@ -61,6 +65,8 @@ export function LobbyPage({ roomId }: { readonly roomId: string }) {
 }
 
 function LobbyFrame({ children }: { readonly children: ReactNode }) { return <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-white p-5 text-neutral-900">{children}</main>; }
+
+function subscribeNever(): () => void { return () => undefined; }
 
 function HostConfigEditor({ room, onSave, disabled }: { readonly room: RoomSnapshot; readonly onSave: (config: TournamentConfig) => void; readonly disabled: boolean }) {
   const [config, setConfig] = useState(room.config);

@@ -6,7 +6,7 @@ import { createRoomManager, type RoomManager } from "../rooms/room-manager";
 import { createRoomPersistence } from "../rooms/room-persistence";
 import {
   createPersistenceTournamentStarter,
-  createRuntimeTournamentStarter,
+  createRuntimeTournamentRegistrar,
 } from "../rooms/tournament-starter";
 import { fakeRoomRepository } from "../rooms/test-support";
 import type { IdSource } from "../rooms/id-source";
@@ -64,21 +64,18 @@ function makeWired(): Wired {
     },
     executorDeps: {},
   });
-  const starter = createRuntimeTournamentStarter({
-    persistence: baseStarter,
+  const registerRuntime = createRuntimeTournamentRegistrar({
     manager: tournamentManager,
-    clock: () => clock.now(),
-    ids,
-    scheduler: clock,
     rngFactory: () => new SeededRandomSource(42),
   });
-  const persistence = createRoomPersistence({ roomRepository, startTournament: starter.start });
+  const persistence = createRoomPersistence({ roomRepository, startTournament: baseStarter.start });
   roomManager = createRoomManager({
     persistence,
     roomRepository,
     ids,
     tokenSecret: "test-secret-012345678901234567890123456789",
     tokenKeyId: "k1",
+    onStartCommitted: registerRuntime.register,
   });
 
   return { clock, roomManager, tournamentManager, bundles };

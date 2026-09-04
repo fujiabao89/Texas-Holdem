@@ -22,6 +22,7 @@ import { RoomDomainError } from "./room-errors";
 import { RoomRuntime, type RoomCommand, type RoomCommandResult } from "./room-executor";
 import type { RoomPersistence } from "./room-persistence";
 import { createRoomState, projectRoomSnapshot } from "./room-runtime";
+import type { TournamentStartRequest } from "./tournament-starter";
 
 export interface RoomManagerDeps {
   readonly persistence: RoomPersistence;
@@ -34,6 +35,8 @@ export interface RoomManagerDeps {
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
   /** 持久化降级门控：soft watermark 后停止创建新 Room（docs/04 §12.2）。 */
   readonly isPersistenceAvailable?: () => boolean;
+  /** START_TOURNAMENT 在 Room 提交 IN_GAME 后注册 Tournament 运行时（§5.7；TEX-28 F-7）。 */
+  readonly onStartCommitted?: (request: TournamentStartRequest) => void;
 }
 
 export interface PlayerSession {
@@ -118,7 +121,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
         },
         config: input.config,
       });
-      const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids, isConnectionCurrent: deps.isConnectionCurrent });
+      const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids, isConnectionCurrent: deps.isConnectionCurrent, onStartCommitted: deps.onStartCommitted });
       rooms.set(roomId, runtime);
       inviteByCode.set(inviteCode, roomId);
       const roomSnapshot = projectRoomSnapshot(state);

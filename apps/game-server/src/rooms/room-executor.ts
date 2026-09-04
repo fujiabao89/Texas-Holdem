@@ -56,6 +56,12 @@ export interface RoomRuntimeDeps {
   readonly ids: IdSource;
   /** Transport-private epoch guard, checked after this Room command obtains queue ownership. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
+  /**
+   * START_TOURNAMENT 在 Room 内存态提交 IN_GAME **之后**注册 Tournament 运行时
+   * （§5.7 内存原子提交；TEX-28 F-7）。注册晚于提交可保证首手事件产出时网关按
+   * room 快照路由不会丢弃开局首批事件。与持久化共享同一份 request（id 一致）。
+   */
+  readonly onStartCommitted?: (request: TournamentStartRequest) => void;
 }
 
 export class RoomRuntime {
@@ -86,10 +92,22 @@ export class RoomRuntime {
   private async process(command: RoomCommand): Promise<RoomCommandResult> {
     const before = this.state;
     const { next, persisted, tournamentId } = this.apply(before, command);
+    // 开局参与者冻结请求只构建一次：控制面落库与提交后的运行时注册共享同一份
+    // TournamentStartRequest，保证 tournament_player.id 与运行时 seed 一一对应。
+    const startRequest =
+      command.type === "START_TOURNAMENT" && persisted
+        ? buildTournamentStartRequest(before, command, this.deps.ids)
+        : undefined;
     if (persisted) {
-      await this.persist(before, next, command);
+      await this.persist(before, next, command, startRequest);
     }
     this.state = next;
+    // TEX-28 F-7：只在 Room 内存态提交 IN_GAME 之后注册 Tournament 运行时并驱动首手。
+    // 此前 create 发生在 persist（提交前），首手事件先于含 activeTournamentId 的快照
+    // 产出，网关按 room 快照过滤事件时静默丢弃开局首批事件（HAND_STARTED/BLIND/DEAL）。
+    if (startRequest !== undefined) {
+      this.deps.onStartCommitted?.(startRequest);
+    }
     return { state: next, tournamentId };
   }
 
@@ -162,7 +180,7 @@ export class RoomRuntime {
   }
 
   /** 控制面先提交：持久化成功后客户端才收到成功结果；失败不提交内存状态。 */
-  private async persist(before: RoomState, next: RoomState, command: RoomCommand): Promise<void> {
+  private async persist(before: RoomState, next: RoomState, command: RoomCommand, startRequest?: TournamentStartRequest): Promise<void> {
     const p = this.deps.persistence;
     switch (command.type) {
       case "JOIN":
@@ -197,7 +215,7 @@ export class RoomRuntime {
         await p.setRoomHost(before.roomId, next.hostPlayerId);
         return;
       case "START_TOURNAMENT": {
-        await p.startTournament(buildTournamentStartRequest(before, command, this.deps.ids));
+        await p.startTournament(startRequest ?? buildTournamentStartRequest(before, command, this.deps.ids));
         return;
       }
       case "TOURNAMENT_FINISHED":

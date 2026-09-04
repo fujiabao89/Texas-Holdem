@@ -153,7 +153,10 @@ async function recoverOne(
         seatIndex: p.seatIndex,
         status: p.status,
         chips: p.chips,
-        rank: p.finish ? p.finish.placementRange.from : null,
+        // 与 tournament-persistence 的 F-4 写入一致：同手多淘汰共享 placementRange，
+        // 组内按 displayOrder 打破并列得到唯一 rank；仅用 from 会在恢复回滚时撞
+        // tournament_players_tournament_rank_unique（Codex P1）。
+        rank: p.finish ? p.finish.placementRange.from + (p.finish.displayOrder - 1) : null,
       })),
     );
   }

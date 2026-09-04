@@ -18,6 +18,7 @@
     "test:integration": "vitest run --project integration",
     "test:ws": "vitest run --project ws",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+    "test:e2e:real": "playwright test -c tests/e2e/playwright.real.config.ts",
     "test:sim": "tsx tests/simulator/run.ts",
     "dev": "turbo run dev",
     "format": "prettier --write .",
@@ -28,15 +29,20 @@
     "@eslint/js": "^10.0.0",
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.20.0",
+    "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.1",
+    "drizzle-orm": "^0.45.2",
     "eslint": "^10.0.0",
     "eslint-plugin-react-hooks": "^7.1.0",
     "fast-check": "^4.9.0",
     "globals": "^17.11.0",
+    "pg": "^8.23.0",
     "prettier": "^3.9.0",
     "tsx": "^4.23.12",
     "turbo": "^2.10.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.67.0",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "ws": "^8.21.3"
   }
 }

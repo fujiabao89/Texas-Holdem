@@ -142,7 +142,11 @@ function buildPlayerUpdates(
         pokerStatus: "ELIMINATED",
         finalStack: 0n,
         forfeitedChips: 0n,
-        rank: event.placementRange.from,
+        // 同手多淘汰共享 placementRange（引擎 §12 并列组），组内按 displayOrder
+        // （手开始筹码多者高、相同 seatIndex 升序）打破并列得到唯一精确名次
+        // （docs/03 §5.4 rank 唯一性）；直接写 from 会在同手多人淘汰时撞
+        // tournament_players_tournament_rank_unique 并回滚整个 Bundle（P1）。
+        rank: event.placementRange.from + (event.displayOrder - 1),
         eliminatedHandId: handId,
       });
     } else if (event.type === "PLAYER_WITHDRAWN") {

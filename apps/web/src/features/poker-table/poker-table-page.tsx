@@ -272,7 +272,7 @@ function CommunityCards({ cards, overlay }: { readonly cards: readonly Card[]; r
 
 function BoardDealCard({ card, index }: { readonly card: Card; readonly index: number }) {
   const interval = animationTimings.flopCard + animationTimings.flopInterval;
-  return <span className="board-deal-flight relative block h-16 w-12 sm:h-24 sm:w-[4.3rem]" style={{ "--deal-delay": `${index * interval}ms` } as CSSProperties} aria-label={cardName(card)}>
+  return <span role="img" className="board-deal-flight relative block h-16 w-12 sm:h-24 sm:w-[4.3rem]" style={{ "--deal-delay": `${index * interval}ms` } as CSSProperties} aria-label={cardName(card)}>
     <span className="board-deal-flip relative block h-full w-full">
       <CardBack variant="board" className="board-deal-back absolute inset-0" />
       <CardFace card={card} variant="board" className="board-deal-face absolute inset-0" />
@@ -317,7 +317,7 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
   const dimensions = cardDimensions(variant);
   const cornerText = variant === "seat" ? "text-[8px] sm:text-xs" : "text-[10px] sm:text-sm";
   const color = red ? "text-rose-600" : "text-slate-900";
-  return <span className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#ffffff,#f6f8fb)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
+  return <span role="img" className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#ffffff,#f6f8fb)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
     <CardPips card={card} variant={variant} />
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
@@ -325,7 +325,7 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
 }
 
 function CardBack({ variant, className = "" }: { readonly variant: "board" | "seat" | "hole"; readonly className?: string }) {
-  return <span className={`relative grid ${cardDimensions(variant)} ${className} shrink-0 place-items-center overflow-hidden rounded-[0.45rem] border border-blue-100/70 bg-[#1f4698] shadow-[0_3px_7px_rgba(15,23,42,0.24)]`} aria-label={message("table.hiddenCard")}>
+  return <span role="img" className={`relative grid ${cardDimensions(variant)} ${className} shrink-0 place-items-center overflow-hidden rounded-[0.45rem] border border-blue-100/70 bg-[#1f4698] shadow-[0_3px_7px_rgba(15,23,42,0.24)]`} aria-label={message("table.hiddenCard")}>
     <span aria-hidden="true" className="absolute inset-1 rounded-[0.28rem] border border-blue-200/60 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.13)_0_1px,transparent_1px_5px)]" />
     <span aria-hidden="true" className="relative h-1/3 w-1/2 rounded-full border border-blue-100/70 bg-blue-200/20" />
   </span>;

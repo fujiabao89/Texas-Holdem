@@ -31,6 +31,7 @@ describe("分层测试入口", () => {
     "test:integration",
     "test:ws",
     "test:e2e",
+    "test:e2e:real",
     "test:sim",
   ];
 
@@ -73,7 +74,15 @@ describe("分层测试入口", () => {
 
   it("E2E 与 Simulator 入口文件存在", () => {
     expect(existsSync(resolve(repoRoot, "tests/e2e/playwright.config.ts"))).toBe(true);
+    expect(existsSync(resolve(repoRoot, "tests/e2e/playwright.real.config.ts"))).toBe(true);
     expect(existsSync(resolve(repoRoot, "tests/simulator/run.ts"))).toBe(true);
+  });
+
+  it("真实链路 E2E 配置禁用重试且限定独立目录（文本断言，避免导入副作用）", () => {
+    const source = readFileSync(resolve(repoRoot, "tests/e2e/playwright.real.config.ts"), "utf8");
+    expect(source).toContain("retries: 0");
+    expect(source).toContain('testDir: "./real"');
+    expect(source).toContain('outputDir: ".artifacts-real"');
   });
 
   it("Playwright 门禁禁用重试：docs/06 §2.1 不得把重试后通过记为门禁通过", async () => {

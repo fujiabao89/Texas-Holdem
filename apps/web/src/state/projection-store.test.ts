@@ -34,6 +34,21 @@ describe("ProjectionStore", () => {
     expect(store.getSnapshot()).toMatchObject({ room: { roomId: "room-b" }, game: null, lastSequence: null, actionsDisabled: false });
   });
 
+  it("retains the same-room FINISHED game when a reconnect brings no active game (TEX-28 F-3)", () => {
+    const store = new ProjectionStore();
+    store.acceptReconnectResult(roomSnapshot(), gameSnapshot({ tournamentStatus: "FINISHED", sequence: "42" }));
+    // 终局后服务端清空 activeTournamentId，重连只带回 gameSnapshot:null。
+    store.acceptReconnectResult(roomSnapshot({ roomRevision: "2", activeTournamentId: null }), null);
+    const state = store.getSnapshot();
+    expect(state.room?.activeTournamentId).toBeNull();
+    expect(state.game?.tournamentStatus).toBe("FINISHED");
+    expect(state.game?.sequence).toBe("42");
+    expect(state.lastSequence).toBe("42");
+    // 换房间重连不保留旧房间的终局快照。
+    store.acceptReconnectResult(roomSnapshot({ roomId: "room-b", roomRevision: "1", activeTournamentId: null }), null);
+    expect(store.getSnapshot().game).toBeNull();
+  });
+
   it("atomically replaces snapshots and applies the next event across Number.MAX_SAFE_INTEGER", () => {
     const store = new ProjectionStore();
     store.acceptGameSnapshot(gameSnapshot());

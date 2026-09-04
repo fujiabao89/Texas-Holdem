@@ -15,7 +15,7 @@ import { createRoomManager, type RoomManager } from "./rooms/room-manager";
 import { createRoomPersistence } from "./rooms/room-persistence";
 import {
   createPersistenceTournamentStarter,
-  createRuntimeTournamentStarter,
+  createRuntimeTournamentRegistrar,
 } from "./rooms/tournament-starter";
 import { createMonotonicEpochClock, createNodeTimerScheduler } from "./scheduler/timer-scheduler";
 import { createTournamentManager, type TournamentManager } from "./tournaments/tournament-manager";
@@ -24,7 +24,25 @@ import { createTournamentEventBus } from "./realtime/tournament-event-bus";
 import { createBackpressureLatch } from "./persistence/backpressure";
 import { createPersistenceWriter } from "./persistence/persistence-writer";
 import { recoverActiveTournaments } from "./persistence/recovery";
-import { SecureRandomSource } from "@texas-holdem/poker-engine";
+import { createTestRngFactory } from "./test-rng-factory";
+
+/**
+ * TEX-28 测试种子注入：生产默认安全随机（SecureRandomSource）；仅当隔离测试入口
+ * 显式设置 TEX_TEST_RNG_SEED 时切换为确定性洗牌（每个 Tournament 派生独立子流），
+ * 使真实链路 E2E 失败可按 seed 100% 重放（docs/06 §6）。seed 上界与派生边界由
+ * `test-rng-factory.ts` 统一校验（SeededRandomSource 仅接受 [0, 2^32)）。生产环境
+ * 严禁设置该变量。
+ */
+const rngTestSeed = process.env.TEX_TEST_RNG_SEED;
+// P3-4 运行守卫：生产（NODE_ENV=production）严禁设置 TEX_TEST_RNG_SEED——否则所有
+// 锦标赛洗牌可预测（公平性风险，且 seed 序列跨进程/重启会归零）。真实链路 E2E 以
+// 非 production 环境启动，不受影响；部署误配时直接拒绝启动而非静默接受。
+if (rngTestSeed !== undefined && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "TEX_TEST_RNG_SEED is forbidden when NODE_ENV=production: it would make every tournament shuffle predictable",
+  );
+}
+const rngFactory = createTestRngFactory(rngTestSeed);
 
 const config = parseAppConfig();
 const database = createDatabase(parseDatabaseConfig());
@@ -101,15 +119,13 @@ tournamentManager = createTournamentManager({
   },
 });
 
-const starter = createRuntimeTournamentStarter({
-  persistence: baseStarter,
+// TEX-28 F-7：运行时注册与控制面落库解耦——Room 提交 IN_GAME 之后才注册
+// Tournament 运行时（首手事件晚于快照提交，网关不丢开局事件）。
+const registerRuntime = createRuntimeTournamentRegistrar({
   manager: tournamentManager,
-  clock: tournamentClock,
-  ids,
-  scheduler,
-  rngFactory: () => new SecureRandomSource(),
+  rngFactory,
 });
-const persistence = createRoomPersistence({ roomRepository, startTournament: starter.start });
+const persistence = createRoomPersistence({ roomRepository, startTournament: baseStarter.start });
 roomManager = createRoomManager({
   persistence,
   roomRepository,
@@ -118,6 +134,7 @@ roomManager = createRoomManager({
   tokenKeyId: config.token.keyId,
   isConnectionCurrent: connectionEpochs.isCurrent,
   isPersistenceAvailable,
+  onStartCommitted: registerRuntime.register,
 });
 
 const app = buildApp({
@@ -146,7 +163,7 @@ async function recoverOnStartup(): Promise<void> {
     clock: tournamentClock,
     ids,
     scheduler,
-    rngFactory: () => new SecureRandomSource(),
+    rngFactory,
     onUnrecoverable: (tournamentId, reason) => {
       console.error(`unrecoverable tournament=${tournamentId} isolated: ${reason}`);
     },
