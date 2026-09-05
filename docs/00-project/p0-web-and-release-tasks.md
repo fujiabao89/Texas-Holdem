@@ -60,7 +60,7 @@
 ## TEX-29：压测、稳定性与监控验证
 
 - **Linear / 分支**：[TEX-29](https://linear.app/texas-holdem/issue/TEX-29/testtex-29-run-load-soak-and-monitoring-validation) · `test/TEX-29-run-load-soak-and-monitoring-validation`
-- **主责**：Trae Work
+- **主责**：Claude Code（2026-09-05 用户委派，覆盖旧分工 Trae Work）
 - **前置**：TEX-22、TEX-28。
 - **要做什么**：进行 100 Room/1,000 WS、突发命令、重连风暴、4 小时 Soak 和容量余量测试，并验证告警。
 - **完成标准**：达到 P0 SLO 或输出可复现实测偏差；告警与报告绑定候选提交 SHA，且无私密数据。

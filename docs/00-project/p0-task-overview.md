@@ -74,7 +74,7 @@ flowchart TD
 | 前端 | [TEX-26](https://linear.app/texas-holdem/issue/TEX-26/feattex-26-build-event-animation-audio-and-reconnect-ux) | Trae Work | 动画、音效、断线体验 | [前端与发布](./p0-web-and-release-tasks.md#tex-26动画音效与重连体验) |
 | 前端 | [TEX-27](https://linear.app/texas-holdem/issue/TEX-27/feattex-27-build-results-settings-and-player-hand-history) | Trae Work | 赛果、设置、个人手牌历史 | [前端与发布](./p0-web-and-release-tasks.md#tex-27赛果设置与个人历史) |
 | 验证 | [TEX-28](https://linear.app/texas-holdem/issue/TEX-28/testtex-28-implement-p0-integration-e2e-and-security-tests) | Trae Work | 全流程、重连和安全测试 | [前端与发布](./p0-web-and-release-tasks.md#tex-28联调e2e与安全测试) |
-| 验证 | [TEX-29](https://linear.app/texas-holdem/issue/TEX-29/testtex-29-run-load-soak-and-monitoring-validation) | Trae Work | 压力、稳定性、监控验证 | [前端与发布](./p0-web-and-release-tasks.md#tex-29压测稳定性与监控验证) |
+| 验证 | [TEX-29](https://linear.app/texas-holdem/issue/TEX-29/testtex-29-run-load-soak-and-monitoring-validation) | Claude Code | 压力、稳定性、监控验证 | [前端与发布](./p0-web-and-release-tasks.md#tex-29压测稳定性与监控验证) |
 | 发布 | [TEX-30](https://linear.app/texas-holdem/issue/TEX-30/choretex-30-assemble-p0-release-evidence-and-acceptance) | Codex + 用户 | 发布证据与最终决定 | [前端与发布](./p0-web-and-release-tasks.md#tex-30发布验收) |
 
 ## 5. 所有任务都必须遵守的交付门槛
