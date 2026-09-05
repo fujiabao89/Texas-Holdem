@@ -25,6 +25,8 @@ import { createBackpressureLatch } from "./persistence/backpressure";
 import { createPersistenceWriter } from "./persistence/persistence-writer";
 import { recoverActiveTournaments } from "./persistence/recovery";
 import { createTestRngFactory } from "./test-rng-factory";
+import { createServerMetrics, N as MetricName } from "./observability/server-metrics";
+import { createRateLimiter, parseRateLimitProfile } from "./http/middleware/rate-limit";
 
 /**
  * TEX-28 测试种子注入：生产默认安全随机（SecureRandomSource）；仅当隔离测试入口
@@ -43,6 +45,12 @@ if (rngTestSeed !== undefined && process.env.NODE_ENV === "production") {
   );
 }
 const rngFactory = createTestRngFactory(rngTestSeed);
+
+// TEX-29：服务端指标注册表与限流档位（默认 default；load-test 仅隔离压测环境且禁生产）。
+const rateLimitProfile = parseRateLimitProfile();
+const metrics = createServerMetrics();
+const globalRateLimit =
+  rateLimitProfile === "load-test" ? { max: 3000, timeWindow: "1 minute" as const } : undefined;
 
 const config = parseAppConfig();
 const database = createDatabase(parseDatabaseConfig());
@@ -69,6 +77,8 @@ const writer = createPersistenceWriter({
   onBackpressureChange: (level) => {
     backpressureLatch.onLevel(level);
     persistenceDegraded.accepting = level === "ok";
+    metrics.set(MetricName.persistenceWatermarkLevel, level === "hard" ? 2 : level === "soft" ? 1 : 0);
+    metrics.set(MetricName.persistenceDegraded, level === "ok" ? 0 : 1);
     if (level === "hard") {
       console.warn("persistence hard watermark: pausing active tournaments at hand boundary");
     }
@@ -79,6 +89,7 @@ const writer = createPersistenceWriter({
   },
   onIntegrityError: (error, bundle) => {
     // 数据损坏：Writer 已隔离该 Tournament（不重试/不覆盖）；通知运行期停当前手后（§13）。
+    metrics.inc(MetricName.persistenceIntegrityErrors);
     console.error(
       `persistence integrity error; quarantining tournament=${bundle.tournamentId}`,
       error,
@@ -116,6 +127,13 @@ tournamentManager = createTournamentManager({
     isConnectionCurrent: connectionEpochs.isCurrent,
     // 同步 hard 背压检查：手末 bundle 自身触达 hard 时也能在推进下一手前停下（§12.2）。
     isBackpressurePaused: () => backpressureLatch.hardPaused,
+    // TEX-29：Engine Critical Error（不变量违反）计数并脱敏记录（只含 tournamentId，不写牌面/诊断细节）。
+    onCriticalEngineError: (error, context) => {
+      metrics.inc(MetricName.engineCriticalErrors);
+      console.error(
+        `engine critical error; freezing tournament=${context.tournamentId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    },
   },
 });
 
@@ -143,10 +161,55 @@ const app = buildApp({
   tournamentManager,
   tournamentEvents,
   connectionEpochs,
+  metrics,
+  rateLimiter: createRateLimiter(Date.now, rateLimitProfile),
+  rateLimit: globalRateLimit,
   // Hand History 投影读取（TEX-36）：归档历史经 token 摘要数据库侧鉴权，
   // 不依赖内存 RoomManager（进程重启/房间关闭后仍可读）。
   handHistoryRepository: createHandHistoryRepository(database),
 });
+
+// ---- TEX-29 进程采样器：Active Room/Tournament、持久化队列/水位、内存/CPU/事件循环滞后 ----
+const PROCESS_SAMPLE_MS = 5_000;
+let lastCpuUsage = process.cpuUsage();
+let lastCpuAtMs = Date.now();
+let lastEventLoopTickAt = Date.now();
+function sampleProcessMetrics(): void {
+  metrics.set(MetricName.activeRooms, roomManager.activeRoomCount());
+  metrics.set(MetricName.activeTournaments, tournamentManager.activeTournamentIds().length);
+  const memory = process.memoryUsage();
+  metrics.set(MetricName.processRssBytes, memory.rss);
+  metrics.set(MetricName.processHeapUsedBytes, memory.heapUsed);
+  metrics.set(MetricName.processHeapTotalBytes, memory.heapTotal);
+  const nowMs = Date.now();
+  const cpu = process.cpuUsage(lastCpuUsage);
+  const wallSeconds = (nowMs - lastCpuAtMs) / 1000;
+  if (wallSeconds > 0) {
+    metrics.set(MetricName.processCpuRatio, (cpu.user + cpu.system) / 1e6 / wallSeconds);
+  }
+  lastCpuUsage = cpu;
+  lastCpuAtMs = nowMs;
+  const writerMetrics = writer.getMetrics();
+  metrics.set(MetricName.persistenceQueueItems, writerMetrics.items);
+  metrics.set(MetricName.persistenceQueueBytes, writerMetrics.bytes);
+  metrics.set(MetricName.persistenceQueueOldestSeconds, (writerMetrics.oldestPendingAgeMs ?? 0) / 1000);
+  metrics.set(MetricName.persistenceQuarantined, writerMetrics.quarantined.length);
+  metrics.set(MetricName.persistenceLastDbLatencySeconds, (writerMetrics.lastDbLatencyMs ?? 0) / 1000);
+  metrics.set(MetricName.persistenceConsecutiveFailures, writerMetrics.consecutiveFailures);
+  metrics.set(MetricName.uptimeSeconds, process.uptime());
+}
+function startMetricsSamplers(): void {
+  setInterval(sampleProcessMetrics, PROCESS_SAMPLE_MS);
+  setInterval(() => {
+    const now = Date.now();
+    metrics.set(
+      MetricName.eventLoopLagSeconds,
+      Math.max(0, (now - lastEventLoopTickAt - PROCESS_SAMPLE_MS) / 1000),
+    );
+    lastEventLoopTickAt = now;
+  }, PROCESS_SAMPLE_MS);
+}
+startMetricsSamplers();
 
 const rawPort = process.env.PORT ?? "3001";
 const port = Number(rawPort);

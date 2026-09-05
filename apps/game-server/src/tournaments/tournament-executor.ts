@@ -71,6 +71,8 @@ export interface TournamentOutputSink {
 
 export interface TournamentExecutorDeps {
   readonly output: TournamentOutputSink;
+  /** TEX-29 观测：Engine Critical Error（不变量违反冻结）上报，由组合根接指标计数。 */
+  readonly onCriticalEngineError?: (error: unknown, context: { readonly tournamentId: string }) => void;
   /** Optional transport authority check. Internal timers and tests do not need it. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
   /**
@@ -561,6 +563,7 @@ export class TournamentExecutor {
   private freeze(error: unknown): void {
     this.state.status = "FROZEN";
     this.state.criticalDiagnostic = error instanceof Error ? error.message : String(error);
+    this.deps.onCriticalEngineError?.(error, { tournamentId: this.state.tournamentId });
     this.cancelAllTimers();
   }
 
