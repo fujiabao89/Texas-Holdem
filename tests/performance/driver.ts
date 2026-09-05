@@ -11,7 +11,6 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { PROTOCOL_VERSION } from "../../packages/protocol/src/index";
 import { WsTestClient } from "../clients/ws-client";
 import type { MetricsCollector } from "./metrics";
 import * as E from "./engine";
@@ -39,13 +38,42 @@ interface AnyMessage {
     readonly status?: string;
     readonly event?: { readonly type?: string };
     readonly sequence?: string;
+    readonly tournamentId?: string;
     readonly patch?: {
       readonly currentActorPlayerId?: string | null;
       readonly tournamentStatus?: string;
-      readonly viewer?: { readonly playerId?: string; readonly legalActions?: E.LegalActionsView | null };
+      readonly viewer?: {
+        readonly playerId?: string;
+        readonly legalActions?: E.LegalActionsView | null;
+      };
     };
     readonly roomRevision?: string;
   };
+}
+
+/**
+ * 运行末尾扫描单连接收到的 GAME_EVENT：按 tournamentId 分组检查 sequence 严格 +1。
+ * 任何非严格递增的落点都计为断点（真实链路 sequence/投影断言，见 docs/06 §10.1 burst）。
+ */
+export function countSequenceViolations(
+  client: { readonly messages: readonly { readonly type: string; readonly payload?: unknown }[] },
+  metrics: MetricsCollector,
+): number {
+  const lastSeq = new Map<string, number>();
+  let found = 0;
+  for (const raw of client.messages) {
+    const message = raw as unknown as AnyMessage;
+    if (message.type !== "GAME_EVENT") continue;
+    const tournamentId = message.payload?.tournamentId;
+    const sequence = message.payload?.sequence;
+    if (typeof tournamentId !== "string" || typeof sequence !== "string") continue;
+    const seq = Number(sequence);
+    const previous = lastSeq.get(tournamentId);
+    if (previous !== undefined && seq !== previous + 1) found += 1;
+    lastSeq.set(tournamentId, seq);
+  }
+  if (found > 0) metrics.inc("sequenceViolations", found);
+  return found;
 }
 
 function isActorTurn(message: AnyMessage, playerId: string): boolean {
@@ -86,12 +114,8 @@ async function connectAndAuthenticate(
 
 async function sendReady(ws: WsTestClient): Promise<void> {
   const requestId = randomUUID();
-  ws.send({
-    type: "SET_READY",
-    protocolVersion: PROTOCOL_VERSION,
-    requestId,
-    payload: { ready: true },
-  });
+  // SetReadyCommandSchema（protocol）无 protocolVersion 字段（strict），多传会被拒绝。
+  ws.send({ type: "SET_READY", requestId, payload: { ready: true } });
   const result = await ws.waitForCommandResult(requestId, 20_000);
   if (result.status !== "APPLIED") {
     throw new Error(`[driver] SET_READY REJECTED ${JSON.stringify(result.error)}`);
@@ -100,13 +124,18 @@ async function sendReady(ws: WsTestClient): Promise<void> {
 
 /** 等 Host 看到全员入座且 Ready 的 LOBBY 快照，返回其 roomRevision。 */
 async function allReadyRevision(hostWs: WsTestClient, total: number): Promise<string> {
-  const fromIndex = hostWs.messages.length;
+  // 全员就绪快照可能已在等待前到达（host 的 SET_READY COMMAND_RESULT 常晚于广播），
+  // 因此从头扫描既有缓冲；初始建房阶段只可能有一个“全部就绪”快照，不会误匹配。
+  const fromIndex = 0;
   const message = await E.waitForIndexed(
     hostWs,
     (raw) => {
       const m = raw as AnyMessage;
       if (m.type !== "ROOM_SNAPSHOT") return false;
-      const payload = m.payload as { status: string; players: { seat: number | null; ready: boolean }[] };
+      const payload = m.payload as {
+        status: string;
+        players: { seat: number | null; ready: boolean }[];
+      };
       return (
         payload.status === "LOBBY" &&
         payload.players.length === total &&
@@ -218,7 +247,6 @@ async function playerAgent(
   const ws = session.ws;
   if (ws === null) return;
   let cursor = ws.messages.length;
-  let lastSeq = 0;
   const rand = E.prng01(0x9e3779b9 ^ ((session.seat + 1) * 2654435761));
   while (!shared.finished && Date.now() < window.deadlineMs && !window.stop) {
     const message = await E.waitForIndexed(
@@ -243,13 +271,12 @@ async function playerAgent(
     }
     const sequence = m.payload?.sequence;
     const patch = m.payload?.patch;
-    if (typeof sequence === "string") {
-      const seq = Number(sequence);
-      if (lastSeq > 0 && seq !== lastSeq + 1) metrics.inc("sequenceViolations");
-      lastSeq = seq;
-    }
     const legal = patch?.viewer?.legalActions ?? null;
-    if (legal === null || patch?.currentActorPlayerId !== session.playerId || room.tournamentId === null) {
+    if (
+      legal === null ||
+      patch?.currentActorPlayerId !== session.playerId ||
+      room.tournamentId === null
+    ) {
       continue;
     }
     const action: WireAction = E.chooseAction(legal, rand);
@@ -336,6 +363,7 @@ export async function runSustained(options: {
   await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
   for (const table of tables) {
     for (const session of [table.host, ...table.players]) {
+      if (session.ws !== null) countSequenceViolations(session.ws, metrics);
       await E.closeSession(session);
     }
   }
@@ -353,12 +381,16 @@ export async function runReconnectStorm(
   if (seats.length === 0) throw new Error("reconnect 场景没有在座会话");
   const perSeat = Math.max(1, Math.ceil(attempts / seats.length));
   let scheduled = 0;
-  await mapWithConcurrency(seats, async (seat) => {
-    for (let i = 0; i < perSeat && scheduled < attempts; i++) {
-      scheduled += 1;
-      await E.reconnectOnce(server, { roomId: seat.roomId, token: seat.token }, metrics);
-    }
-  }, 40);
+  await mapWithConcurrency(
+    seats,
+    async (seat) => {
+      for (let i = 0; i < perSeat && scheduled < attempts; i++) {
+        scheduled += 1;
+        await E.reconnectOnce(server, { roomId: seat.roomId, token: seat.token }, metrics);
+      }
+    },
+    40,
+  );
 }
 
 export async function mapWithConcurrency<T>(

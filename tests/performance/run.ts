@@ -27,7 +27,11 @@ import { redactJson, sensitiveKeysIn } from "./redaction";
 import { serverInfoFrom, PerfHttp } from "./engine";
 import { startOneTable, runSustained, runReconnectStorm } from "./driver";
 import type { RoomSession } from "./engine";
-import { createRealRunId, resolveRealDatabaseUrl, withApplicationName } from "../e2e/real/support/run-identity";
+import {
+  createRealRunId,
+  resolveRealDatabaseUrl,
+  withApplicationName,
+} from "../e2e/real/support/run-identity";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, "../..");
@@ -38,6 +42,16 @@ const EXIT = { pass: 0, fail: 1, usage: 2, insufficient: 3 } as const;
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** FNV-1a 派生 [0, 2^32) 内整数 seed（game-server TEX_TEST_RNG_SEED 要求）。 */
+function deriveSeedInt(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
 }
 
 async function pickFreePort(): Promise<number> {
@@ -113,7 +127,7 @@ async function launchLocalServer(
     TOKEN_HMAC_SECRET: "tex29-perf-isolated-token-secret-0000000001",
     GAME_SERVER_RATE_LIMIT_PROFILE: "load-test",
   };
-  if (sha !== undefined) env.TEX_TEST_RNG_SEED = `perf-${sha}`;
+  if (sha !== undefined) env.TEX_TEST_RNG_SEED = String(deriveSeedInt(sha));
   const launcher = resolve(here, "launch-game-server.ts");
   const child = spawn(
     process.execPath,
@@ -137,7 +151,9 @@ async function launchLocalServer(
 }
 
 async function dropSchema(schema: string): Promise<void> {
-  const { Pool } = hereRequire(resolve(REPO_ROOT, "apps/game-server/node_modules/pg")) as typeof import("pg");
+  const { Pool } = hereRequire(
+    resolve(REPO_ROOT, "apps/game-server/node_modules/pg"),
+  ) as typeof import("pg");
   const pool = new Pool({ connectionString: resolveRealDatabaseUrl(process.env), max: 1 });
   try {
     await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
@@ -178,7 +194,8 @@ function summarizePlan(
   meta: Record<string, string | number | boolean | null>,
 ): SummaryDoc {
   const snapshot = metrics.snapshot();
-  const actionLatency = snapshot.actionLatencyMs.length > 0 ? describeLatencies(snapshot.actionLatencyMs) : null;
+  const actionLatency =
+    snapshot.actionLatencyMs.length > 0 ? describeLatencies(snapshot.actionLatencyMs) : null;
   const reconnectLatency =
     snapshot.reconnectLatencyMs.length > 0 ? describeLatencies(snapshot.reconnectLatencyMs) : null;
   return {
@@ -219,12 +236,18 @@ async function main(): Promise<number> {
   try {
     args = parsePerfArgs(process.argv.slice(2));
   } catch (error) {
-    console.error(`参数错误：${error instanceof Error ? error.message : String(error)}\n\n${USAGE}`);
+    console.error(
+      `参数错误：${error instanceof Error ? error.message : String(error)}\n\n${USAGE}`,
+    );
     return EXIT.usage;
   }
   let plan;
   try {
-    plan = resolvePlan(args.scenario, { rooms: args.rooms, players: args.players, durationMs: args.durationMs });
+    plan = resolvePlan(args.scenario, {
+      rooms: args.rooms,
+      players: args.players,
+      durationMs: args.durationMs,
+    });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return EXIT.usage;
@@ -234,7 +257,8 @@ async function main(): Promise<number> {
     console.error(`正式场景 ${plan.name} 必须 --sha <hex>（绑定产物与门禁的候选提交）`);
     return EXIT.usage;
   }
-  const outDir = args.out === "tests/performance/.artifacts" ? DEFAULT_OUT : resolve(REPO_ROOT, args.out);
+  const outDir =
+    args.out === "tests/performance/.artifacts" ? DEFAULT_OUT : resolve(REPO_ROOT, args.out);
   mkdirSync(outDir, { recursive: true });
   const outFile = resolve(outDir, `perf-${plan.name}-${new Date(startedAtIso).getTime()}.json`);
 
@@ -253,7 +277,9 @@ async function main(): Promise<number> {
     if (plan.name === "reconnect") {
       const rooms: RoomSession[] = [];
       for (let i = 0; i < plan.rooms; i++) {
-        rooms.push(await startOneTable({ http, server, metrics, roomTag: String(i), players: plan.players }));
+        rooms.push(
+          await startOneTable({ http, server, metrics, roomTag: String(i), players: plan.players }),
+        );
       }
       roomsStarted = rooms.length;
       await runReconnectStorm(rooms, server, metrics, plan.target.opCount ?? 500);
@@ -281,10 +307,9 @@ async function main(): Promise<number> {
       runId: createRealRunId(),
       startedAtIso,
       ...machineMeta(),
-      note:
-        plan.reducedEvidence
-          ? "缩减运行（参数低于官方目标），不作为 Release 证据；延迟为 driver 观测值（含本机回环 RTT），Release 以 /metrics 的 texas_action_to_event_seconds 服务端直方图为准。"
-          : "延迟为 driver 观测值（含本机回环 RTT）；Release 以 /metrics 服务端直方图为准。",
+      note: plan.reducedEvidence
+        ? "缩减运行（参数低于官方目标），不作为 Release 证据；延迟为 driver 观测值（含本机回环 RTT），Release 以 /metrics 的 texas_action_to_event_seconds 服务端直方图为准。"
+        : "延迟为 driver 观测值（含本机回环 RTT）；Release 以 /metrics 服务端直方图为准。",
     };
     const summary = summarizePlan(plan, metrics, meta);
     summary.load.roomsStarted = roomsStarted;
@@ -292,7 +317,9 @@ async function main(): Promise<number> {
     // 门禁判定：正式场景判 SLO；smoke 判功能不变量。
     const checks = plan.target.releaseGate ? SCENARIO_SLO[plan.name] : [];
     const gateResults = evaluateSlo(checks, metrics.snapshot());
-    const verdict = plan.target.releaseGate ? overallVerdict(gateResults) : functionalVerdict(metrics);
+    const verdict = plan.target.releaseGate
+      ? overallVerdict(gateResults)
+      : functionalVerdict(metrics);
     summary.gates = { checks: gateResults, verdict };
 
     const redacted = redactJson(summary);
@@ -330,7 +357,9 @@ async function main(): Promise<number> {
   }
 }
 
-async function closeSessionSafe(session: { ws: { close(): void; closed: Promise<unknown> } | null }): Promise<void> {
+async function closeSessionSafe(session: {
+  ws: { close(): void; closed: Promise<unknown> } | null;
+}): Promise<void> {
   const ws = session.ws;
   if (ws === null) return;
   session.ws = null;
