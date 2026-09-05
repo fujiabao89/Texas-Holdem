@@ -4,9 +4,9 @@ PR #39 审查意见核验与处置台账（2026-09-05）。来源：Codex（chat
 
 | # | 来源 | 位置 | 意见（压缩） | 核验结论 | 严重度 | 处置 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Codex/C-R/Greptile | tests/performance burst | burst 未按 `opWindowMs` 调度，可能假通过 | 确认：非缩减正式 burst 语义未落地 | P1 | 已加防线（`supportsFormalPass`：burst 正式运行返回 insufficient 不判 pass）；完整窗口调度列为 Release 前增强 |
+| 1 | Codex/C-R/Greptile | tests/performance burst | burst 未按 `opWindowMs` 调度，可能假通过 | 确认 | P1 | 已实现：非缩减 burst 以 `target.opWindowMs` 为压测窗口执行，`APPLIED` 数 < `opCount` 判 insufficient；运行器级边界测试随 Release 增强补齐 |
 | 2 | Codex/CodeRabbit | driver.ts | `deadline` 在建桌前计算，ramp 计入窗口 | 确认 | P1 | 已修复：`runSustained` 建桌完成后再起算窗口 |
-| 3 | Codex/CodeRabbit/Greptile | soak 内存 | Soak `memoryGrowthRatio` 恒 null（未采集 RSS），门禁不可判 | 确认（仅缺失采样） | P1 | 已加防线（soak 正式运行无内存样本→insufficient）；RSS 采样器列为 Release 前增强；`not-measured` 本就不折算为通过 |
+| 3 | Codex/CodeRabbit/Greptile | soak 内存 | Soak `memoryGrowthRatio` 恒 null（未采集 RSS），门禁不可判 | 确认 | P1 | 已实现：soak 经被测 `/metrics` 每 10s 采样 RSS，≥2h 时按首/末 1h 窗口算 `growthRatio` 写入 metrics；不足窗口保持 `not-measured`（不判通过） |
 | 4 | Codex/CodeRabbit/Greptile | unexpected disconnect | driver 本地意外断连计数恒 0，normal 门禁空转 | 确认（局限） | P1 | 跳过：Release 权威判定用被测 `/metrics` 的 `texas_ws_connections_closed_total{category}`（服务端类别），本地 driver 不做伪计数 |
 | 5 | Codex | driver.ts | WS schema 违反未计入失败 | 确认 | P1 | 已修复：`countSchemaViolations` 计入 `invariantViolations`（sustained 与 reconnect 收尾均调用） |
 | 6 | Codex/CodeRabbit | main.ts CPU | `process.cpuUsage(lastCpuUsage)` 增量写回基线导致比值错 | 确认 | P2 | 已修复：用两次绝对快照作差 |
@@ -21,7 +21,7 @@ PR #39 审查意见核验与处置台账（2026-09-05）。来源：Codex（chat
 | 15 | CodeRabbit | run.ts | `--keep-server` 声明但未生效 | 确认 | P1 | 已修复：finally 按 `args.keepServer` 决定是否 kill/drop |
 | 16 | CodeRabbit | docs/00-project | p0-task-overview 状态“尚未开始”过时 | 确认 | P3 | 已修复：改为“实现进行中…正式负载/人工验收待 Release” |
 | 17 | CodeRabbit | docs/README | blockquote 空行 MD028 | 确认（风格） | P3 | 跳过：非 CI 门禁、纯 markdownlint 风格，后续统一 prettier/markdown 处理 |
-| 18 | CodeRabbit | docs/05 ops 告警关联 room/tournament | 聚合告警缺 room/tournament 关联 | 见理由 | P1/P2 | 跳过：per-room 高基数标签违反「labelNames 有限集合」红线；聚合告警保留 env/version，room/tournament 关联走日志/注解（docs/06 §10.2 已述），不引入无限基数 |
+| 18 | CodeRabbit | docs/05 ops 告警关联 room/tournament | 聚合告警缺 room/tournament 关联 | 确认 | P1/P2 | 已修复：docs/06 §10.2 与 docs/05-operations 明确——聚合告警带 `environment`/`version` 标签，`roomId`/`tournamentId` 关联经结构化日志字段（附查询指引），明确禁用 per-room 高基数指标标签 |
 | 19 | CodeRabbit | scenarios.test | 需要 opWindowMs 运行器级时间窗测试 | 同 #1 | P1 | 同 #1：正式窗口语义未落地前不判 pass；测试随 Release 增强补齐 |
 
 **验证**（修复后）：`pnpm exec vitest run --project unit` = 619 通过；`tsc --noEmit -p tsconfig.test.json` = 0 错；eslint 相关文件 = 0 错。真实链路正式负载仍未在共享/本地运行（需隔离环境），与 docs/06 §10 诚实性约定一致。

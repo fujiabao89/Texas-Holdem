@@ -5,6 +5,7 @@ import {
   classifyRejected,
   isLoopbackHost,
   normalizeServerBase,
+  parsePrometheusGauge,
   prng01,
   serverInfoFrom,
   submitActionCommand,
@@ -119,6 +120,23 @@ describe("engine 基址安全校验（Codex/CodeRabbit 安全项）", () => {
     expect(() => serverInfoFrom("http://game.example.com:3001")).toThrow(/明文|loopback/);
     expect(() => normalizeServerBase("game.example.com:3001")).toThrow(/非法基址|不受支持/);
     expect(() => normalizeServerBase("ftp://example.com/x")).toThrow(/不受支持/);
+  });
+});
+
+describe("engine.parsePrometheusGauge（Soak 内存采样用）", () => {
+  const text = [
+    "# HELP texas_process_resident_memory_bytes Process RSS bytes",
+    "# TYPE texas_process_resident_memory_bytes gauge",
+    "texas_process_resident_memory_bytes 123456789",
+    "texas_active_rooms 7",
+  ].join("\n");
+  it("返回指定 gauge 首值，跳过注释", () => {
+    expect(parsePrometheusGauge(text, "texas_process_resident_memory_bytes")).toBe(123456789);
+    expect(parsePrometheusGauge(text, "texas_active_rooms")).toBe(7);
+  });
+  it("未知/损坏行返回 null", () => {
+    expect(parsePrometheusGauge(text, "no_such_metric")).toBeNull();
+    expect(parsePrometheusGauge("texas_process_resident_memory_bytes abc\n", "texas_process_resident_memory_bytes")).toBeNull();
   });
 });
 

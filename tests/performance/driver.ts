@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 
 import { WsTestClient } from "../clients/ws-client";
 import type { MetricsCollector } from "./metrics";
+import { growthRatio } from "./stats";
 import * as E from "./engine";
 import type { PlayerSession, RoomSession, ServerInfo, WireAction } from "./engine";
 
@@ -357,6 +358,19 @@ export interface SustainOutcome {
   readonly roomsStarted: number;
 }
 
+const MEMORY_SAMPLE_MS = 10_000;
+const MEMORY_WINDOW_MS = 60 * 60_000; // Soak 对比窗口：1 小时
+
+async function fetchServerGauge(server: ServerInfo, name: string): Promise<number | null> {
+  try {
+    const response = await fetch(`${server.httpBase}/metrics`);
+    if (!response.ok) return null;
+    return E.parsePrometheusGauge(await response.text(), name);
+  } catch {
+    return null;
+  }
+}
+
 /** 持续场景（smoke/normal/soak/headroom/burst 缩减）：开 N 桌并打到窗口截止。 */
 export async function runSustained(options: {
   readonly http: E.PerfHttp;
@@ -365,15 +379,49 @@ export async function runSustained(options: {
   readonly rooms: number;
   readonly players: number;
   readonly durationMs: number;
+  /** Soak：是否周期采样被测 /metrics RSS 以计算内存增长比。 */
+  readonly sampleMemory?: boolean;
 }): Promise<SustainOutcome> {
-  const { http, server, metrics, rooms, players, durationMs } = options;
+  const { http, server, metrics, rooms, players, durationMs, sampleMemory } = options;
   const tables: RoomSession[] = [];
   for (let i = 0; i < rooms; i++) {
     tables.push(await startOneTable({ http, server, metrics, roomTag: String(i), players }));
   }
   // 压测窗口从建桌完成（ramp-up 结束）起算，避免把串行建桌计入负载时长。
-  const window: RunWindow = { deadlineMs: Date.now() + durationMs, stop: false };
+  const startMs = Date.now();
+  const window: RunWindow = { deadlineMs: startMs + durationMs, stop: false };
+  const memoryPoints: { readonly tMs: number; readonly value: number }[] = [];
+  let memTimer: NodeJS.Timeout | null = null;
+  if (sampleMemory === true) {
+    const tick = (): void => {
+      void fetchServerGauge(server, "texas_process_resident_memory_bytes").then((value) => {
+        if (value !== null) memoryPoints.push({ tMs: Date.now(), value });
+      });
+    };
+    tick();
+    memTimer = setInterval(tick, MEMORY_SAMPLE_MS);
+  }
   await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
+  if (memTimer !== null) clearInterval(memTimer);
+  if (sampleMemory === true) {
+    // 末小时 vs 首个稳态小时（docs/06 §10.1 Soak：稳态后末小时均值 ≤ 首稳态小时 1.1×）。
+    // 不足 2 小时无法构成两个 1h 窗口 → 保持 null（not-measured，不折算通过）。
+    if (memoryPoints.length >= 2 && durationMs >= 2 * MEMORY_WINDOW_MS) {
+      try {
+        metrics.setMemoryGrowthRatio(
+          growthRatio(
+            memoryPoints,
+            startMs,
+            startMs + MEMORY_WINDOW_MS,
+            startMs + durationMs - MEMORY_WINDOW_MS,
+            startMs + durationMs,
+          ),
+        );
+      } catch {
+        metrics.setMemoryGrowthRatio(null);
+      }
+    }
+  }
   for (const table of tables) {
     for (const session of [table.host, ...table.players]) {
       if (session.ws !== null) {

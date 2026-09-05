@@ -168,6 +168,22 @@ export function serverInfoFrom(serverBase: string): ServerInfo {
   return { httpBase, wsBase: wsBase + "/api/v1/ws" };
 }
 
+/**
+ * 解析 Prometheus text 中 `name value` 的 gauge 行（首个无注释命中）。
+ * 供 Soak 采样被测 `/metrics` 的 texas_process_resident_memory_bytes。
+ */
+export function parsePrometheusGauge(text: string, name: string): number | null {
+  const prefix = `${name} `;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("#")) continue;
+    if (line.startsWith(prefix)) {
+      const value = Number(line.slice(prefix.length).trim());
+      return Number.isFinite(value) ? value : null;
+    }
+  }
+  return null;
+}
+
 interface Envelope {
   readonly data?: unknown;
   readonly error?: {

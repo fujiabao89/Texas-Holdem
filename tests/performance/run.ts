@@ -226,8 +226,11 @@ function summarizePlan(
  * soak 需采集被测进程 RSS 窗口算 growthRatio——二者尚未落地时不允许给出“通过”，
  * 避免把未实现的窗口语义当 Release 证据（见 docs/03-engineering/TEX-29-findings-ledger.md）。
  */
-function supportsFormalPass(plan: ReturnType<typeof resolvePlan>, metrics: MetricsCollector): boolean {
-  if (plan.name === "burst") return false;
+function supportsFormalPass(
+  plan: ReturnType<typeof resolvePlan>,
+  metrics: MetricsCollector,
+): boolean {
+  // soak 需 ≥2h 采样算出内存增长比才有 memory-growth 证据；burst 由窗口内 APPLIED 数判定。
   if (plan.name === "soak") return metrics.snapshot().memoryGrowthRatio !== null;
   return true;
 }
@@ -302,13 +305,19 @@ async function main(): Promise<number> {
         }
       }
     } else {
+      // 非缩减 burst 以 opWindowMs（1s）为实际压测窗口；缩减运行沿用 durationMs。
+      const durationMs =
+        plan.name === "burst" && !plan.reducedEvidence
+          ? (plan.target.opWindowMs ?? plan.durationMs)
+          : plan.durationMs;
       const outcome = await runSustained({
         http,
         server,
         metrics,
         rooms: plan.rooms,
         players: plan.players,
-        durationMs: plan.durationMs,
+        durationMs,
+        sampleMemory: plan.name === "soak",
       });
       roomsStarted = outcome.roomsStarted;
     }
@@ -338,11 +347,23 @@ async function main(): Promise<number> {
       : functionalVerdict(metrics);
     summary.gates = { checks: gateResults, verdict };
 
-    // 未落地的窗口/内存语义不得以正式运行给出通过（见 TEX-29-findings-ledger）。
+    // burst 非缩减：须在 opWindow 内达成目标 APPLIED 数（docs/06 §10.1 突发行动）。
+    if (!plan.reducedEvidence && plan.name === "burst") {
+      const applied = metrics.snapshot().actionLatencyMs.length;
+      const target = plan.target.opCount ?? Number.POSITIVE_INFINITY;
+      if (applied < target) {
+        console.error(
+          `[perf] burst：opWindow(${plan.target.opWindowMs}ms) 内 APPLIED=${applied} < 目标 ${target}，` +
+            "未达到 §10.1 突发行动负载，不判通过。",
+        );
+        return EXIT.insufficient;
+      }
+    }
+
+    // soak 无 ≥2h 内存采样样本时不得以正式运行给出通过（见 TEX-29-findings-ledger）。
     if (!plan.reducedEvidence && !supportsFormalPass(plan, metrics)) {
       console.error(
-        "[perf] 正式场景 burst（opWindow 调度）/soak（RSS 采样）门禁尚未落地，本次不给出通过判定；" +
-          "详见 docs/03-engineering/TEX-29-findings-ledger.md。",
+        "[perf] 正式场景 soak 需 ≥2h RSS 采样产出 memory-growth 证据；本次不给出通过判定。",
       );
       return EXIT.insufficient;
     }
