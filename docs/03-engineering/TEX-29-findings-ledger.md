@@ -12,7 +12,9 @@ PR #39 审查意见核验与处置台账（2026-09-05）。来源：Codex（chat
 | 6 | Codex/CodeRabbit | main.ts CPU | `process.cpuUsage(lastCpuUsage)` 增量写回基线导致比值错 | 确认 | P2 | 已修复：用两次绝对快照作差 |
 | 7 | Codex | Grafana 未自动 provisioning | compose 仅挂数据卷，dashboard/datasource 未自动导入 | 确认（运维增强） | P2 | 跳过/后续：本地演练可手动导入或后续补 `grafana/provisioning`；不阻塞本 PR |
 | 8 | Greptile | performance.yml | 正式负载用共享 runner | 确认（流程约束） | P1 | 已加 workflow guard：正式 normal/burst/soak/headroom 必须显式提供候选 `inputs.sha`，禁止 ref 兜底；runner 隔离仍属 Release 流程约束（README 已述） |
-| 9 | Greptile | compose/webhook 暴露 | 端口/容器以 root、日志打印 | 部分 | P1/P3 | Dockerfile 已 `USER node`；端口仅在本地演练 compose 暴露（README 注明仅隔离演练），记日志内容为脱敏告警，跳过其余 |
+| 9 | Greptile | compose/webhook 暴露 | 端口/容器以 root、日志打印 | 确认（部分） | P1 | 已修复：compose 四服务绑定 `127.0.0.1`；Dockerfile `USER node`；sink 仅 POST + 1MiB 上限/413 + 请求/头超时；日志仅脱敏告警字段（#20/#21） |
+| 20 | Greptile | docker-compose Grafana | 仓库已知 admin 口令 + `0.0.0.0:3000` 暴露 | 确认 | P1 | 已修复：绑定 `127.0.0.1:3000`；口令改 `.env` 必填（`GRAFANA_ADMIN_PASSWORD`，.env.example/README） |
+| 21 | Greptile | scripts/webhook-sink.mjs | 请求体无界、无超时 + `0.0.0.0:9000` 暴露 | 确认 | P1 | 已修复：仅 POST、1 MiB 体积上限/413、`requestTimeout/headersTimeout`、绑定 `127.0.0.1:9000` |
 | 10 | CodeRabbit | prometheus retention | 配置文件含无效 `storage.tsdb.retention.*` | 确认 | P1 | 已修复：移除配置块，保留 docker-compose CLI 标志 `--storage.tsdb.retention.time=90d` |
 | 11 | CodeRabbit | rules/game-server.yml | Action 拒绝率含预期/用户输入码掩盖服务端回归 | 确认 | P1 | 已修复：表达式排除 `NOT_YOUR_TURN/STALE_GAME_STATE/ACTION_TIMEOUT/SESSION_REPLACED/INVALID_ACTION/INVALID_AMOUNT/TOURNAMENT_NOT_ACTIVE` |
 | 12 | CodeRabbit | engine 基址 | 远端明文 http / ws 发送 token | 确认 | P1 | 已修复：`normalizeServerBase`/`serverInfoFrom` 仅 loopback 允许 http→ws，远端强制 https→wss |

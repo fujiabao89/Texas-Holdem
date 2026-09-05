@@ -10,17 +10,17 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `prometheus/prometheus.yml` | 抓取 job（game-server）、存储保留期、Alertmanager 对接 |
+| `prometheus/prometheus.yml` | 抓取 job（game-server）、external_labels（environment/version）、Alertmanager 对接 |
 | `prometheus/rules/game-server.yml` | P0/P1 告警规则（阈值对齐 docs/06 §10.2，含最小样本/持续窗口） |
 | `alertmanager/alertmanager.yml` | 接收渠道（即时渠道 + 邮件兜底）、路由、抑制、脱敏要求 |
 | `grafana/dashboard.json` | 服务端运行面板（活跃数、延迟分位、持久化队列、资源） |
 | `docker-compose.yml` | 本地隔离演练栈：prometheus + alertmanager + grafana + webhook 接收器 |
-| `scripts/webhook-sink` | 本地演练用的即时应答接收器（证明本地链路，不代替真实渠道送达） |
+| `scripts/webhook-sink.mjs` | 本地演练用的即时应答接收器（证明本地链路，不代替真实渠道送达） |
 | `.env.example` | 渠道令牌/URL 占位（需授权后才填写，不提交真实值） |
 
 ## 保留期（docs/06 §10.2）
 
-- 指标 90 天：`prometheus.yml` 设 `storage.tsdb.retention.time=90d`。
+- 指标 90 天：`docker-compose.yml` 以 `--storage.tsdb.retention.time=90d` 启动参数设置（Prometheus 配置文件不承载 tsdb 保留键）。
 - 应用日志 30 天、安全/权限审计与 Release 证据 180 天：Prometheus 不承载日志；由部署环境（Loki/对象存储/CI 产物）在 `docs/05-operations/` 记录并按同一口径配置。任何含 Token、完整 Deck、未公开底牌或 AI 隐藏 Reasoning 的数据禁止进入上述任何存储。
 
 ## 告警内容红线
@@ -28,6 +28,8 @@
 告警必须含：版本（`version`）、环境（`environment`）、适用 room/tournament 关联标识（`roomId`/`tournamentId`，仅脱敏关联字段）。**禁止**携带 Token、完整 Deck、Burn Card 或未公开底牌（docs/06 §7/§10.2）。聚合指标标签不出现 room/player/request 等无限标识；关联信息由日志/告警 annotation 提供。
 
 ## 本地演练（隔离，不发生产、不向真实人员发送）
+
+演练前：复制 `.env.example` 为 `.env` 并设置 `GRAFANA_ADMIN_PASSWORD`（Grafana 口令不留仓库）；栈内服务仅绑定 `127.0.0.1`，不向局域网/公网暴露（Greptile 安全项）。
 
 ```bash
 # 1) 本地监控栈

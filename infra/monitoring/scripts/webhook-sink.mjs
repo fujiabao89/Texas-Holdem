@@ -1,15 +1,41 @@
 // 本地演练即时应答接收器（TEX-29）：接收 Alertmanager webhook 并把告警打到 stdout。
 // 只证明本地链路（Alertmanager→通知端点送达），不代替真实即时渠道/邮件兜底的送达证据。
+// 安全（Greptile 审查）：仅接受 POST；请求体上限 1 MiB（超限 413）；显式请求/头超时，
+// 防止无界积累内存与悬挂连接；端口在 compose 中仅绑定 127.0.0.1。
 import http from "node:http";
 
 const PORT = Number(process.env.PORT ?? 9000);
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MiB
 
 const server = http.createServer((req, res) => {
+  if (req.method !== "POST") {
+    res.writeHead(405, { "content-type": "text/plain" });
+    res.end("method not allowed\n");
+    return;
+  }
+  const declaredLength = Number(req.headers["content-length"] ?? Number.POSITIVE_INFINITY);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+    res.writeHead(413, { "content-type": "text/plain" });
+    res.end("payload too large\n");
+    req.resume();
+    return;
+  }
   let body = "";
+  let size = 0;
+  let oversized = false;
   req.on("data", (chunk) => {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) {
+      oversized = true;
+      res.writeHead(413, { "content-type": "text/plain" });
+      res.end("payload too large\n");
+      req.destroy();
+      return;
+    }
     body += chunk;
   });
   req.on("end", () => {
+    if (oversized) return;
     console.log(`[webhook-sink] ${req.method} ${req.url}`);
     if (body) {
       try {
@@ -28,8 +54,14 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("ok\n");
   });
+  req.on("error", () => undefined);
+  req.on("aborted", () => undefined);
 });
 
-server.listen(PORT, () => {
-  console.log(`[webhook-sink] listening on :${PORT}`);
+server.requestTimeout = 10_000;
+server.headersTimeout = 10_000;
+server.keepAliveTimeout = 5_000;
+
+server.listen(PORT, "127.0.0.1", () => {
+  console.log(`[webhook-sink] listening on 127.0.0.1:${PORT}`);
 });
