@@ -297,12 +297,22 @@ async function main(): Promise<number> {
         );
       }
       roomsStarted = rooms.length;
-      await runReconnectStorm(rooms, server, metrics, plan.target.opCount ?? 500);
+      const reconnectTarget = plan.target.opCount ?? 500;
+      const scheduled = await runReconnectStorm(rooms, server, metrics, reconnectTarget, {
+        windowMs: plan.reducedEvidence ? undefined : plan.target.opWindowMs,
+      });
       for (const room of rooms) {
         for (const session of [room.host, ...room.players]) {
           countSchemaViolations(session, metrics);
           await closeSessionSafe(session);
         }
+      }
+      if (!plan.reducedEvidence && scheduled < reconnectTarget) {
+        console.error(
+          `[perf] reconnect：opWindow(${plan.target.opWindowMs}ms) 内完成 ${scheduled} < 目标 ${reconnectTarget}，` +
+            "未满足 §10.1 重连风暴窗口，不判通过。",
+        );
+        return EXIT.insufficient;
       }
     } else {
       // 非缩减 burst 以 opWindowMs（1s）为实际压测窗口；缩减运行沿用 durationMs。

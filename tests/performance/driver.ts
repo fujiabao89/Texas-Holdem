@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 
 import { WsTestClient } from "../clients/ws-client";
 import type { MetricsCollector } from "./metrics";
-import { growthRatio } from "./stats";
+import { soakRatioOrNull } from "./stats";
 import * as E from "./engine";
 import type { PlayerSession, RoomSession, ServerInfo, WireAction } from "./engine";
 
@@ -404,23 +404,9 @@ export async function runSustained(options: {
   await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
   if (memTimer !== null) clearInterval(memTimer);
   if (sampleMemory === true) {
-    // 末小时 vs 首个稳态小时（docs/06 §10.1 Soak：稳态后末小时均值 ≤ 首稳态小时 1.1×）。
-    // 不足 2 小时无法构成两个 1h 窗口 → 保持 null（not-measured，不折算通过）。
-    if (memoryPoints.length >= 2 && durationMs >= 2 * MEMORY_WINDOW_MS) {
-      try {
-        metrics.setMemoryGrowthRatio(
-          growthRatio(
-            memoryPoints,
-            startMs,
-            startMs + MEMORY_WINDOW_MS,
-            startMs + durationMs - MEMORY_WINDOW_MS,
-            startMs + durationMs,
-          ),
-        );
-      } catch {
-        metrics.setMemoryGrowthRatio(null);
-      }
-    }
+    // 末小时 vs 首个稳态小时（docs/06 §10.1）。时长 <2h 或样本不足 → null（not-measured）。
+    const ratio = soakRatioOrNull(memoryPoints, startMs, durationMs, MEMORY_WINDOW_MS);
+    if (ratio !== null) metrics.setMemoryGrowthRatio(ratio);
   }
   for (const table of tables) {
     for (const session of [table.host, ...table.players]) {
@@ -434,13 +420,31 @@ export async function runSustained(options: {
   return { roomsStarted: tables.length };
 }
 
-/** 重连风暴：对全部在座会话反复「open→AUTH→首个快照」，attempts 分发给各座。 */
+export interface ReconnectStormOptions {
+  /** 窗口毫秒：超过窗口即停止调度（缺省不限）。 */
+  readonly windowMs?: number;
+  readonly clock?: () => number;
+  /** 可注入单次重连实现（测试用假实现，免真实网络）。 */
+  readonly perform?: (
+    server: ServerInfo,
+    session: { readonly roomId: string; readonly token: string },
+    metrics: MetricsCollector,
+  ) => Promise<E.ReconnectOutcome>;
+}
+
+/**
+ * 重连风暴：对全部在座会话反复「open→AUTH→首个快照」，attempts 分发给各座。
+ * 在 opWindowMs 窗口内调度；超窗停止。返回实际发起的重连数（<attempts 即窗口内未完成）。
+ */
 export async function runReconnectStorm(
   rooms: readonly RoomSession[],
   server: ServerInfo,
   metrics: MetricsCollector,
   attempts: number,
-): Promise<void> {
+  options: ReconnectStormOptions = {},
+): Promise<number> {
+  const { windowMs, clock = Date.now, perform = E.reconnectOnce } = options;
+  const deadline = windowMs !== undefined ? clock() + windowMs : Number.POSITIVE_INFINITY;
   const seats = rooms.flatMap((room) => [room.host, ...room.players]);
   if (seats.length === 0) throw new Error("reconnect 场景没有在座会话");
   const perSeat = Math.max(1, Math.ceil(attempts / seats.length));
@@ -448,13 +452,14 @@ export async function runReconnectStorm(
   await mapWithConcurrency(
     seats,
     async (seat) => {
-      for (let i = 0; i < perSeat && scheduled < attempts; i++) {
+      for (let i = 0; i < perSeat && scheduled < attempts && clock() < deadline; i++) {
         scheduled += 1;
-        await E.reconnectOnce(server, { roomId: seat.roomId, token: seat.token }, metrics);
+        await perform(server, { roomId: seat.roomId, token: seat.token }, metrics);
       }
     },
     40,
   );
+  return scheduled;
 }
 
 export async function mapWithConcurrency<T>(

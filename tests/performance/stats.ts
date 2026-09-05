@@ -102,3 +102,28 @@ export function ratioOrNull(numerator: number, denominator: number): number | nu
 export function warmupCutoffMs(runStartedAtMs: number, nowMs: number, warmupFraction: number): number {
   return runStartedAtMs + Math.floor((nowMs - runStartedAtMs) * warmupFraction);
 }
+
+/**
+ * Soak 内存增长比（末窗口/首窗口均值），供运行器计算并写入 metrics：
+ * 样本不足 2 个或时长 < 2×windowMs（无法构成首末两个窗口）→ null（not-measured，
+ * 不折算为通过）。此纯函数承载 Soak 门禁的确定性判定逻辑。
+ */
+export function soakRatioOrNull(
+  points: readonly { readonly tMs: number; readonly value: number }[],
+  startMs: number,
+  durationMs: number,
+  windowMs: number,
+): number | null {
+  if (durationMs < 2 * windowMs || points.length < 2) return null;
+  try {
+    return growthRatio(
+      points,
+      startMs,
+      startMs + windowMs,
+      startMs + durationMs - windowMs,
+      startMs + durationMs,
+    );
+  } catch {
+    return null;
+  }
+}

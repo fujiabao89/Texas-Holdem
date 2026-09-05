@@ -7,6 +7,7 @@ import {
   mean,
   percentile,
   ratioOrNull,
+  soakRatioOrNull,
   warmupCutoffMs,
   windowMean,
 } from "./stats";
@@ -93,6 +94,36 @@ describe("stats.growthRatio（Soak 内存门禁）", () => {
       { tMs: 2_000, value: 5 },
     ];
     expect(() => growthRatio(zeros, 0, 2_000, 2_000, 3_000)).toThrow(StatsError);
+  });
+});
+
+describe("stats.soakRatioOrNull（Soak 运行级判定逻辑）", () => {
+  const windowMs = 3_600_000;
+  it("时长 ≥2h 且末窗口明显高于首窗口 → 返回 >1.1 的比值（对应 Soak 失败）", () => {
+    const start = 0;
+    const duration = 4 * windowMs;
+    const points = [
+      { tMs: 60_000, value: 100 },
+      { tMs: 1_800_000, value: 110 },
+      { tMs: 3.2 * windowMs, value: 240 },
+      { tMs: 3.9 * windowMs, value: 250 },
+    ];
+    const ratio = soakRatioOrNull(points, start, duration, windowMs);
+    expect(ratio).not.toBeNull();
+    expect(ratio!).toBeGreaterThan(1.1);
+  });
+
+  it("时长不足 2h（无法构成首末窗口）→ null（正式 Soak 不得通过）", () => {
+    const points = [
+      { tMs: 0, value: 100 },
+      { tMs: 30_000, value: 110 },
+    ];
+    expect(soakRatioOrNull(points, 0, windowMs, windowMs)).toBeNull();
+  });
+
+  it("样本不足 2 个 → null", () => {
+    expect(soakRatioOrNull([{ tMs: 0, value: 100 }], 0, 4 * windowMs, windowMs)).toBeNull();
+    expect(soakRatioOrNull([], 0, 4 * windowMs, windowMs)).toBeNull();
   });
 });
 
