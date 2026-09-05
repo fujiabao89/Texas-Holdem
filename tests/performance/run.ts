@@ -25,7 +25,13 @@ import { evaluateSlo, overallVerdict } from "./gates";
 import { describeLatencies, ratioOrNull } from "./stats";
 import { redactJson, sensitiveKeysIn } from "./redaction";
 import { serverInfoFrom, PerfHttp } from "./engine";
-import { startOneTable, runSustained, runReconnectStorm, countSchemaViolations } from "./driver";
+import {
+  startOneTable,
+  runSustained,
+  runReconnectStorm,
+  countSchemaViolations,
+  soakCanPass,
+} from "./driver";
 import type { RoomSession } from "./engine";
 import {
   createRealRunId,
@@ -231,7 +237,7 @@ function supportsFormalPass(
   metrics: MetricsCollector,
 ): boolean {
   // soak 需 ≥2h 采样算出内存增长比才有 memory-growth 证据；burst 由窗口内 APPLIED 数判定。
-  if (plan.name === "soak") return metrics.snapshot().memoryGrowthRatio !== null;
+  if (plan.name === "soak") return soakCanPass(metrics);
   return true;
 }
 

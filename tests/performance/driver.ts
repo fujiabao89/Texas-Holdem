@@ -371,6 +371,27 @@ async function fetchServerGauge(server: ServerInfo, name: string): Promise<numbe
   }
 }
 
+/**
+ * 把 Soak 内存采样点换算为末/首窗口增长比并写入 collector（>1.1 会在门禁失败）；
+ * 样本/时长不足时返回 null 且不改写（collector 保持 not-measured）。
+ */
+export function applySoakMemory(
+  metrics: MetricsCollector,
+  points: readonly { readonly tMs: number; readonly value: number }[],
+  startMs: number,
+  durationMs: number,
+  windowMs: number,
+): number | null {
+  const ratio = soakRatioOrNull(points, startMs, durationMs, windowMs);
+  if (ratio !== null) metrics.setMemoryGrowthRatio(ratio);
+  return ratio;
+}
+
+/** 正式 Soak 是否具备可判样本（memoryGrowthRatio 非空）；否则应返回 EXIT.insufficient。 */
+export function soakCanPass(metrics: MetricsCollector): boolean {
+  return metrics.snapshot().memoryGrowthRatio !== null;
+}
+
 /** 持续场景（smoke/normal/soak/headroom/burst 缩减）：开 N 桌并打到窗口截止。 */
 export async function runSustained(options: {
   readonly http: E.PerfHttp;
@@ -404,9 +425,8 @@ export async function runSustained(options: {
   await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
   if (memTimer !== null) clearInterval(memTimer);
   if (sampleMemory === true) {
-    // 末小时 vs 首个稳态小时（docs/06 §10.1）。时长 <2h 或样本不足 → null（not-measured）。
-    const ratio = soakRatioOrNull(memoryPoints, startMs, durationMs, MEMORY_WINDOW_MS);
-    if (ratio !== null) metrics.setMemoryGrowthRatio(ratio);
+    // 末小时 vs 首个稳态小时（docs/06 §10.1）。时长 <2h 或样本不足 → 不改写（not-measured）。
+    applySoakMemory(metrics, memoryPoints, startMs, durationMs, MEMORY_WINDOW_MS);
   }
   for (const table of tables) {
     for (const session of [table.host, ...table.players]) {
@@ -434,7 +454,8 @@ export interface ReconnectStormOptions {
 
 /**
  * 重连风暴：对全部在座会话反复「open→AUTH→首个快照」，attempts 分发给各座。
- * 在 opWindowMs 窗口内调度；超窗停止。返回实际发起的重连数（<attempts 即窗口内未完成）。
+ * 只有 **在 opWindowMs 窗口内完成** 的重连才计入 completed；开始于窗口内但在截止后
+ * 完成的操作不计入并停止调度。返回窗口内完成数（<attempts 即窗口内未完成 SLO）。
  */
 export async function runReconnectStorm(
   rooms: readonly RoomSession[],
@@ -448,18 +469,25 @@ export async function runReconnectStorm(
   const seats = rooms.flatMap((room) => [room.host, ...room.players]);
   if (seats.length === 0) throw new Error("reconnect 场景没有在座会话");
   const perSeat = Math.max(1, Math.ceil(attempts / seats.length));
-  let scheduled = 0;
+  let started = 0;
+  let completed = 0;
   await mapWithConcurrency(
     seats,
     async (seat) => {
-      for (let i = 0; i < perSeat && scheduled < attempts && clock() < deadline; i++) {
-        scheduled += 1;
+      for (let i = 0; i < perSeat && started < attempts && clock() < deadline; i++) {
+        started += 1;
         await perform(server, { roomId: seat.roomId, token: seat.token }, metrics);
+        // 以完成时刻为准：跨截止线的操作不计入窗口内完成数。
+        if (clock() <= deadline) {
+          completed += 1;
+        } else {
+          break;
+        }
       }
     },
     40,
   );
-  return scheduled;
+  return completed;
 }
 
 export async function mapWithConcurrency<T>(
