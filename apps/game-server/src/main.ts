@@ -206,14 +206,25 @@ function sampleProcessMetrics(): void {
   metrics.set(MetricName.uptimeSeconds, process.uptime());
 }
 function startMetricsSamplers(): void {
-  setInterval(sampleProcessMetrics, PROCESS_SAMPLE_MS);
+  // 采样失败只记录、不把进程带崩（防止可观测性自身的异常中断真实服务）。
   setInterval(() => {
-    const now = Date.now();
-    metrics.set(
-      MetricName.eventLoopLagSeconds,
-      Math.max(0, (now - lastEventLoopTickAt - PROCESS_SAMPLE_MS) / 1000),
-    );
-    lastEventLoopTickAt = now;
+    try {
+      sampleProcessMetrics();
+    } catch (error) {
+      console.error("[metrics] sampleProcessMetrics failed", error);
+    }
+  }, PROCESS_SAMPLE_MS);
+  setInterval(() => {
+    try {
+      const now = Date.now();
+      metrics.set(
+        MetricName.eventLoopLagSeconds,
+        Math.max(0, (now - lastEventLoopTickAt - PROCESS_SAMPLE_MS) / 1000),
+      );
+      lastEventLoopTickAt = now;
+    } catch (error) {
+      console.error("[metrics] eventLoop sampler failed", error);
+    }
   }, PROCESS_SAMPLE_MS);
 }
 startMetricsSamplers();
