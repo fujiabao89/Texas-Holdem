@@ -392,6 +392,41 @@ export function soakCanPass(metrics: MetricsCollector): boolean {
   return metrics.snapshot().memoryGrowthRatio !== null;
 }
 
+/** 正式 Soak 是否应判 EXIT.insufficient（无 memory-growth 样本）。run.ts 直接使用。 */
+export function soakFormalInsufficient(metrics: MetricsCollector): boolean {
+  return !soakCanPass(metrics);
+}
+
+export interface SoakSamplerDeps {
+  readonly fetchGauge: (name: string) => Promise<number | null>;
+  readonly now: () => number;
+  readonly sleep: (ms: number) => Promise<void>;
+}
+
+/**
+ * Soak 内存采样器：以注入的 /metrics fetcher 与可控时钟周期采集 RSS，
+ * 结束后用 applySoakMemory 换算并写入 collector。测试可注入假 fetcher/时钟，
+ * 真实运行由 runSustained 以 Date.now + setTimeout 调用（同一代码路径）。
+ */
+export async function runSoakMemorySampler(
+  deps: SoakSamplerDeps,
+  metrics: MetricsCollector,
+  startMs: number,
+  durationMs: number,
+  everyMs: number,
+  windowMs: number,
+): Promise<void> {
+  const points: { readonly tMs: number; readonly value: number }[] = [];
+  for (;;) {
+    const tMs = deps.now();
+    if (tMs >= startMs + durationMs) break;
+    const value = await deps.fetchGauge("texas_process_resident_memory_bytes");
+    if (value !== null) points.push({ tMs, value });
+    await deps.sleep(everyMs);
+  }
+  applySoakMemory(metrics, points, startMs, durationMs, windowMs);
+}
+
 /** 持续场景（smoke/normal/soak/headroom/burst 缩减）：开 N 桌并打到窗口截止。 */
 export async function runSustained(options: {
   readonly http: E.PerfHttp;
@@ -411,23 +446,24 @@ export async function runSustained(options: {
   // 压测窗口从建桌完成（ramp-up 结束）起算，避免把串行建桌计入负载时长。
   const startMs = Date.now();
   const window: RunWindow = { deadlineMs: startMs + durationMs, stop: false };
-  const memoryPoints: { readonly tMs: number; readonly value: number }[] = [];
-  let memTimer: NodeJS.Timeout | null = null;
-  if (sampleMemory === true) {
-    const tick = (): void => {
-      void fetchServerGauge(server, "texas_process_resident_memory_bytes").then((value) => {
-        if (value !== null) memoryPoints.push({ tMs: Date.now(), value });
-      });
-    };
-    tick();
-    memTimer = setInterval(tick, MEMORY_SAMPLE_MS);
-  }
+  // Soak：并行采样被测 /metrics RSS（sampler 与压测同窗口）。
+  const sampler =
+    sampleMemory === true
+      ? runSoakMemorySampler(
+          {
+            fetchGauge: (name) => fetchServerGauge(server, name),
+            now: Date.now,
+            sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+          },
+          metrics,
+          startMs,
+          durationMs,
+          MEMORY_SAMPLE_MS,
+          MEMORY_WINDOW_MS,
+        )
+      : null;
   await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
-  if (memTimer !== null) clearInterval(memTimer);
-  if (sampleMemory === true) {
-    // 末小时 vs 首个稳态小时（docs/06 §10.1）。时长 <2h 或样本不足 → 不改写（not-measured）。
-    applySoakMemory(metrics, memoryPoints, startMs, durationMs, MEMORY_WINDOW_MS);
-  }
+  if (sampler !== null) await sampler.catch(() => undefined);
   for (const table of tables) {
     for (const session of [table.host, ...table.players]) {
       if (session.ws !== null) {

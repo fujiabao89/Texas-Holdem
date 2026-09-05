@@ -30,7 +30,7 @@ import {
   runSustained,
   runReconnectStorm,
   countSchemaViolations,
-  soakCanPass,
+  soakFormalInsufficient,
 } from "./driver";
 import type { RoomSession } from "./engine";
 import {
@@ -237,7 +237,7 @@ function supportsFormalPass(
   metrics: MetricsCollector,
 ): boolean {
   // soak 需 ≥2h 采样算出内存增长比才有 memory-growth 证据；burst 由窗口内 APPLIED 数判定。
-  if (plan.name === "soak") return soakCanPass(metrics);
+  if (plan.name === "soak") return !soakFormalInsufficient(metrics);
   return true;
 }
 

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { applySoakMemory, soakCanPass } from "./driver";
+import {
+  applySoakMemory,
+  soakCanPass,
+  soakFormalInsufficient,
+  runSoakMemorySampler,
+} from "./driver";
 import { MetricsCollector } from "./metrics";
 import { evaluateSlo } from "./gates";
 import type { SloCheck } from "./gates";
@@ -50,5 +55,44 @@ describe("driver-soak（采样→写入 collector→门禁 确定性集成）", 
     expect(ratio).toBeNull();
     expect(soakCanPass(metrics)).toBe(false);
     expect(metrics.snapshot().memoryGrowthRatio).toBeNull();
+  });
+});
+
+describe("runSoakMemorySampler（mocked /metrics + 受控时钟）", () => {
+  const EVERY = WINDOW_MS; // 1h 采样
+
+  /** idx 每次 fetch 递增；时间点 = idx×EVERY；返回可按 idx 提供 RSS。 */
+  function deps(returns: (idx: number) => number | null) {
+    let idx = 0;
+    return {
+      fetchGauge: async (): Promise<number | null> => returns(idx++),
+      now: (): number => idx * EVERY,
+      sleep: async (): Promise<void> => undefined,
+    };
+  }
+
+  it("mocked /metrics 返回上涨 RSS → 首末窗口比值写入 collector 且 memory-growth 失败", async () => {
+    const metrics = new MetricsCollector();
+    // idx0/1 采到首窗口（100），idx2/3 采到末窗口（260）→ 比值 2.6 > 1.1
+    await runSoakMemorySampler(deps((idx) => (idx < 2 ? 100 : 260)), metrics, 0, 4 * WINDOW_MS, EVERY, WINDOW_MS);
+    const ratio = metrics.snapshot().memoryGrowthRatio;
+    expect(ratio).not.toBeNull();
+    expect(ratio!).toBeGreaterThan(1.1);
+    expect(soakFormalInsufficient(metrics)).toBe(false);
+    expect(evaluateSlo([memoryCheck], metrics.snapshot())[0]!.verdict).toBe("fail");
+  });
+
+  it("mocked /metrics 恒 null（RSS 缺失）→ 不改写，soakFormalInsufficient=true（run.ts 判 EXIT.insufficient）", async () => {
+    const metrics = new MetricsCollector();
+    await runSoakMemorySampler(deps(() => null), metrics, 0, 4 * WINDOW_MS, EVERY, WINDOW_MS);
+    expect(metrics.snapshot().memoryGrowthRatio).toBeNull();
+    expect(soakFormalInsufficient(metrics)).toBe(true);
+  });
+
+  it("时长不足 2h → soakFormalInsufficient=true", async () => {
+    const metrics = new MetricsCollector();
+    await runSoakMemorySampler(deps((idx) => (idx < 2 ? 100 : 260)), metrics, 0, WINDOW_MS, EVERY / 2, WINDOW_MS);
+    expect(metrics.snapshot().memoryGrowthRatio).toBeNull();
+    expect(soakFormalInsufficient(metrics)).toBe(true);
   });
 });
