@@ -1,0 +1,378 @@
+/**
+ * 压测驱动（TEX-29）。
+ *
+ * 在 engine 原语之上组织场景执行：
+ * - 持续类（smoke/normal/soak/headroom/burst 缩减）＝开桌 → 全员代理持续打牌，
+ *   任一场锦标赛终局由 Host 对 FINISHED 房间「再来一局」续压，直到运行窗口结束；
+ * - 重连风暴（reconnect）＝开桌开赛 → 对全部在座会话反复 AUTH→快照。
+ *
+ * 不变量在链路内断言：schema 违反（WsTestClient.schemaViolations）、事件 sequence
+ * 非单调、COMMAND_RESULT 非竞态拒绝（服务端回归）→ invariantViolations/sequenceViolations。
+ */
+import { randomUUID } from "node:crypto";
+
+import { PROTOCOL_VERSION } from "../../packages/protocol/src/index";
+import { WsTestClient } from "../clients/ws-client";
+import type { MetricsCollector } from "./metrics";
+import * as E from "./engine";
+import type { PlayerSession, RoomSession, ServerInfo, WireAction } from "./engine";
+
+export interface RunWindow {
+  /** 硬截止（epoch ms）：到达即停止新增动作并开始收尾。 */
+  readonly deadlineMs: number;
+  /** 是否已要求收尾（超时/异常）。 */
+  stop: boolean;
+}
+
+export interface StartOneTableOptions {
+  readonly http: E.PerfHttp;
+  readonly server: ServerInfo;
+  readonly metrics: MetricsCollector;
+  /** 桌号（用于昵称/seed 唯一化）。 */
+  readonly roomTag: string;
+  readonly players: number;
+}
+
+interface AnyMessage {
+  readonly type: string;
+  readonly payload?: {
+    readonly status?: string;
+    readonly event?: { readonly type?: string };
+    readonly sequence?: string;
+    readonly patch?: {
+      readonly currentActorPlayerId?: string | null;
+      readonly tournamentStatus?: string;
+      readonly viewer?: { readonly playerId?: string; readonly legalActions?: E.LegalActionsView | null };
+    };
+    readonly roomRevision?: string;
+  };
+}
+
+function isActorTurn(message: AnyMessage, playerId: string): boolean {
+  if (message.type !== "GAME_EVENT") return false;
+  const patch = message.payload?.patch;
+  return (
+    patch?.currentActorPlayerId === playerId &&
+    patch.viewer?.legalActions !== null &&
+    patch.viewer?.legalActions !== undefined
+  );
+}
+
+function isFinishedMarker(message: AnyMessage): boolean {
+  if (message.type === "ROOM_SNAPSHOT") return message.payload?.status === "FINISHED";
+  if (message.type === "GAME_EVENT") {
+    return (
+      message.payload?.event?.type === "TOURNAMENT_FINISHED" ||
+      message.payload?.patch?.tournamentStatus === "FINISHED"
+    );
+  }
+  return false;
+}
+
+async function connectAndAuthenticate(
+  server: ServerInfo,
+  session: PlayerSession,
+  metrics: MetricsCollector,
+): Promise<WsTestClient> {
+  metrics.inc("wsConnections");
+  const ws = await WsTestClient.open(server.wsBase);
+  session.ws = ws;
+  const result = await ws.authenticate(session.roomId, session.token);
+  if (result.type === "ERROR") {
+    throw new Error(`[driver] AUTH ERROR ${JSON.stringify(result.payload)}`);
+  }
+  return ws;
+}
+
+async function sendReady(ws: WsTestClient): Promise<void> {
+  const requestId = randomUUID();
+  ws.send({
+    type: "SET_READY",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId,
+    payload: { ready: true },
+  });
+  const result = await ws.waitForCommandResult(requestId, 20_000);
+  if (result.status !== "APPLIED") {
+    throw new Error(`[driver] SET_READY REJECTED ${JSON.stringify(result.error)}`);
+  }
+}
+
+/** 等 Host 看到全员入座且 Ready 的 LOBBY 快照，返回其 roomRevision。 */
+async function allReadyRevision(hostWs: WsTestClient, total: number): Promise<string> {
+  const fromIndex = hostWs.messages.length;
+  const message = await E.waitForIndexed(
+    hostWs,
+    (raw) => {
+      const m = raw as AnyMessage;
+      if (m.type !== "ROOM_SNAPSHOT") return false;
+      const payload = m.payload as { status: string; players: { seat: number | null; ready: boolean }[] };
+      return (
+        payload.status === "LOBBY" &&
+        payload.players.length === total &&
+        payload.players.every((player) => player.seat !== null && player.ready)
+      );
+    },
+    fromIndex,
+    "全员入座且 Ready",
+    30_000,
+  );
+  if (message === null) {
+    throw new Error("[driver] 等待全员 Ready 超时：Host 未收到全员入座/Ready 的 LOBBY 快照");
+  }
+  const revision = (message as AnyMessage).payload?.roomRevision;
+  if (typeof revision !== "string") throw new Error("[driver] Ready 快照缺 roomRevision");
+  return revision;
+}
+
+/**
+ * 建一桌并开赛：create（Host）→ join → 逐座 PATCH → 全员 WS AUTH → SET_READY →
+ * Host 等到全员 Ready 快照 → POST tournaments。返回含 revision 与已连接会话的 RoomSession。
+ */
+export async function startOneTable(options: StartOneTableOptions): Promise<RoomSession> {
+  const { http, server, metrics, roomTag, players } = options;
+  const config = E.defaultGameConfig(players);
+
+  const hostRaw = await http.createRoom(`h-${roomTag}`, config);
+  const sessions: PlayerSession[] = [];
+  const room: RoomSession = {
+    roomId: hostRaw.roomId,
+    inviteCode: hostRaw.inviteCode,
+    config,
+    host: {
+      roomId: hostRaw.roomId,
+      playerId: hostRaw.playerId,
+      displayName: hostRaw.displayName,
+      seat: 0,
+      token: hostRaw.token,
+      ws: null,
+    },
+    players: sessions,
+    tournamentId: null,
+    revision: hostRaw.roomRevision,
+  };
+
+  // 1) 其余玩家 join（先不入座，避免 seat 冲突与并发 PATCH 乐观锁）。
+  let revision = room.revision;
+  const seatPlan = [...Array.from({ length: players - 1 }, (_, i) => i + 1)];
+  for (const seat of seatPlan) {
+    const joined = await http.joinRoom(room.inviteCode, `p-${roomTag}-${seat}`, seat);
+    sessions.push({
+      roomId: joined.roomId,
+      playerId: joined.playerId,
+      displayName: joined.displayName,
+      seat,
+      token: joined.token,
+      ws: null,
+    });
+    revision = joined.roomRevision;
+  }
+
+  // 2) Host + 各玩家依次 CHANGE_SEAT（每步刷新 revision）。
+  for (const member of [room.host, ...sessions]) {
+    revision = await http.changeSeat(room.roomId, member.token, revision, member.seat);
+  }
+  room.revision = revision;
+
+  // 3) 全员开 WS 并认证。
+  await connectAndAuthenticate(server, room.host, metrics);
+  for (const session of sessions) {
+    await connectAndAuthenticate(server, session, metrics);
+  }
+
+  // 4) 全员 SET_READY。
+  await sendReady(room.host.ws!);
+  for (const session of sessions) await sendReady(session.ws!);
+
+  // 5) Host 等全员 Ready 快照并开赛。
+  const readyRevision = await allReadyRevision(room.host.ws!, players);
+  const started = await http.startTournament(room.roomId, room.host.token, readyRevision);
+  room.tournamentId = started.tournamentId;
+  room.revision = started.roomRevision;
+  return room;
+}
+
+function latestFinishedRevision(hostWs: WsTestClient): string | null {
+  for (let i = hostWs.messages.length - 1; i >= 0; i--) {
+    const message = hostWs.messages[i] as unknown as AnyMessage;
+    if (message.type === "ROOM_SNAPSHOT" && message.payload?.status === "FINISHED") {
+      const revision = message.payload.roomRevision;
+      if (typeof revision === "string") return revision;
+    }
+  }
+  return null;
+}
+
+interface SharedTournament {
+  finished: boolean;
+}
+
+/** 每座代理：在轮到且服务端给出合法动作时立刻行动并采样 Action→Event 延迟。 */
+async function playerAgent(
+  room: RoomSession,
+  session: PlayerSession,
+  metrics: MetricsCollector,
+  window: RunWindow,
+  shared: SharedTournament,
+): Promise<void> {
+  const ws = session.ws;
+  if (ws === null) return;
+  let cursor = ws.messages.length;
+  let lastSeq = 0;
+  const rand = E.prng01(0x9e3779b9 ^ ((session.seat + 1) * 2654435761));
+  while (!shared.finished && Date.now() < window.deadlineMs && !window.stop) {
+    const message = await E.waitForIndexed(
+      ws,
+      (raw) => {
+        const m = raw as AnyMessage;
+        return isActorTurn(m, session.playerId) || isFinishedMarker(m);
+      },
+      cursor,
+      `seat${session.seat} 行动`,
+      60_000,
+    );
+    if (message === null) {
+      // 长时间无本人回合且未结束：继续等（可能整桌节奏慢）。
+      continue;
+    }
+    cursor = ws.messages.length;
+    const m = message as AnyMessage;
+    if (isFinishedMarker(m)) {
+      shared.finished = true;
+      break;
+    }
+    const sequence = m.payload?.sequence;
+    const patch = m.payload?.patch;
+    if (typeof sequence === "string") {
+      const seq = Number(sequence);
+      if (lastSeq > 0 && seq !== lastSeq + 1) metrics.inc("sequenceViolations");
+      lastSeq = seq;
+    }
+    const legal = patch?.viewer?.legalActions ?? null;
+    if (legal === null || patch?.currentActorPlayerId !== session.playerId || room.tournamentId === null) {
+      continue;
+    }
+    const action: WireAction = E.chooseAction(legal, rand);
+    const { frame, requestId } = E.submitActionCommand(room.tournamentId, sequence!, action);
+    const t0 = Date.now();
+    ws.send(frame);
+    const result = await ws.waitForCommandResult(requestId, 30_000).catch(() => null);
+    if (result !== null) {
+      if (result.status === "APPLIED") {
+        metrics.pushActionLatency(Date.now() - t0);
+      } else {
+        E.classifyRejected(result.error?.code, metrics);
+      }
+    }
+    cursor = ws.messages.length;
+  }
+}
+
+/** 打完当前这场锦标赛：全员代理并发行动，直到 TOURNAMENT_FINISHED / 窗口截止。 */
+async function driveTournament(
+  room: RoomSession,
+  metrics: MetricsCollector,
+  window: RunWindow,
+): Promise<boolean> {
+  const shared: SharedTournament = { finished: false };
+  const agents = [room.host, ...room.players].map((session) =>
+    playerAgent(room, session, metrics, window, shared),
+  );
+  // 轮询结束：不依赖某一代理收尾，避免淘汰座阻塞。
+  while (!shared.finished && Date.now() < window.deadlineMs && !window.stop) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  window.stop = Date.now() >= window.deadlineMs;
+  await Promise.all(agents).catch(() => undefined);
+  return shared.finished;
+}
+
+/** 单桌持续压：打完一场自动「再来一局」，直到窗口截止。 */
+async function driveRoom(
+  room: RoomSession,
+  http: E.PerfHttp,
+  metrics: MetricsCollector,
+  window: RunWindow,
+): Promise<void> {
+  while (Date.now() < window.deadlineMs && !window.stop) {
+    const finished = await driveTournament(room, metrics, window);
+    if (!finished || Date.now() >= window.deadlineMs) break;
+    // 终局 rematch：Host 用最新 FINISHED 快照 revision 再来一局。
+    const hostWs = room.host.ws;
+    if (hostWs === null) break;
+    const finishedRevision = latestFinishedRevision(hostWs) ?? room.revision;
+    try {
+      const started = await http.startTournament(room.roomId, room.host.token, finishedRevision);
+      room.tournamentId = started.tournamentId;
+      room.revision = started.roomRevision;
+    } catch {
+      // 终局与再来之间的瞬时并发（如他人已发起）→ 放弃本桌，避免无限重试。
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+}
+
+export interface SustainOutcome {
+  readonly roomsStarted: number;
+}
+
+/** 持续场景（smoke/normal/soak/headroom/burst 缩减）：开 N 桌并打到窗口截止。 */
+export async function runSustained(options: {
+  readonly http: E.PerfHttp;
+  readonly server: ServerInfo;
+  readonly metrics: MetricsCollector;
+  readonly rooms: number;
+  readonly players: number;
+  readonly durationMs: number;
+}): Promise<SustainOutcome> {
+  const { http, server, metrics, rooms, players, durationMs } = options;
+  const deadline = Date.now() + durationMs;
+  const window: RunWindow = { deadlineMs: deadline, stop: false };
+  const tables: RoomSession[] = [];
+  for (let i = 0; i < rooms; i++) {
+    tables.push(await startOneTable({ http, server, metrics, roomTag: String(i), players }));
+  }
+  await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
+  for (const table of tables) {
+    for (const session of [table.host, ...table.players]) {
+      await E.closeSession(session);
+    }
+  }
+  return { roomsStarted: tables.length };
+}
+
+/** 重连风暴：对全部在座会话反复「open→AUTH→首个快照」，attempts 分发给各座。 */
+export async function runReconnectStorm(
+  rooms: readonly RoomSession[],
+  server: ServerInfo,
+  metrics: MetricsCollector,
+  attempts: number,
+): Promise<void> {
+  const seats = rooms.flatMap((room) => [room.host, ...room.players]);
+  if (seats.length === 0) throw new Error("reconnect 场景没有在座会话");
+  const perSeat = Math.max(1, Math.ceil(attempts / seats.length));
+  let scheduled = 0;
+  await mapWithConcurrency(seats, async (seat) => {
+    for (let i = 0; i < perSeat && scheduled < attempts; i++) {
+      scheduled += 1;
+      await E.reconnectOnce(server, { roomId: seat.roomId, token: seat.token }, metrics);
+    }
+  }, 40);
+}
+
+export async function mapWithConcurrency<T>(
+  items: readonly T[],
+  fn: (item: T) => Promise<void>,
+  concurrency: number,
+): Promise<void> {
+  let index = 0;
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const current = index++;
+      await fn(items[current]!);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+}

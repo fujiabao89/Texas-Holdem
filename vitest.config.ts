@@ -35,6 +35,7 @@ export default defineConfig({
             "tests/support/**/*.test.ts",
             "tests/meta/**/*.test.ts",
             "tests/simulator/**/*.test.ts",
+            "tests/performance/**/*.test.ts",
           ],
           exclude: ["**/node_modules/**"],
           environment: "node",

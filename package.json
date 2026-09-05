@@ -20,6 +20,7 @@
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
     "test:e2e:real": "playwright test -c tests/e2e/playwright.real.config.ts",
     "test:sim": "tsx tests/simulator/run.ts",
+    "test:perf": "tsx tests/performance/run.ts",
     "dev": "turbo run dev",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

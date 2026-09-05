@@ -33,16 +33,18 @@ describe("分层测试入口", () => {
     "test:e2e",
     "test:e2e:real",
     "test:sim",
+    "test:perf",
   ];
 
   it.each(requiredScripts)("根 package.json 定义了 %s", (script) => {
     expect(rootPackage.scripts?.[script], `缺少脚本 ${script}`).toBeTruthy();
   });
 
-  it("分层脚本指向互斥的运行器：vitest 层、Playwright e2e、独立 CLI sim", () => {
+  it("分层脚本指向互斥的运行器：vitest 层、Playwright e2e、独立 CLI sim/perf", () => {
     expect(rootPackage.scripts?.["test:unit"]).toContain("vitest run --project unit");
     expect(rootPackage.scripts?.["test:e2e"]).toContain("playwright test");
     expect(rootPackage.scripts?.["test:sim"]).toContain("tests/simulator/run.ts");
+    expect(rootPackage.scripts?.["test:perf"]).toContain("tests/performance/run.ts");
   });
 
   it("vitest 配置恰好定义 unit/rules/integration/ws 四层", async () => {
@@ -76,6 +78,7 @@ describe("分层测试入口", () => {
     expect(existsSync(resolve(repoRoot, "tests/e2e/playwright.config.ts"))).toBe(true);
     expect(existsSync(resolve(repoRoot, "tests/e2e/playwright.real.config.ts"))).toBe(true);
     expect(existsSync(resolve(repoRoot, "tests/simulator/run.ts"))).toBe(true);
+    expect(existsSync(resolve(repoRoot, "tests/performance/run.ts"))).toBe(true);
   });
 
   it("真实链路 E2E 配置禁用重试且限定独立目录（文本断言，避免导入副作用）", () => {
