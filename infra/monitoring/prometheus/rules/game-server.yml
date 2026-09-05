@@ -1,0 +1,73 @@
+# Game Server 告警规则（TEX-29）。权威阈值与响应要求：docs/06-testing-strategy.md §10.2。
+# 规则按规格分级；annotation 含 version/environment 与脱敏关联字段，不含 Token/牌面。
+groups:
+  - name: game-server-p0
+    rules:
+      - alert: EngineCriticalError
+        expr: increase(texas_engine_critical_errors_total[1m]) > 0
+        labels:
+          severity: p0
+        annotations:
+          summary: Engine Critical Error / Invariant violation (P0)
+          description: "Critical Engine Error 或 Invariant violation 已被运行时检测并冻结（docs/06 §10.2 P0）。环境={{ $labels.environment }} 版本={{ $labels.version }}。请停止受影响候选发布、隔离/冻结对应 tournament 并保存脱敏诊断。"
+      - alert: PersistenceHardWatermark
+        expr: texas_persistence_watermark_level == 2
+        for: 1m
+        labels:
+          severity: p0
+        annotations:
+          summary: Persistence hard watermark / OOM 风险 (P0)
+          description: "持久化待提交队列触达 hard watermark（items/bytes/age 上限），运行期已暂停至手间边界（docs/06 §10.2 P0）。环境={{ $labels.environment }} 版本={{ $labels.version }}。"
+  - name: game-server-p1
+    rules:
+      - alert: Http5xxRateHigh
+        expr: |
+          (sum by (job,environment,version) (rate(texas_http_5xx_total[5m]))
+            / clamp_min(sum by (job,environment,version) (rate(texas_http_requests_total[5m])), 0.0001))
+          > 0.01
+        for: 5m
+        labels:
+          severity: p1
+        annotations:
+          summary: 业务 5xx 占比超过 1% (P1)
+          description: "5xx >1% 持续 5 分钟（docs/06 §10.2 P1）。环境={{ $labels.environment }} 版本={{ $labels.version }}；关联 room/tournament 见脱敏日志。"
+      - alert: ReconnectFailureHigh
+        expr: |
+          (increase(texas_reconnect_failure_total[10m])
+            / clamp_min(increase(texas_reconnect_attempts_total[10m]), 1)) > 0.01
+          and increase(texas_reconnect_attempts_total[10m]) >= 20
+        for: 10m
+        labels:
+          severity: p1
+        annotations:
+          summary: 重连失败率超过 1% (P1)
+          description: "重连失败率 >1% 持续 10 分钟且尝试数 ≥20（docs/06 §10.2 P1）。环境={{ $labels.environment }} 版本={{ $labels.version }}。"
+      - alert: UnexpectedWsDisconnectHigh
+        expr: |
+          (increase(texas_ws_connections_closed_total{category="abnormal"}[10m])
+            / clamp_min(increase(texas_ws_connections_opened_total[10m]), 1)) > 0.05
+        for: 10m
+        labels:
+          severity: p1
+        annotations:
+          summary: 意外 WS 断连率超过 5% (P1)
+          description: "意外 WS 断连率 >5% 持续 10 分钟（docs/06 §10.2 P1）。环境={{ $labels.environment }} 版本={{ $labels.version }}。"
+      - alert: ActionRejectionHigh
+        expr: |
+          (increase(texas_actions_total{status="REJECTED"}[10m])
+            / clamp_min(increase(texas_actions_total[10m]), 1)) > 0.02
+          and increase(texas_actions_total[10m]) >= 50
+        for: 10m
+        labels:
+          severity: p1
+        annotations:
+          summary: 非预期 Action Rejection 率超过 2% (P1)
+          description: "Action 拒绝率 >2% 持续 10 分钟且 Action ≥50（docs/06 §10.2 P1）。请按原因码拆分：用户输入错误（如 NOT_YOUR_TURN/STALE_GAME_STATE/过期）不得掩盖服务端回归。环境={{ $labels.environment }} 版本={{ $labels.version }}。"
+      - alert: PersistenceDegraded
+        expr: texas_persistence_degraded == 1
+        for: 5m
+        labels:
+          severity: p1
+        annotations:
+          summary: Persistence DEGRADED (P1)
+          description: "持久化降级（soft watermark 起拒新建）持续 5 分钟（docs/06 §10.2 P1）。环境={{ $labels.environment }} 版本={{ $labels.version }}。"

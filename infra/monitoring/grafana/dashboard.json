@@ -1,0 +1,83 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "Game Server（TEX-29）",
+  "uid": "texas-game-server",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Active Rooms / Tournaments",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "texas_active_rooms", "legendFormat": "rooms" },
+        { "expr": "texas_active_tournaments", "legendFormat": "tournaments" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active WS",
+      "gridPos": { "h": 4, "w": 4, "x": 6, "y": 0 },
+      "targets": [{ "expr": "texas_ws_active", "legendFormat": "ws" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Action→Event latency p50/p95/p99 (s, APPLIED)",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(texas_action_to_event_seconds_bucket{status=\"APPLIED\"}[1m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(texas_action_to_event_seconds_bucket{status=\"APPLIED\"}[1m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(texas_action_to_event_seconds_bucket{status=\"APPLIED\"}[1m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconnect recovery latency p95/p99 (s) & attempts",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(texas_reconnect_recovery_seconds_bucket[1m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(texas_reconnect_recovery_seconds_bucket[1m])))", "legendFormat": "p99" },
+        { "expr": "increase(texas_reconnect_attempts_total[1m])", "legendFormat": "attempts/min" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Action rejection rate by code",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 10 },
+      "targets": [{ "expr": "sum by (code) (rate(texas_actions_total{status=\"REJECTED\"}[1m]))", "legendFormat": "{{code}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Persistence queue & watermark",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        { "expr": "texas_persistence_queue_items", "legendFormat": "items" },
+        { "expr": "texas_persistence_watermark_level", "legendFormat": "level" },
+        { "expr": "texas_persistence_degraded", "legendFormat": "degraded" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Process memory & CPU",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "texas_process_resident_memory_bytes", "legendFormat": "rss", "unit": "decbytes" },
+        { "expr": "texas_process_heap_used_bytes", "legendFormat": "heap", "unit": "decbytes" },
+        { "expr": "texas_process_cpu_ratio", "legendFormat": "cpu-ratio", "unit": "percentunit" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "WS close categories & message writes",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "sum by (category) (increase(texas_ws_connections_closed_total[1m]))", "legendFormat": "close:{{category}}" },
+        { "expr": "rate(texas_ws_messages_written_total[1m])", "legendFormat": "msg/s" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" }
+}
