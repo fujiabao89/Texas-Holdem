@@ -182,12 +182,19 @@ function sampleProcessMetrics(): void {
   metrics.set(MetricName.processHeapUsedBytes, memory.heapUsed);
   metrics.set(MetricName.processHeapTotalBytes, memory.heapTotal);
   const nowMs = Date.now();
-  const cpu = process.cpuUsage(lastCpuUsage);
+  // process.cpuUsage() 无参返回累计绝对快照；用两次绝对快照之差算间隔增量，
+  // 不可把 process.cpuUsage(lastCpuUsage) 的增量写回基线（会得到递减/错误的比值）。
+  const cpuNow = process.cpuUsage();
+  const userDelta = cpuNow.user - lastCpuUsage.user;
+  const systemDelta = cpuNow.system - lastCpuUsage.system;
   const wallSeconds = (nowMs - lastCpuAtMs) / 1000;
   if (wallSeconds > 0) {
-    metrics.set(MetricName.processCpuRatio, (cpu.user + cpu.system) / 1e6 / wallSeconds);
+    metrics.set(
+      MetricName.processCpuRatio,
+      Math.max(0, (userDelta + systemDelta)) / 1e6 / wallSeconds,
+    );
   }
-  lastCpuUsage = cpu;
+  lastCpuUsage = cpuNow;
   lastCpuAtMs = nowMs;
   const writerMetrics = writer.getMetrics();
   metrics.set(MetricName.persistenceQueueItems, writerMetrics.items);

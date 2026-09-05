@@ -1,5 +1,6 @@
 # Prometheus 抓取配置（TEX-29）。阈值/保留权威：docs/06 §10.2。
-# - metrics 保留 90 天：storage.tsdb.retention.time=90d。
+# - metrics 保留 90 天经 CLI 标志 --storage.tsdb.retention.time=90d（见 docker-compose.yml）；
+#   配置文件内不含 tsdb retention 键（Prometheus 配置 schema 不接受该键）。
 # - game-server 目标地址与标签由部署注入（LOCAL 演练见 docker-compose.yml）。
 global:
   scrape_interval: 15s
@@ -25,8 +26,3 @@ scrape_configs:
         labels:
           environment: "${MONITOR_ENV:-local}"
           version: "${GAME_SERVER_VERSION:-unknown}"
-
-storage:
-  tsdb:
-    retention:
-      time: 90d

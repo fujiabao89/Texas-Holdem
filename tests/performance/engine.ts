@@ -64,7 +64,7 @@ export type WireAction =
 
 /** 确定性小随机：同一 seed 恒同序列（仅用于动作多样性，不需加密）。 */
 export function prng01(seed: number): () => number {
-  let state = (seed >>> 0) || 1;
+  let state = seed >>> 0 || 1;
   return () => {
     state ^= state << 13;
     state ^= state >>> 17;
@@ -83,14 +83,20 @@ export function chooseAction(legal: LegalActionsView, rand: () => number): WireA
   }
   if (legal.canCall) return { type: "CALL" };
   if (legal.canBet && legal.minBetTo !== null) return { type: "BET", betTo: legal.minBetTo };
-  if (legal.canRaise && legal.minRaiseTo !== null) return { type: "RAISE", raiseTo: legal.minRaiseTo };
+  if (legal.canRaise && legal.minRaiseTo !== null)
+    return { type: "RAISE", raiseTo: legal.minRaiseTo };
   if (legal.canAllIn) return { type: "ALL_IN" };
   if (legal.canFold) return { type: "FOLD" };
   throw new Error(`无法从合法动作中做出选择：${JSON.stringify(legal)}`);
 }
 
 /** REJECTED 错误码中的竞态类（策略正确前提下仍可能出现的重试型拒绝，不计为回归）。 */
-const BENIGN_REJECTION = new Set(["STALE_GAME_STATE", "NOT_YOUR_TURN", "ACTION_TIMEOUT", "SESSION_REPLACED"]);
+const BENIGN_REJECTION = new Set([
+  "STALE_GAME_STATE",
+  "NOT_YOUR_TURN",
+  "ACTION_TIMEOUT",
+  "SESSION_REPLACED",
+]);
 
 export function classifyRejected(errorCode: string | undefined, metrics: MetricsCollector): void {
   if (errorCode === undefined || !BENIGN_REJECTION.has(errorCode)) {
@@ -123,14 +129,53 @@ export interface ServerInfo {
   readonly wsBase: string;
 }
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost", "[::1]"]);
+
+/** 是否本机 loopback（localhost/127.0.0.1/::1）。 */
+export function isLoopbackHost(host: string): boolean {
+  return LOOPBACK_HOSTS.has(host.toLowerCase());
+}
+
+/**
+ * 归一化并校验被测实例基址：去掉尾斜杠；远端只允许 https:（避免明文把
+ * playerToken/消息发给远端），loopback 本地测试才允许明文 http:。非法基址在任何
+ * 请求发出前抛错。
+ */
+export function normalizeServerBase(serverBase: string): string {
+  let url: URL;
+  try {
+    url = new URL(serverBase);
+  } catch {
+    throw new Error(`[perf] 非法基址 ${JSON.stringify(serverBase)}：须为 http(s)://host[:port]`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`[perf] 基址协议 ${url.protocol} 不受支持：须为 http: 或 https:`);
+  }
+  if (url.protocol === "http:" && !isLoopbackHost(url.hostname)) {
+    throw new Error(
+      `[perf] 拒绝非 loopback 明文 http 基址 ${serverBase}：会以明文发送 playerToken。` +
+        `远端基址必须为 https:（仅 loopback 本地测试允许 http:）。`,
+    );
+  }
+  return serverBase.replace(/\/+$/, "");
+}
+
 export function serverInfoFrom(serverBase: string): ServerInfo {
-  const httpBase = serverBase.replace(/\/$/, "");
-  return { httpBase, wsBase: httpBase.replace(/^http/, "ws") + "/api/v1/ws" };
+  const httpBase = normalizeServerBase(serverBase);
+  const wsBase = httpBase.startsWith("https:")
+    ? httpBase.replace(/^https:/, "wss:")
+    : httpBase.replace(/^http:/, "ws:");
+  return { httpBase, wsBase: wsBase + "/api/v1/ws" };
 }
 
 interface Envelope {
   readonly data?: unknown;
-  readonly error?: { readonly code?: unknown; readonly message?: unknown; readonly retryable?: unknown; readonly traceId?: unknown };
+  readonly error?: {
+    readonly code?: unknown;
+    readonly message?: unknown;
+    readonly retryable?: unknown;
+    readonly traceId?: unknown;
+  };
 }
 
 export class PerfHttpError extends Error {
@@ -149,8 +194,11 @@ export class PerfHttpError extends Error {
 export class PerfHttp {
   private readonly base: string;
 
-  constructor(serverBase: string, private readonly metrics: MetricsCollector) {
-    this.base = serverBase.replace(/\/$/, "");
+  constructor(
+    serverBase: string,
+    private readonly metrics: MetricsCollector,
+  ) {
+    this.base = normalizeServerBase(serverBase);
   }
 
   private async request(
@@ -176,7 +224,9 @@ export class PerfHttp {
       throw new PerfHttpError(
         response.status,
         code,
-        typeof envelope.error.message === "string" ? envelope.error.message : String(envelope.error.message),
+        typeof envelope.error.message === "string"
+          ? envelope.error.message
+          : String(envelope.error.message),
         envelope.error,
       );
     }

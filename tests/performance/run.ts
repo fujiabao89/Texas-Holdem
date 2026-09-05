@@ -25,7 +25,7 @@ import { evaluateSlo, overallVerdict } from "./gates";
 import { describeLatencies, ratioOrNull } from "./stats";
 import { redactJson, sensitiveKeysIn } from "./redaction";
 import { serverInfoFrom, PerfHttp } from "./engine";
-import { startOneTable, runSustained, runReconnectStorm } from "./driver";
+import { startOneTable, runSustained, runReconnectStorm, countSchemaViolations } from "./driver";
 import type { RoomSession } from "./engine";
 import {
   createRealRunId,
@@ -85,6 +85,7 @@ async function waitForHealth(baseUrl: string, timeoutMs = 120_000): Promise<void
 interface LocalHandle {
   readonly child: ReturnType<typeof spawn>;
   readonly schema: string;
+  readonly runId: string;
   readonly port: number;
 }
 
@@ -147,7 +148,7 @@ async function launchLocalServer(
     throw error;
   }
   if (exited) throw new Error("被测服务在 /health 就绪前退出（崩溃）");
-  return { child, schema, port };
+  return { child, schema, runId, port };
 }
 
 async function dropSchema(schema: string): Promise<void> {
@@ -220,6 +221,17 @@ function summarizePlan(
   };
 }
 
+/**
+ * 正式（非缩减）场景是否具备真实判定能力：burst 需在 opWindowMs 内调度操作、
+ * soak 需采集被测进程 RSS 窗口算 growthRatio——二者尚未落地时不允许给出“通过”，
+ * 避免把未实现的窗口语义当 Release 证据（见 docs/03-engineering/TEX-29-findings-ledger.md）。
+ */
+function supportsFormalPass(plan: ReturnType<typeof resolvePlan>, metrics: MetricsCollector): boolean {
+  if (plan.name === "burst") return false;
+  if (plan.name === "soak") return metrics.snapshot().memoryGrowthRatio !== null;
+  return true;
+}
+
 function functionalVerdict(metrics: MetricsCollector): "pass" | "fail" {
   const snapshot = metrics.snapshot();
   const bad =
@@ -285,6 +297,7 @@ async function main(): Promise<number> {
       await runReconnectStorm(rooms, server, metrics, plan.target.opCount ?? 500);
       for (const room of rooms) {
         for (const session of [room.host, ...room.players]) {
+          countSchemaViolations(session, metrics);
           await closeSessionSafe(session);
         }
       }
@@ -300,11 +313,14 @@ async function main(): Promise<number> {
       roomsStarted = outcome.roomsStarted;
     }
 
+    // 本地拉起时复用隔离 schema 的 runId，使产物 runId 与 schema/连接可关联；
+    // 外部 --base-url 实例才另行生成。
+    const runId = local !== null ? local.runId : createRealRunId();
     const meta: Record<string, string | number | boolean | null> = {
       scenario: plan.name,
       sha: sha ?? null,
       label: args.label ?? null,
-      runId: createRealRunId(),
+      runId,
       startedAtIso,
       ...machineMeta(),
       note: plan.reducedEvidence
@@ -321,6 +337,15 @@ async function main(): Promise<number> {
       ? overallVerdict(gateResults)
       : functionalVerdict(metrics);
     summary.gates = { checks: gateResults, verdict };
+
+    // 未落地的窗口/内存语义不得以正式运行给出通过（见 TEX-29-findings-ledger）。
+    if (!plan.reducedEvidence && !supportsFormalPass(plan, metrics)) {
+      console.error(
+        "[perf] 正式场景 burst（opWindow 调度）/soak（RSS 采样）门禁尚未落地，本次不给出通过判定；" +
+          "详见 docs/03-engineering/TEX-29-findings-ledger.md。",
+      );
+      return EXIT.insufficient;
+    }
 
     const redacted = redactJson(summary);
     const leaked = sensitiveKeysIn(redacted);
@@ -346,7 +371,8 @@ async function main(): Promise<number> {
     console.error(`[perf] 运行失败：${error instanceof Error ? error.message : String(error)}`);
     return EXIT.fail;
   } finally {
-    if (local !== null) {
+    // --keep-server：保留被测进程与隔离 schema 供人工检查；默认清理。
+    if (local !== null && !args.keepServer) {
       local.child.kill("SIGKILL");
       try {
         await dropSchema(local.schema);

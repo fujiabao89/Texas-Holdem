@@ -1,7 +1,7 @@
 # P0 任务总览与执行顺序
 
-> 状态：计划已在 Linear 建立；实现尚未开始。
-> 更新：2026-08-21
+> 状态：实现进行中——多数 P0 任务（TEX-11 至 TEX-29）已交付；正式负载/Soak/Headroom、监控送达验证与真实设备人工验收待 Release 阶段在隔离环境完成（见 docs/06 §10–§12）。
+> 更新：2026-09-05
 > Linear 项目：[Texas Hold'em](https://linear.app/texas-holdem/project/texas-holdem-70cb976c03d2)
 
 本文件是 P0 的中文阅读入口。它不重新定义扑克规则、协议或实现细节；这些内容始终以 `docs/01` 至 `docs/06` 和根目录《德州扑克项目总规划》为权威来源。

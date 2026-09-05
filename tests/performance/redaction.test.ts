@@ -4,12 +4,32 @@ import { isSensitiveKey, redactJson, sensitiveKeysIn } from "./redaction";
 
 describe("perf redaction.isSensitiveKey", () => {
   it("命中 token/secret/hmac/deck/hole/burn/reasoning 等键名", () => {
-    for (const key of ["playerToken", "token", "secret", "hmacSecret", "authorization", "deck", "holeCards", "burn", "aiReasoning"]) {
+    for (const key of [
+      "playerToken",
+      "token",
+      "secret",
+      "hmacSecret",
+      "authorization",
+      "deck",
+      "holeCards",
+      "burn",
+      "aiReasoning",
+    ]) {
       expect(isSensitiveKey(key), key).toBe(true);
     }
   });
   it("不误伤无关键", () => {
-    for (const key of ["roomId", "playerId", "inviteCode", "roomRevision", "tournamentId", "requestId", "displayName", "seed", "serverPort"]) {
+    for (const key of [
+      "roomId",
+      "playerId",
+      "inviteCode",
+      "roomRevision",
+      "tournamentId",
+      "requestId",
+      "displayName",
+      "seed",
+      "serverPort",
+    ]) {
       expect(isSensitiveKey(key), key).toBe(false);
     }
   });
@@ -44,6 +64,11 @@ describe("perf redaction.redactJson", () => {
   it("把字符串里的 Bearer 授权串替换为占位符（占位符自身不命中 Bearer 正则）", () => {
     expect(redactJson("Authorization: Bearer abc.def.123")).toBe("Authorization: [REDACTED]");
     expect(/Bearer\s+\S+/i.test("Authorization: [REDACTED]")).toBe(false);
+  });
+
+  it("同一字符串内多个 Bearer 串全部替换（CodeRabbit：非全局只替换首个）", () => {
+    const input = "h1=Bearer aaa b1=Bearer bbb tail";
+    expect(redactJson(input)).toBe("h1=[REDACTED] b1=[REDACTED] tail");
   });
 
   it("原语原样返回", () => {

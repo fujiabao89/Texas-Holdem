@@ -87,6 +87,23 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
+      - name: Guard formal scenarios require explicit candidate SHA
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          TEX_PERF_SCENARIO: ${{ inputs.scenario }}
+          TEX_PERF_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          case "$TEX_PERF_SCENARIO" in
+            normal|burst|soak|headroom)
+              if [[ -z "$TEX_PERF_SHA" ]]; then
+                echo "::error::正式场景 $TEX_PERF_SCENARIO 必须显式提供候选提交 sha（inputs.sha），不能用分支 ref 兜底作为 Release 证据。"
+                exit 1
+              fi
+              ;;
+          esac
+
       - name: Run perf scenario
         shell: bash
         env:

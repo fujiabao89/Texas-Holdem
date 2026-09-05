@@ -76,6 +76,19 @@ export function countSequenceViolations(
   return found;
 }
 
+/**
+ * 统计单连接收到的 schema 违反（WsTestClient 对每帧做 ServerMessageSchema 严格校验，
+ * 违反即丢弃并记录）并计入 invariantViolations：投影/序列化回归会使帧无法通过 schema。
+ */
+export function countSchemaViolations(
+  session: { readonly ws: { readonly schemaViolations: readonly unknown[] } | null },
+  metrics: MetricsCollector,
+): number {
+  const count = session.ws?.schemaViolations.length ?? 0;
+  if (count > 0) metrics.inc("invariantViolations", count);
+  return count;
+}
+
 function isActorTurn(message: AnyMessage, playerId: string): boolean {
   if (message.type !== "GAME_EVENT") return false;
   const patch = message.payload?.patch;
@@ -354,16 +367,19 @@ export async function runSustained(options: {
   readonly durationMs: number;
 }): Promise<SustainOutcome> {
   const { http, server, metrics, rooms, players, durationMs } = options;
-  const deadline = Date.now() + durationMs;
-  const window: RunWindow = { deadlineMs: deadline, stop: false };
   const tables: RoomSession[] = [];
   for (let i = 0; i < rooms; i++) {
     tables.push(await startOneTable({ http, server, metrics, roomTag: String(i), players }));
   }
+  // 压测窗口从建桌完成（ramp-up 结束）起算，避免把串行建桌计入负载时长。
+  const window: RunWindow = { deadlineMs: Date.now() + durationMs, stop: false };
   await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
   for (const table of tables) {
     for (const session of [table.host, ...table.players]) {
-      if (session.ws !== null) countSequenceViolations(session.ws, metrics);
+      if (session.ws !== null) {
+        countSequenceViolations(session.ws, metrics);
+        countSchemaViolations(session, metrics);
+      }
       await E.closeSession(session);
     }
   }

@@ -9,8 +9,9 @@
 export const SENSITIVE_KEY_PATTERN =
   /token|secret|hmac|authorization|password|credential|deck|hole|burn|reasoning/i;
 
-/** 值级占位：显式 Bearer 授权串（附带多余空白清理）。 */
-const BEARER_PATTERN = /Bearer\s+\S+/i;
+/** 值级占位：显式 Bearer 授权串。替换用全局标志（同串多 Token 全部命中）；检测用非全局。 */
+const BEARER_PATTERN_GLOBAL = /Bearer\s+\S+/gi;
+const BEARER_PATTERN_DETECT = /Bearer\s+\S+/i;
 
 export function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERN.test(key);
@@ -21,8 +22,8 @@ export function redactJson(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (Array.isArray(value)) return value.map((item) => redactJson(item));
   if (typeof value === "string") {
-    // 占位符不含 "Bearer " 前缀，避免自身再次命中 BEARER_PATTERN（写盘前扫描依赖它）。
-    return BEARER_PATTERN.test(value) ? value.replace(BEARER_PATTERN, "[REDACTED]") : value;
+    // 占位符不含 "Bearer " 前缀，避免自身再次命中检测正则（写盘前扫描依赖它）。
+    return BEARER_PATTERN_DETECT.test(value) ? value.replace(BEARER_PATTERN_GLOBAL, "[REDACTED]") : value;
   }
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};
@@ -50,7 +51,7 @@ export function sensitiveKeysIn(value: unknown, path = ""): string[] {
     return found;
   }
   if (typeof value === "string") {
-    if (BEARER_PATTERN.test(value)) found.push(`${path}[:Bearer]`);
+    if (BEARER_PATTERN_DETECT.test(value)) found.push(`${path}[:Bearer]`);
     return found;
   }
   if (typeof value === "object") {
