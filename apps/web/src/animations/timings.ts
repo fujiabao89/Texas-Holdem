@@ -38,3 +38,21 @@ export const softCatchUpTasks = 8;
 // genuinely stale/lossy backlogs.
 export const hardForwardBacklogMs = 28_000;
 export const hardForwardEvents = 40;
+
+/** CSS stages share the queue's timing source; these retain the approved pace. */
+export const visualTimings = {
+  boardFlight: 360,
+  boardFlip: 500,
+  boardFlipDelay: 500,
+  showdownSource: 700,
+  showdownSourceStagger: 135,
+  showdownDiscard: 1_200,
+  showdownDiscardDelay: 1_000,
+  showdownBest: 750,
+  showdownBestDelay: 2_300,
+  showdownBestStagger: 155,
+  showdownLabel: 600,
+  showdownLabelDelay: 2_000,
+  lobbyFeedback: 180,
+  controlFeedback: 140,
+} as const;

@@ -17,6 +17,8 @@
 
 ## 文档地图
 
+TEX-38 优化前端 Seat/Pot 反馈、统一音量/动态偏好、后台与追赶屏障及慢帧降级；验收证据与实机边界见 [TEX-38 验收记录](./03-engineering/TEX-38-acceptance.md)，行为契约以 05 §9.7/§10.3 为准。
+
 PR #30 / TEX-36 已补齐 Hand History 投影读取，审查修正与证据见 [Findings Ledger](./03-engineering/TEX-36-findings-ledger.md)。读取仍受有效 Room 凭证约束，关闭后不开放历史；无冠军终局的 v3 表示与同步发布要求见 [ADR-0002](./adr/0002-tex-36-championless-history.md)。上方 TEX-27 缺口段落保留为历史核对记录。
 
 | 编号 | 路径 | 一句话目的 | 权威范围 | 状态 |
