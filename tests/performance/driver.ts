@@ -111,6 +111,19 @@ function isFinishedMarker(message: AnyMessage): boolean {
   return false;
 }
 
+/** 该玩家在缓冲中“最后一条”行动事件索引（burst prime 需取最新而非最早，Codex）。 */
+function latestActorTurnIndex(
+  client: { readonly messages: readonly { readonly type: string; readonly payload?: unknown }[] },
+  playerId: string,
+): number {
+  let last = -1;
+  client.messages.forEach((raw, index) => {
+    const message = raw as unknown as AnyMessage;
+    if (isActorTurn(message, playerId)) last = index;
+  });
+  return last;
+}
+
 async function connectAndAuthenticate(
   server: ServerInfo,
   session: PlayerSession,
@@ -258,7 +271,7 @@ async function playerAgent(
   metrics: MetricsCollector,
   window: RunWindow,
   shared: SharedTournament,
-  /** 起始 cursor（burst 置 0 以消费已缓冲的开局回合，Codex #449）。 */
+  /** 起始 cursor：burst prime 时指向该玩家最新缓冲行动事件（Codex #449/#3943727402）。 */
   cursorStart?: number,
 ): Promise<void> {
   const ws = session.ws;
@@ -324,9 +337,12 @@ async function driveTournament(
   prime?: boolean,
 ): Promise<boolean> {
   const shared: SharedTournament = { finished: false };
-  const agents = [room.host, ...room.players].map((session) =>
-    playerAgent(room, session, metrics, window, shared, prime ? 0 : undefined),
-  );
+  const agents = [room.host, ...room.players].map((session) => {
+    // burst prime：从该玩家“最新”缓冲行动事件开始（waitFor 取最早匹配，0 会命中过时回合）。
+    const cursorStart =
+      prime && session.ws !== null ? latestActorTurnIndex(session.ws, session.playerId) : -1;
+    return playerAgent(room, session, metrics, window, shared, cursorStart >= 0 ? cursorStart : undefined);
+  });
   // 轮询结束：不依赖某一代理收尾，避免淘汰座阻塞。
   while (!shared.finished && Date.now() < window.deadlineMs && !window.stop) {
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -470,7 +486,8 @@ export async function runSustained(options: {
   /** burst：代理从缓冲起点消费已就绪的开局回合后再计时（Codex #449）。 */
   readonly primeBuffered?: boolean;
 }): Promise<SustainOutcome> {
-  const { http, server, metrics, rooms, players, durationMs, sampleMemory, primeBuffered } = options;
+  const { http, server, metrics, rooms, players, durationMs, sampleMemory, primeBuffered } =
+    options;
   const tables: RoomSession[] = [];
   for (let i = 0; i < rooms; i++) {
     tables.push(await startOneTable({ http, server, metrics, roomTag: String(i), players }));
