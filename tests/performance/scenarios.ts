@@ -167,6 +167,7 @@ export const SCENARIO_SLO: Record<ScenarioName, readonly SloCheck[]> = {
   burst: [
     { id: "action-p99", description: "突发 Action→Event p99 ≤1 s", threshold: 1_000, minSamples: 100, measure: { kind: "latency", series: "action", q: 0.99 } },
     { id: "burst-invariant-zero", description: "同桌 sequence/幂等/投影断言全部通过", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "sequenceViolations" } },
+    { id: "burst-schema-zero", description: "schema 违反（投影/序列化回归）为 0", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "invariantViolations" } },
     { id: "burst-no-crash", description: "不崩溃（本地拉起时探活）", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "processCrash" } },
   ],
   reconnect: [

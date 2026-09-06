@@ -283,6 +283,9 @@ async function playerAgent(
       shared.finished = true;
       break;
     }
+    // Codex：#350 等待(≤60s)可能跨过窗口——返回后复查，超时/收尾不再提交，
+    // 防止把截止后到达的回合事件计入 burst 窗口样本。
+    if (Date.now() >= window.deadlineMs || window.stop) break;
     const sequence = m.payload?.sequence;
     const patch = m.payload?.patch;
     const legal = patch?.viewer?.legalActions ?? null;
@@ -375,6 +378,25 @@ async function fetchServerGauge(server: ServerInfo, name: string): Promise<numbe
  * 把 Soak 内存采样点换算为末/首窗口增长比并写入 collector（>1.1 会在门禁失败）；
  * 样本/时长不足时返回 null 且不改写（collector 保持 not-measured）。
  */
+async function fetchServerMetricsText(server: ServerInfo): Promise<string | null> {
+  try {
+    const response = await fetch(`${server.httpBase}/metrics`);
+    if (!response.ok) return null;
+    return await response.text();
+  } catch {
+    return null;
+  }
+}
+
+/** 被测 `/metrics` 的意外断连计数（category="abnormal"，服务端权威）。 */
+async function readAbnormalClosed(server: ServerInfo): Promise<number | null> {
+  const text = await fetchServerMetricsText(server);
+  if (text === null) return null;
+  return E.parsePrometheusLabeled(text, "texas_ws_connections_closed_total", {
+    category: "abnormal",
+  });
+}
+
 export function applySoakMemory(
   metrics: MetricsCollector,
   points: readonly { readonly tMs: number; readonly value: number }[],
@@ -462,8 +484,17 @@ export async function runSustained(options: {
           MEMORY_WINDOW_MS,
         )
       : null;
+  // unexpected-disconnect 以被测 /metrics 的 abnormal 关闭计数差值为准（服务端权威类别），
+  // 而非本地恒 0 的伪计数（Codex #352）。窗口前后各读一次。
+  const abnormalBase = await readAbnormalClosed(server);
   await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
   if (sampler !== null) await sampler.catch(() => undefined);
+  if (abnormalBase !== null) {
+    const abnormalEnd = await readAbnormalClosed(server);
+    if (abnormalEnd !== null && abnormalEnd > abnormalBase) {
+      metrics.inc("unexpectedDisconnect", abnormalEnd - abnormalBase);
+    }
+  }
   for (const table of tables) {
     for (const session of [table.host, ...table.players]) {
       if (session.ws !== null) {

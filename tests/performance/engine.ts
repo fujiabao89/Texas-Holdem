@@ -184,6 +184,34 @@ export function parsePrometheusGauge(text: string, name: string): number | null 
   return null;
 }
 
+/**
+ * 解析 Prometheus text 中带标签的计数行 `name{key="value",...} number`（首个命中）。
+ * 供意外 WS 断连等门禁从被测 `/metrics` 取服务端权威计数（counter 以 _total 结尾）。
+ */
+export function parsePrometheusLabeled(
+  text: string,
+  name: string,
+  labels: Record<string, string>,
+): number | null {
+  for (const line of text.split("\n")) {
+    if (!line.startsWith(name) || line.startsWith("#")) continue;
+    const open = line.indexOf("{");
+    const close = line.indexOf("}");
+    if (open < 0 || close <= open) continue;
+    const pairs = new Map<string, string>();
+    for (const part of line.slice(open + 1, close).split(",")) {
+      const eq = part.indexOf("=");
+      if (eq <= 0) continue;
+      pairs.set(part.slice(0, eq).trim(), part.slice(eq + 1).replace(/^"|"$/g, ""));
+    }
+    if (Object.entries(labels).every(([key, value]) => pairs.get(key) === value)) {
+      const number = Number(line.slice(close + 1).trim());
+      if (Number.isFinite(number)) return number;
+    }
+  }
+  return null;
+}
+
 interface Envelope {
   readonly data?: unknown;
   readonly error?: {
