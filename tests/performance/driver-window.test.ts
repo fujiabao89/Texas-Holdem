@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { serverInfoFrom, defaultGameConfig } from "./engine";
 import type { RoomSession, ServerInfo, PlayerSession } from "./engine";
-import { runReconnectStorm } from "./driver";
+import { runReconnectStorm, shouldRecordApplied } from "./driver";
 import { MetricsCollector } from "./metrics";
 import type { MetricsCollector as MetricsType } from "./metrics";
 
@@ -27,6 +27,19 @@ function hostOnlyRoom(playerId: string, token: string): RoomSession {
     appliedCount: 0,
   };
 }
+
+describe("shouldRecordApplied（APPLIED 完成时刻计数，CodeRabbit）", () => {
+  it("窗口内完成（≤deadline、未收尾）→ true（正常计数）", () => {
+    expect(shouldRecordApplied(1_000, 1_000, false)).toBe(true);
+    expect(shouldRecordApplied(999, 1_000, false)).toBe(true);
+  });
+  it("截止后完成的 APPLIED → false（不计入 burst 500）", () => {
+    expect(shouldRecordApplied(1_001, 1_000, false)).toBe(false);
+  });
+  it("已收尾（stop）→ false", () => {
+    expect(shouldRecordApplied(500, 1_000, true)).toBe(false);
+  });
+});
 
 describe("driver.runReconnectStorm（窗口调度，确定性测试）", () => {
   const server: ServerInfo = serverInfoFrom("http://127.0.0.1:3401");

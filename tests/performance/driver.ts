@@ -78,6 +78,14 @@ export function countSequenceViolations(
 }
 
 /**
+ * burst/正常门禁仅在 APPLIED 的“完成时刻” ≤ 窗口截止且未收尾时才计入 actionLatency/
+ * appliedCount（CodeRabbit：发送前查窗不足，完成时也须查）。
+ */
+export function shouldRecordApplied(completedAtMs: number, deadlineMs: number, stop: boolean): boolean {
+  return !stop && completedAtMs <= deadlineMs;
+}
+
+/**
  * 统计单连接收到的 schema 违反（WsTestClient 对每帧做 ServerMessageSchema 严格校验，
  * 违反即丢弃并记录）并计入 invariantViolations：投影/序列化回归会使帧无法通过 schema。
  */
@@ -319,8 +327,12 @@ async function playerAgent(
     const result = await ws.waitForCommandResult(requestId, 30_000).catch(() => null);
     if (result !== null) {
       if (result.status === "APPLIED") {
-        metrics.pushActionLatency(Date.now() - t0);
-        room.appliedCount += 1; // burst 贡献桌数（Codex #451）
+        const completedAtMs = Date.now();
+        // CodeRabbit：以 APPLIED 完成时刻为准，跨窗/收尾后不再计入 latency/appliedCount。
+        if (shouldRecordApplied(completedAtMs, window.deadlineMs, window.stop)) {
+          metrics.pushActionLatency(completedAtMs - t0);
+          room.appliedCount += 1; // burst 贡献桌数（Codex #451）
+        }
       } else {
         E.classifyRejected(result.error?.code, metrics);
       }
@@ -341,7 +353,14 @@ async function driveTournament(
     // burst prime：从该玩家“最新”缓冲行动事件开始（waitFor 取最早匹配，0 会命中过时回合）。
     const cursorStart =
       prime && session.ws !== null ? latestActorTurnIndex(session.ws, session.playerId) : -1;
-    return playerAgent(room, session, metrics, window, shared, cursorStart >= 0 ? cursorStart : undefined);
+    return playerAgent(
+      room,
+      session,
+      metrics,
+      window,
+      shared,
+      cursorStart >= 0 ? cursorStart : undefined,
+    );
   });
   // 轮询结束：不依赖某一代理收尾，避免淘汰座阻塞。
   while (!shared.finished && Date.now() < window.deadlineMs && !window.stop) {
