@@ -1,9 +1,21 @@
 @import "tailwindcss";
 
+.table-seat { left: var(--seat-left); top: var(--seat-top); }
+@media (max-width: 639px) {
+  /* Leave a clear middle band for five community cards on a ten-player table. */
+  .table-seat[data-seat-slot="1"], .table-seat[data-seat-slot="4"] { left: 80%; }
+  .table-seat[data-seat-slot="9"], .table-seat[data-seat-slot="6"] { left: 20%; }
+  .table-seat[data-seat-slot="2"], .table-seat[data-seat-slot="8"] { top: 32%; }
+  .table-seat[data-seat-slot="3"], .table-seat[data-seat-slot="7"] { top: 68%; }
+  .table-seat[data-seat-slot="4"], .table-seat[data-seat-slot="6"] { top: 86%; }
+  .table-seat[data-seat-slot="5"] { top: 97%; }
+}
+
 /* TEX-26 presentation only: these animations never alter canonical state. */
 @keyframes board-deal-flight {
-  0% { opacity: 0; transform: translate(120%, 95%) rotate(16deg) scale(0.72); }
-  62% { opacity: 1; transform: translate(-5%, -4%) rotate(-2deg) scale(1.04); }
+  0% { opacity: 0; transform: translate3d(var(--board-origin-x), var(--board-origin-y), 0) rotate(-2deg) scale(0.72); }
+  12% { opacity: 1; }
+  62% { opacity: 1; transform: translate3d(-5%, -4%, 0) rotate(-1deg) scale(1.04); }
   100% { opacity: 1; transform: translate(0) rotate(0) scale(1); }
 }
 
@@ -42,8 +54,8 @@
 }
 
 @keyframes showdown-discard-card {
-  0%, 62% { opacity: 1; filter: saturate(1); transform: scale(1); }
-  100% { opacity: 0.22; filter: saturate(0.15); transform: scale(0.72); }
+  0%, 62% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.22; transform: scale(0.72); }
 }
 
 @keyframes showdown-best-card {
@@ -58,12 +70,12 @@
 }
 
 .board-deal-flight {
-  animation: board-deal-flight 760ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--deal-delay) both;
+  animation: board-deal-flight var(--board-flight-duration) cubic-bezier(0.2, 0.85, 0.25, 1) var(--deal-delay) both;
   perspective: 800px;
 }
 
 .board-deal-flip {
-  animation: board-card-flip 620ms cubic-bezier(0.3, 0.75, 0.25, 1) calc(var(--deal-delay) + 310ms) both;
+  animation: board-card-flip var(--board-flip-duration) cubic-bezier(0.3, 0.75, 0.25, 1) calc(var(--deal-delay) + var(--board-flip-delay)) both;
   transform-style: preserve-3d;
 }
 
@@ -105,10 +117,78 @@
 .hole-deal-face { transform: rotateY(180deg); }
 
 .showdown-showcase { min-width: min(21rem, 100%); }
-.showdown-source-card { animation: showdown-source-card 700ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--showdown-delay) both; }
-.showdown-discard-card { animation-name: showdown-source-card, showdown-discard-card; animation-duration: 700ms, 1.2s; animation-timing-function: cubic-bezier(0.2, 0.85, 0.25, 1), ease-out; animation-delay: var(--showdown-delay), 1s; animation-fill-mode: both, forwards; }
-.showdown-best-card { animation: showdown-best-card 750ms cubic-bezier(0.2, 0.85, 0.25, 1) var(--best-delay) both; }
-.showdown-best-label { animation: showdown-best-label 600ms ease-out 2s both; }
+.showdown-source-card { animation: showdown-source-card var(--showdown-source-duration) cubic-bezier(0.2, 0.85, 0.25, 1) var(--showdown-delay) both; }
+.showdown-discard-card { animation-name: showdown-source-card, showdown-discard-card; animation-duration: var(--showdown-source-duration), var(--showdown-discard-duration); animation-timing-function: cubic-bezier(0.2, 0.85, 0.25, 1), ease-out; animation-delay: var(--showdown-delay), var(--showdown-discard-delay); animation-fill-mode: both, forwards; }
+.showdown-best-card { animation: showdown-best-card var(--showdown-best-duration) cubic-bezier(0.2, 0.85, 0.25, 1) var(--best-delay) both; }
+.showdown-best-label { animation: showdown-best-label var(--showdown-label-duration) ease-out var(--showdown-label-delay) both; }
+
+/* TEX-38: locations are measured once at event mount; flight work is entirely
+   transform/opacity and cannot capture pointer input or modify projections. */
+@keyframes table-chips-flight {
+  0% { opacity: 0; transform: translate3d(-50%, -50%, 0) scale(0.8); }
+  14% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(calc(-50% + var(--flight-x)), calc(-50% + var(--flight-y)), 0) scale(0.85); }
+}
+@keyframes table-back-flight {
+  0% { opacity: 1; transform: translate3d(-50%, -50%, 0) rotate(0) scale(0.85); }
+  78% { opacity: 0.85; }
+  100% { opacity: 0; transform: translate3d(calc(-50% + var(--flight-x)), calc(-50% + var(--flight-y)), 0) rotate(-8deg) scale(0.5); }
+}
+@keyframes table-check {
+  0%, 48%, 100% { transform: translate(-50%, -50%) scale(1); }
+  24%, 72% { transform: translate(-50%, -38%) scale(0.9); }
+}
+@keyframes table-action-badge {
+  0% { opacity: 0; transform: translateY(0.25rem); }
+  35%, 100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes table-winner {
+  0% { opacity: 0; transform: translateY(0.3rem) scale(0.9); }
+  55% { opacity: 1; transform: translateY(-0.1rem) scale(1.06); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes table-seat-departing {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0.55; transform: translateY(0.25rem); }
+}
+@keyframes table-hard-forward { 0% { opacity: 1; } 50% { opacity: 0.65; } 100% { opacity: 1; } }
+@keyframes lobby-seat-feedback { from { opacity: 0.45; transform: translateY(0.2rem); } to { opacity: 1; transform: translateY(0); } }
+.table-chips-flight { animation: table-chips-flight var(--feedback-duration) cubic-bezier(0.2, 0.7, 0.25, 1) var(--feedback-delay) both; }
+.table-back-flight { animation: table-back-flight var(--feedback-duration) ease-out both; }
+.table-check { animation: table-check var(--feedback-duration) ease-out both; }
+.table-action-badge { animation: table-action-badge var(--feedback-duration) ease-out both; }
+.table-seat-award { animation: table-winner var(--feedback-duration) ease-out both; }
+.table-pot-award, .table-finish { animation: table-winner var(--winner-duration) ease-out both; }
+.table-seat-departing { animation: table-seat-departing var(--feedback-duration) ease-out both; }
+.table-presentation[data-presentation-mode="HARD_FORWARD"] { animation: table-hard-forward var(--hard-forward-duration) ease-out both; }
+.lobby-seat-feedback { animation: lobby-seat-feedback var(--lobby-feedback-duration) ease-out both; }
+.table-controls button, .lobby-controls button { transition: transform var(--control-feedback-duration), opacity var(--control-feedback-duration), background-color var(--control-feedback-duration); }
+.table-controls button:active:not(:disabled), .lobby-controls button:active:not(:disabled) { transform: translateY(1px); }
+
+[data-reduced-motion="true"] .board-deal-flight,
+[data-reduced-motion="true"] .board-deal-flip,
+[data-reduced-motion="true"] .hole-deal-flight,
+[data-reduced-motion="true"] .hole-reveal-arrival,
+[data-reduced-motion="true"] .showdown-source-card,
+[data-reduced-motion="true"] .showdown-discard-card,
+[data-reduced-motion="true"] .showdown-best-card,
+[data-reduced-motion="true"] .showdown-best-label,
+[data-reduced-motion="true"] .table-chips-flight,
+[data-reduced-motion="true"] .table-back-flight,
+[data-reduced-motion="true"] .table-check,
+[data-reduced-motion="true"] .table-action-badge,
+[data-reduced-motion="true"] .table-seat-award,
+[data-reduced-motion="true"] .table-pot-award,
+[data-reduced-motion="true"] .table-finish,
+[data-reduced-motion="true"] .table-seat-departing,
+[data-reduced-motion="true"] .table-presentation,
+[data-reduced-motion="true"] .lobby-seat-feedback { animation: none; }
+[data-reduced-motion="true"] .hole-group-flip,
+[data-reduced-motion="true"] .board-deal-flip { animation: none; transform: rotateY(180deg); }
+[data-reduced-motion="true"] button { transition: none; }
+[data-reduced-motion="true"] button:hover,
+[data-reduced-motion="true"] button:active { transform: none; translate: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .board-deal-flight,
@@ -118,8 +198,21 @@
   .showdown-source-card,
   .showdown-discard-card,
   .showdown-best-card,
-  .showdown-best-label { animation: none; }
+  .showdown-best-label,
+  .table-chips-flight,
+  .table-back-flight,
+  .table-check,
+  .table-action-badge,
+  .table-seat-award,
+  .table-pot-award,
+  .table-finish,
+  .table-seat-departing,
+  .table-presentation,
+  .lobby-seat-feedback { animation: none; }
 
-  .hole-group-flip { animation: none; transform: rotateY(180deg); }
+  .hole-group-flip, .board-deal-flip { animation: none; transform: rotateY(180deg); }
   .hole-reveal-arrival { opacity: 1; }
+  .table-controls button, .lobby-controls button { transition: none; }
+  .table-controls button:hover, .table-controls button:active,
+  .lobby-controls button:hover, .lobby-controls button:active { transform: none; translate: none; }
 }

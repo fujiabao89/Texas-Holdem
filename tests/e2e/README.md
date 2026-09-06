@@ -13,6 +13,8 @@ pnpm test:e2e -- --grep "创建房间"   # 按标题过滤（业务用例落地�
 - 端口默认 `3100`，可用 `TEX_E2E_PORT` / `TEX_E2E_BASE_URL` 覆盖；本地已运行的服务会被复用。
 - 业务场景（创建房间、下注、重连等）按目录组织：[all-in/](./all-in)、[betting/](./betting)、[create-room/](./create-room)、[full-hand/](./full-hand)、[join-table/](./join-table)、[reconnect/](./reconnect)、[side-pot/](./side-pot)。TEX-25 的 [betting/table.spec.ts](./betting/table.spec.ts) 通过 Playwright WebSocket mock 注入合法投影，覆盖键盘跟注、All-in 两步、房间关闭、被移出与 Session Replaced；TEX-26 的 [reconnect/tex-26.spec.ts](./reconnect/tex-26.spec.ts) 仅覆盖新增的接管对话框可访问性。两者均不依赖真实 game-server 或 sleep。
 
+TEX-38 新增 [animation-audio/](./animation-audio/README.md) 的动画/音频/偏好与后台浏览器回归，使用协议投影夹具，独立于真实服务端套件。运行：`pnpm exec playwright test -c tests/e2e/playwright.config.ts animation-audio --workers=1`；并行开发时通过 `TEX_E2E_PORT=3138` 隔离端口。
+
 ## 真实链路套件（TEX-28：`real/`）
 
 `pnpm test:e2e:real` 走完整真实链路：真实浏览器（独立 BrowserContext 身份隔离）→ 真实 apps/web → 真实本地 game-server → 真实 PostgreSQL（每次运行独立 `tex_e2e_real_<runId>` schema，结束清理）。与上面基于 Playwright WebSocket mock 的套件互补，**禁止**以 `route.fulfill`、伪造 Snapshot/Event 或直接改浏览器 store 替代被测业务链路（docs/06 §5）。
