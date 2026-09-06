@@ -62,6 +62,8 @@ server.requestTimeout = 10_000;
 server.headersTimeout = 10_000;
 server.keepAliveTimeout = 5_000;
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`[webhook-sink] listening on 127.0.0.1:${PORT}`);
+// Greptile #7：容器内须监听全部接口（Alertmanager 经 Docker bridge 访问 webhook-sink:9000，
+// 只绑 127.0.0.1 会被拒连）；host 暴露仍由 compose 的 127.0.0.1:9000:9000 限制为本机。
+server.listen(PORT, () => {
+  console.log(`[webhook-sink] listening on :${PORT} (container-internal; host restricted by compose)`);
 });
