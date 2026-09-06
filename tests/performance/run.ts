@@ -295,6 +295,7 @@ async function main(): Promise<number> {
     const http = new PerfHttp(serverBase!, metrics);
 
     let roomsStarted = 0;
+    let roomsContributing = 0;
     if (plan.name === "reconnect") {
       const rooms: RoomSession[] = [];
       for (let i = 0; i < plan.rooms; i++) {
@@ -334,8 +335,10 @@ async function main(): Promise<number> {
         players: plan.players,
         durationMs,
         sampleMemory: plan.name === "soak",
+        primeBuffered: plan.name === "burst" && !plan.reducedEvidence,
       });
       roomsStarted = outcome.roomsStarted;
+      roomsContributing = outcome.roomsContributing;
     }
 
     // 本地拉起时复用隔离 schema 的 runId，使产物 runId 与 schema/连接可关联；
@@ -371,6 +374,15 @@ async function main(): Promise<number> {
         console.error(
           `[perf] burst：opWindow(${plan.target.opWindowMs}ms) 内 APPLIED=${applied} < 目标 ${target}，` +
             "未达到 §10.1 突发行动负载，不判通过。",
+        );
+        return EXIT.insufficient;
+      }
+      // §10.1：500 个命令需分布到 ≥50 Room（Codex #451）。
+      const requiredRooms = Math.min(plan.rooms, 50);
+      if (roomsContributing < requiredRooms) {
+        console.error(
+          `[perf] burst：贡献桌数 ${roomsContributing} < 要求的 ≥${requiredRooms} 桌，` +
+            "不满足 §10.1 突发行动分布要求，不判通过。",
         );
         return EXIT.insufficient;
       }

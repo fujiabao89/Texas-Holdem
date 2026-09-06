@@ -99,7 +99,11 @@ export function ratioOrNull(numerator: number, denominator: number): number | nu
 }
 
 /** 时间起点相对的 warmup 结束毫秒（按比例切掉首段，避免冷启动扭曲门禁）。 */
-export function warmupCutoffMs(runStartedAtMs: number, nowMs: number, warmupFraction: number): number {
+export function warmupCutoffMs(
+  runStartedAtMs: number,
+  nowMs: number,
+  warmupFraction: number,
+): number {
   return runStartedAtMs + Math.floor((nowMs - runStartedAtMs) * warmupFraction);
 }
 

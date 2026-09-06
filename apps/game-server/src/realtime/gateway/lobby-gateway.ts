@@ -131,6 +131,9 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
   });
 
   app.get("/api/v1/ws", { websocket: true }, (socket) => {
+    // Copilot：opened 对“连接建立”计数（含未认证连接），与 closed 全量口径一致；
+    // 认证成功只递增 wsActive（下方）。
+    metrics?.inc(MetricName.wsOpened);
     let roomId: string | null = null;
     let playerId: string | null = null;
     let connectionId: string | null = null;
@@ -390,7 +393,6 @@ export function registerLobbyGateway(app: FastifyInstance, manager: RoomManager,
           authenticatedPlayers.set(roomId, authenticatedInRoom);
           if (authenticationAttempts.get(pendingConnectionKey) === authenticationAttempt) authenticationAttempts.delete(pendingConnectionKey);
           authenticated = true;
-          metrics?.inc(MetricName.wsOpened);
           metrics?.inc(MetricName.wsActive);
           clock.clearTimeout(authTimer);
           unsubscribe = manager.subscribe((snapshot) => {

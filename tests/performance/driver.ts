@@ -193,6 +193,7 @@ export async function startOneTable(options: StartOneTableOptions): Promise<Room
     players: sessions,
     tournamentId: null,
     revision: hostRaw.roomRevision,
+    appliedCount: 0,
   };
 
   // 1) 其余玩家 join（先不入座，避免 seat 冲突与并发 PATCH 乐观锁）。
@@ -257,10 +258,12 @@ async function playerAgent(
   metrics: MetricsCollector,
   window: RunWindow,
   shared: SharedTournament,
+  /** 起始 cursor（burst 置 0 以消费已缓冲的开局回合，Codex #449）。 */
+  cursorStart?: number,
 ): Promise<void> {
   const ws = session.ws;
   if (ws === null) return;
-  let cursor = ws.messages.length;
+  let cursor = cursorStart ?? ws.messages.length;
   const rand = E.prng01(0x9e3779b9 ^ ((session.seat + 1) * 2654435761));
   while (!shared.finished && Date.now() < window.deadlineMs && !window.stop) {
     const message = await E.waitForIndexed(
@@ -304,6 +307,7 @@ async function playerAgent(
     if (result !== null) {
       if (result.status === "APPLIED") {
         metrics.pushActionLatency(Date.now() - t0);
+        room.appliedCount += 1; // burst 贡献桌数（Codex #451）
       } else {
         E.classifyRejected(result.error?.code, metrics);
       }
@@ -317,10 +321,11 @@ async function driveTournament(
   room: RoomSession,
   metrics: MetricsCollector,
   window: RunWindow,
+  prime?: boolean,
 ): Promise<boolean> {
   const shared: SharedTournament = { finished: false };
   const agents = [room.host, ...room.players].map((session) =>
-    playerAgent(room, session, metrics, window, shared),
+    playerAgent(room, session, metrics, window, shared, prime ? 0 : undefined),
   );
   // 轮询结束：不依赖某一代理收尾，避免淘汰座阻塞。
   while (!shared.finished && Date.now() < window.deadlineMs && !window.stop) {
@@ -337,9 +342,10 @@ async function driveRoom(
   http: E.PerfHttp,
   metrics: MetricsCollector,
   window: RunWindow,
+  prime?: boolean,
 ): Promise<void> {
   while (Date.now() < window.deadlineMs && !window.stop) {
-    const finished = await driveTournament(room, metrics, window);
+    const finished = await driveTournament(room, metrics, window, prime);
     if (!finished || Date.now() >= window.deadlineMs) break;
     // 终局 rematch：Host 用最新 FINISHED 快照 revision 再来一局。
     const hostWs = room.host.ws;
@@ -359,6 +365,8 @@ async function driveRoom(
 
 export interface SustainOutcome {
   readonly roomsStarted: number;
+  /** 至少贡献过 1 个 APPLIED 动作的房间数（burst ≥50 桌分布校验，Codex #451）。 */
+  readonly roomsContributing: number;
 }
 
 const MEMORY_SAMPLE_MS = 10_000;
@@ -459,8 +467,10 @@ export async function runSustained(options: {
   readonly durationMs: number;
   /** Soak：是否周期采样被测 /metrics RSS 以计算内存增长比。 */
   readonly sampleMemory?: boolean;
+  /** burst：代理从缓冲起点消费已就绪的开局回合后再计时（Codex #449）。 */
+  readonly primeBuffered?: boolean;
 }): Promise<SustainOutcome> {
-  const { http, server, metrics, rooms, players, durationMs, sampleMemory } = options;
+  const { http, server, metrics, rooms, players, durationMs, sampleMemory, primeBuffered } = options;
   const tables: RoomSession[] = [];
   for (let i = 0; i < rooms; i++) {
     tables.push(await startOneTable({ http, server, metrics, roomTag: String(i), players }));
@@ -487,7 +497,7 @@ export async function runSustained(options: {
   // unexpected-disconnect 以被测 /metrics 的 abnormal 关闭计数差值为准（服务端权威类别），
   // 而非本地恒 0 的伪计数（Codex #352）。窗口前后各读一次。
   const abnormalBase = await readAbnormalClosed(server);
-  await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window)));
+  await Promise.all(tables.map((room) => driveRoom(room, http, metrics, window, primeBuffered)));
   if (sampler !== null) await sampler.catch(() => undefined);
   if (abnormalBase !== null) {
     const abnormalEnd = await readAbnormalClosed(server);
@@ -504,7 +514,10 @@ export async function runSustained(options: {
       await E.closeSession(session);
     }
   }
-  return { roomsStarted: tables.length };
+  return {
+    roomsStarted: tables.length,
+    roomsContributing: tables.filter((table) => table.appliedCount > 0).length,
+  };
 }
 
 export interface ReconnectStormOptions {

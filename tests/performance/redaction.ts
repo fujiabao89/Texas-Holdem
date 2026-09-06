@@ -23,7 +23,9 @@ export function redactJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => redactJson(item));
   if (typeof value === "string") {
     // 占位符不含 "Bearer " 前缀，避免自身再次命中检测正则（写盘前扫描依赖它）。
-    return BEARER_PATTERN_DETECT.test(value) ? value.replace(BEARER_PATTERN_GLOBAL, "[REDACTED]") : value;
+    return BEARER_PATTERN_DETECT.test(value)
+      ? value.replace(BEARER_PATTERN_GLOBAL, "[REDACTED]")
+      : value;
   }
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};

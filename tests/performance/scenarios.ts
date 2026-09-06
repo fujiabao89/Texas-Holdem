@@ -123,13 +123,18 @@ export function isScenarioName(value: string): value is ScenarioName {
  * 但不得越过硬边界（≥1 room、2–10 players、≥1s），下调时 reducedEvidence=true 以便
  * 产物如实标注「缩减运行、非 Release 结果」。
  */
-export function resolvePlan(name: string, overrides: {
-  readonly rooms?: number;
-  readonly players?: number;
-  readonly durationMs?: number;
-}): ScenarioPlan {
+export function resolvePlan(
+  name: string,
+  overrides: {
+    readonly rooms?: number;
+    readonly players?: number;
+    readonly durationMs?: number;
+  },
+): ScenarioPlan {
   if (!isScenarioName(name)) {
-    throw new ScenarioPlanError(`未知场景 ${JSON.stringify(name)}；可选：${Object.keys(SCENARIO_TARGETS).join("/")}`);
+    throw new ScenarioPlanError(
+      `未知场景 ${JSON.stringify(name)}；可选：${Object.keys(SCENARIO_TARGETS).join("/")}`,
+    );
   }
   const target = SCENARIO_TARGETS[name];
   const rooms = overrides.rooms ?? target.rooms;
@@ -138,7 +143,11 @@ export function resolvePlan(name: string, overrides: {
   if (!Number.isInteger(rooms) || rooms < 1 || rooms > MAX_ROOMS) {
     throw new ScenarioPlanError(`场景 ${name}：rooms 须为 1–${MAX_ROOMS}，收到 ${rooms}`);
   }
-  if (!Number.isInteger(players) || players < MIN_PLAYERS_PER_ROOM || players > MAX_PLAYERS_PER_ROOM) {
+  if (
+    !Number.isInteger(players) ||
+    players < MIN_PLAYERS_PER_ROOM ||
+    players > MAX_PLAYERS_PER_ROOM
+  ) {
     throw new ScenarioPlanError(
       `场景 ${name}：players 须为 ${MIN_PLAYERS_PER_ROOM}–${MAX_PLAYERS_PER_ROOM}，收到 ${players}`,
     );
@@ -158,30 +167,132 @@ const reconnectLatency = { p95: 1_000, p99: 2_000 }; // ms（重连风暴）
 export const SCENARIO_SLO: Record<ScenarioName, readonly SloCheck[]> = {
   smoke: [],
   normal: [
-    { id: "action-p95", description: "Action→Event p95 ≤250 ms", threshold: actionLatency.p95, minSamples: 100, measure: { kind: "latency", series: "action", q: 0.95 } },
-    { id: "action-p99", description: "Action→Event p99 ≤500 ms", threshold: actionLatency.p99, minSamples: 100, measure: { kind: "latency", series: "action", q: 0.99 } },
-    { id: "business-5xx", description: "业务 5xx <0.1%", threshold: 0.001, minSamples: 100, measure: { kind: "rate", numerator: "http5xx", denominator: "httpRequests" } },
-    { id: "unexpected-disconnect", description: "意外断连 <0.1%", threshold: 0.001, minSamples: 100, measure: { kind: "rate", numerator: "unexpectedDisconnect", denominator: "wsConnections" } },
-    { id: "invariant-zero", description: "Invariant violation = 0", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "invariantViolations" } },
+    {
+      id: "action-p95",
+      description: "Action→Event p95 ≤250 ms",
+      threshold: actionLatency.p95,
+      minSamples: 100,
+      measure: { kind: "latency", series: "action", q: 0.95 },
+    },
+    {
+      id: "action-p99",
+      description: "Action→Event p99 ≤500 ms",
+      threshold: actionLatency.p99,
+      minSamples: 100,
+      measure: { kind: "latency", series: "action", q: 0.99 },
+    },
+    {
+      id: "business-5xx",
+      description: "业务 5xx <0.1%",
+      threshold: 0.001,
+      minSamples: 100,
+      measure: { kind: "rate", numerator: "http5xx", denominator: "httpRequests" },
+    },
+    {
+      id: "unexpected-disconnect",
+      description: "意外断连 <0.1%",
+      threshold: 0.001,
+      minSamples: 100,
+      measure: { kind: "rate", numerator: "unexpectedDisconnect", denominator: "wsConnections" },
+    },
+    {
+      id: "invariant-zero",
+      description: "Invariant violation = 0",
+      threshold: 0,
+      minSamples: 0,
+      measure: { kind: "zero", counter: "invariantViolations" },
+    },
   ],
   burst: [
-    { id: "action-p99", description: "突发 Action→Event p99 ≤1 s", threshold: 1_000, minSamples: 100, measure: { kind: "latency", series: "action", q: 0.99 } },
-    { id: "burst-invariant-zero", description: "同桌 sequence/幂等/投影断言全部通过", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "sequenceViolations" } },
-    { id: "burst-schema-zero", description: "schema 违反（投影/序列化回归）为 0", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "invariantViolations" } },
-    { id: "burst-no-crash", description: "不崩溃（本地拉起时探活）", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "processCrash" } },
+    {
+      id: "action-p99",
+      description: "突发 Action→Event p99 ≤1 s",
+      threshold: 1_000,
+      minSamples: 100,
+      measure: { kind: "latency", series: "action", q: 0.99 },
+    },
+    {
+      id: "burst-invariant-zero",
+      description: "同桌 sequence/幂等/投影断言全部通过",
+      threshold: 0,
+      minSamples: 0,
+      measure: { kind: "zero", counter: "sequenceViolations" },
+    },
+    {
+      id: "burst-schema-zero",
+      description: "schema 违反（投影/序列化回归）为 0",
+      threshold: 0,
+      minSamples: 0,
+      measure: { kind: "zero", counter: "invariantViolations" },
+    },
+    {
+      id: "burst-no-crash",
+      description: "不崩溃（本地拉起时探活）",
+      threshold: 0,
+      minSamples: 0,
+      measure: { kind: "zero", counter: "processCrash" },
+    },
   ],
   reconnect: [
-    { id: "reconnect-p95", description: "认证至首个完整 Snapshot p95 ≤1 s", threshold: reconnectLatency.p95, minSamples: 500, measure: { kind: "latency", series: "reconnect", q: 0.95 } },
-    { id: "reconnect-p99", description: "认证至首个完整 Snapshot p99 ≤2 s", threshold: reconnectLatency.p99, minSamples: 500, measure: { kind: "latency", series: "reconnect", q: 0.99 } },
-    { id: "recovery-error", description: "恢复错误率 <0.1%", threshold: 0.001, minSamples: 100, measure: { kind: "rate", numerator: "recoveryFailures", denominator: "recoveryAttempts" } },
+    {
+      id: "reconnect-p95",
+      description: "认证至首个完整 Snapshot p95 ≤1 s",
+      threshold: reconnectLatency.p95,
+      minSamples: 500,
+      measure: { kind: "latency", series: "reconnect", q: 0.95 },
+    },
+    {
+      id: "reconnect-p99",
+      description: "认证至首个完整 Snapshot p99 ≤2 s",
+      threshold: reconnectLatency.p99,
+      minSamples: 500,
+      measure: { kind: "latency", series: "reconnect", q: 0.99 },
+    },
+    {
+      id: "recovery-error",
+      description: "恢复错误率 <0.1%",
+      threshold: 0.001,
+      minSamples: 100,
+      measure: { kind: "rate", numerator: "recoveryFailures", denominator: "recoveryAttempts" },
+    },
   ],
   soak: [
-    { id: "invariant-zero", description: "死锁/崩溃/Invariant violation = 0", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "invariantViolations" } },
-    { id: "no-crash", description: "不崩溃（本地拉起时探活）", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "processCrash" } },
-    { id: "memory-growth", description: "末小时内存均值 ≤ 稳态小时 1.1 倍", threshold: 1.1, minSamples: 0, measure: { kind: "memory-ratio" } },
+    {
+      id: "invariant-zero",
+      description: "死锁/崩溃/Invariant violation = 0",
+      threshold: 0,
+      minSamples: 0,
+      measure: { kind: "zero", counter: "invariantViolations" },
+    },
+    {
+      id: "no-crash",
+      description: "不崩溃（本地拉起时探活）",
+      threshold: 0,
+      minSamples: 0,
+      measure: { kind: "zero", counter: "processCrash" },
+    },
+    {
+      id: "memory-growth",
+      description: "末小时内存均值 ≤ 稳态小时 1.1 倍",
+      threshold: 1.1,
+      minSamples: 0,
+      measure: { kind: "memory-ratio" },
+    },
   ],
   headroom: [
-    { id: "invariant-zero", description: "不崩溃/不 OOM/Invariant violation = 0/无跨桌污染", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "invariantViolations" } },
-    { id: "no-crash", description: "不崩溃（本地拉起时探活）", threshold: 0, minSamples: 0, measure: { kind: "zero", counter: "processCrash" } },
+    {
+      id: "invariant-zero",
+      description: "不崩溃/不 OOM/Invariant violation = 0/无跨桌污染",
+      threshold: 0,
+      minSamples: 0,
+      measure: { kind: "zero", counter: "invariantViolations" },
+    },
+    {
+      id: "no-crash",
+      description: "不崩溃（本地拉起时探活）",
+      threshold: 0,
+      minSamples: 0,
+      measure: { kind: "zero", counter: "processCrash" },
+    },
   ],
 };

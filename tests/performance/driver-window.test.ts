@@ -24,6 +24,7 @@ function hostOnlyRoom(playerId: string, token: string): RoomSession {
     players: [],
     tournamentId: null,
     revision: "1",
+    appliedCount: 0,
   };
 }
 

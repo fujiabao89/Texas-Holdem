@@ -136,7 +136,12 @@ describe("engine.parsePrometheusGauge（Soak 内存采样用）", () => {
   });
   it("未知/损坏行返回 null", () => {
     expect(parsePrometheusGauge(text, "no_such_metric")).toBeNull();
-    expect(parsePrometheusGauge("texas_process_resident_memory_bytes abc\n", "texas_process_resident_memory_bytes")).toBeNull();
+    expect(
+      parsePrometheusGauge(
+        "texas_process_resident_memory_bytes abc\n",
+        "texas_process_resident_memory_bytes",
+      ),
+    ).toBeNull();
   });
 });
 

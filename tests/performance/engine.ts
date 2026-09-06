@@ -70,7 +70,8 @@ export function prng01(seed: number): () => number {
     state ^= state >>> 17;
     state ^= state << 5;
     state >>>= 0;
-    return state / 0xffffffff;
+    // 除以 2^32 保证返回值 < 1（Copilot：0xffffffff 除数在 state 满值时会返回 1）。
+    return state / 0x100000000;
   };
 }
 
@@ -113,6 +114,8 @@ export interface RoomSession {
   tournamentId: string | null;
   /** 房级乐观锁 revision（每次 HTTP/ready 变更后刷新，开赛/终局/再来依赖它）。 */
   revision: string;
+  /** 本桌 APPLIED 动作计数（burst 需统计贡献桌数，Codex #451）。 */
+  appliedCount: number;
 }
 
 export interface PlayerSession {
