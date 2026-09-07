@@ -34,4 +34,4 @@ PR 审查意见的逐项核验、严重度和处置见 [TEX-38 Findings Ledger](
 
 审查修复复验（2026-09-07）：音频单元 43 项、TEX-38 浏览器回归 11 项、完整前端单元 168 项、ESLint、测试类型检查和生产构建均通过；CPU 场景不再把已按设计降级的终态误判为丢失飞牌。
 
-CI `e2e-real` 修复复验（2026-09-07）：在独立 PostgreSQL `55433` 端口复跑 Chromium、Firefox、WebKit 的无障碍与多人旅程目标用例；Chromium 4 项、WebKit 4 项、Firefox 多人 2 项通过。Firefox 无障碍在该次本机连续 10 项组合运行中命中既有全局 per-IP 60/min 限流（页面明确返回 `RATE_LIMITED`），与本 PR 无关；CI #202 的原始 Firefox 无障碍用例通过，故未在 TEX-38 捎带更改服务端限流策略。F-08/F-09 的完整处置见 Findings Ledger。
+CI `e2e-real` 修复复验（2026-09-07）：同步已合入的 TEX-29 隔离 `load-test` 限流档后，在独立 PostgreSQL `55433` 端口执行完整 `pnpm test:e2e:real`；Chromium、Firefox、WebKit 共 15 项全部通过（5.8 分钟）。其中包含原失败的 WebKit axe 与 Firefox 双人再来一局流程；F-08/F-09 的完整处置见 Findings Ledger。
