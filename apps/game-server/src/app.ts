@@ -16,6 +16,8 @@ import type { ConnectionEpochRegistry } from "./realtime/connection-epochs";
 import type { TournamentEventBus } from "./realtime/tournament-event-bus";
 import { IdempotencyStore } from "./http/middleware/idempotency";
 import { createRateLimiter, type RateLimiter } from "./http/middleware/rate-limit";
+import { type Metrics } from "./observability/metrics";
+import { createServerMetrics, N as MetricName } from "./observability/server-metrics";
 import { createNodeIdSource, type IdSource } from "./rooms/id-source";
 import type { RoomManager } from "./rooms/room-manager";
 import type { TournamentManager } from "./tournaments/tournament-manager";
@@ -62,6 +64,8 @@ export interface BuildAppOptions {
   readonly handHistoryRepository?: HandHistoryReadRepository;
   /** @fastify/rate-limit 全局 per-IP 额度（CodeQL 识别为 RateLimitingMiddleware）。 */
   readonly rateLimit?: { readonly max: number; readonly timeWindow: string };
+  /** TEX-29 服务端指标注册表；缺省创建空注册表并暴露 /metrics。 */
+  readonly metrics?: Metrics;
 }
 
 /**
@@ -73,6 +77,25 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 65_536 });
   const ids = options.ids ?? createNodeIdSource();
   const idempotency = options.idempotency ?? new IdempotencyStore();
+  const metrics = options.metrics ?? createServerMetrics();
+  // HTTP 观测（TEX-29）：请求计数/耗时、5xx。标签仅含方法（有界），不含路径（路径含 roomId）。
+  const httpStart = new WeakMap<object, bigint>();
+  app.addHook("onRequest", (request, _reply, done) => {
+    httpStart.set(request, process.hrtime.bigint());
+    done();
+  });
+  app.addHook("onResponse", (request, reply, done) => {
+    const method = request.method;
+    metrics.inc(MetricName.httpRequests, { method });
+    const status = reply.statusCode;
+    if (status >= 500) metrics.inc(MetricName.http5xx, { method });
+    const started = httpStart.get(request);
+    if (started !== undefined) {
+      const seconds = Number(process.hrtime.bigint() - started) / 1e9;
+      metrics.observe(MetricName.httpDurationSeconds, seconds, { method });
+    }
+    done();
+  });
   // Must be registered before every route so upgrade interception is reliable.
   app.register(websocket);
 
@@ -128,6 +151,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return { status: "ok" };
   });
 
+  // /metrics：Prometheus 文本抓取端点（TEX-29）。不包含任何 room/player 标识标签。
+  app.get("/metrics", async (_request, reply) => {
+    reply.header("content-type", "text/plain; version=0.0.4; charset=utf-8");
+    return metrics.render();
+  });
+
   // 路由必须在限流插件加载之后再注册（onRoute 钩子只在路由注册时触发），
   // 否则全局限流不会应用到这些路由。
   app.after(() => {
@@ -158,6 +187,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       tournaments: options.tournamentManager,
       events: options.tournamentEvents,
       epochs: options.connectionEpochs,
+      metrics,
     });
   });
 

@@ -82,6 +82,10 @@ export default defineConfig({
         TOKEN_HMAC_SECRET: "tex28-e2e-real-token-secret-0000000000000001",
         CORS_ALLOWED_ORIGINS: webBaseUrl,
         TEX_TEST_RNG_SEED: seed,
+        // TEX-29：真实链路 E2E 在隔离环境高频建房/加入/WS 升级，默认限流档（create
+        // 5/min、全局 WS 60/min）会在单个分钟窗口内触发 429，属既有偶发。隔离测试
+        // 环境启用 load-test 档（有界、仅测试）避免把测试压到限流；生产禁 load-test。
+        GAME_SERVER_RATE_LIMIT_PROFILE: "load-test",
       },
     },
     {

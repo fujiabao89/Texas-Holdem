@@ -159,3 +159,45 @@ jobs:
           name: e2e-real-failure-artifacts
           path: tests/e2e/.artifacts-real
           if-no-files-found: ignore
+  # TEX-29：PR 性能 smoke（真实链路，真实 PostgreSQL service 容器）。
+  # docs/06 §10/§11：PR 只跑 smoke（功能不变量，不判 SLO）；正式 Load/Soak 与
+  # Nightly reconnect 见 performance.yml（schedule / workflow_dispatch）。
+  perf-smoke:
+    name: perf-smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tex_test
+          POSTGRES_PASSWORD: tex_test_pw
+          POSTGRES_DB: tex_e2e
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U tex_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install, build and run real-link perf smoke
+        shell: bash
+        env:
+          TEX_TEST_DATABASE_URL: postgres://tex_test:tex_test_pw@127.0.0.1:55432/tex_e2e
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm run test:perf -- --scenario smoke --sha "$GITHUB_SHA"
+      - name: Upload perf-smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: perf-smoke-${{ github.sha }}
+          path: tests/performance/.artifacts
+          if-no-files-found: ignore
