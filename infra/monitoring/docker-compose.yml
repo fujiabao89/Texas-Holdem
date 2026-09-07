@@ -1,0 +1,61 @@
+# 本地隔离监控演练栈（TEX-29）。仅用于隔离测试环境故障注入演练，不承载生产。
+# 真实通知渠道（即时渠道/邮件）需授权并在部署环境另行配置（见 README）。
+# 安全（Greptile 审查）：所有服务仅绑定本机 127.0.0.1，不向局域网/公网暴露；
+# Grafana admin 口令必须经 env 注入（不留仓库已知值）。
+services:
+  webhook-sink:
+    build:
+      context: .
+      dockerfile: Dockerfile.webhook-sink
+    ports:
+      - "127.0.0.1:9000:9000"
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=90d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    environment:
+      MONITOR_ENV: local
+      GAME_SERVER_VERSION: local-dev
+      GAME_SERVER_ADDR: host.docker.internal:3001
+      ALERTMANAGER_ADDR: alertmanager:9093
+    depends_on:
+      - alertmanager
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./alertmanager:/etc/alertmanager
+      - alertmanager-data:/alertmanager
+    depends_on:
+      - webhook-sink
+    ports:
+      - "127.0.0.1:9093:9093"
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      # 口令必须由 .env 提供（GRAFANA_ADMIN_PASSWORD），避免仓库内已知管理员口令。
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in infra/monitoring/.env (see .env.example)}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
