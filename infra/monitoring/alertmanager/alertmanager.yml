@@ -1,14 +1,8 @@
 # Alertmanager 配置（TEX-29）。权威要求：docs/06 §10.2。
-# 接收渠道分两层：
-#   1) webhook（本地演练/即时渠道适配器）——地址经 ALERTMANAGER_WEBHOOK_URL 注入；
-#   2) email 兜底（P0 必须）——SMTP 凭据/收件人经 .env/部署 secret 注入，未授权前不配置真实值。
-# 真实即时渠道（推送/电话）与邮件兜底的账号需总负责人授权并在部署环境配置后重新演练送达。
-global:
-  smtp_smarthost: "${SMTP_HOST:-smtp.example.invalid:587}"
-  smtp_from: "${SMTP_FROM:-texas-alerts@example.invalid}"
-  smtp_auth_username: "${SMTP_USERNAME:-}"
-  smtp_auth_password: "${SMTP_PASSWORD:-}"
-
+# 接收渠道：webhook（本地演练/即时渠道适配器）。Alertmanager 不展开 YAML 中的 shell
+# 占位符（${VAR:-...} 会被当字面值，导致 SMTP 主机解析失败），因此这里只放可解析的
+# 字面本地值。P0 邮件兜底（SMTP 凭据/收件人）未授权前不在此配置；授权后应使用
+# **另行渲染的** secret 配置注入（部署环境），并重跑送达演练后再宣称“监控已完成”。
 route:
   receiver: default
   group_by: ["alertname", "environment", "version"]
@@ -27,16 +21,13 @@ route:
 receivers:
   - name: default
     webhook_configs:
-      - url: "${ALERTMANAGER_WEBHOOK_URL:-http://webhook-sink:9000/hook}"
+      - url: "http://webhook-sink:9000/hook"
         send_resolved: true
   - name: p0
     webhook_configs:
-      - url: "${ALERTMANAGER_WEBHOOK_URL:-http://webhook-sink:9000/hook}"
-        send_resolved: true
-    email_configs:
-      - to: "${P0_EMAIL_RECIPIENTS:-}"
+      - url: "http://webhook-sink:9000/hook"
         send_resolved: true
   - name: p1
     webhook_configs:
-      - url: "${ALERTMANAGER_WEBHOOK_URL:-http://webhook-sink:9000/hook}"
+      - url: "http://webhook-sink:9000/hook"
         send_resolved: true

@@ -37,8 +37,6 @@ services:
     volumes:
       - ./alertmanager:/etc/alertmanager
       - alertmanager-data:/alertmanager
-    environment:
-      ALERTMANAGER_WEBHOOK_URL: http://webhook-sink:9000/hook
     depends_on:
       - webhook-sink
     ports:
