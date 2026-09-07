@@ -11,5 +11,7 @@
 | F-05 | CodeRabbit | 无具体 finding。该 PR 的 CodeRabbit 自动审查因仓库少于 10 stars 被配置跳过；其状态成功不代表额外代码意见。 | — | 无需变更。 |
 | F-06 | Greptile | 无具体 finding。Greptile Review check 已成功完成，但未创建 review、inline comment 或 issue comment。 | — | 无需变更。 |
 | F-07 | 本轮验证：6× CPU E2E 固定要求 3 个飞牌节点 | 有效。真实慢机上 `FrameHealth` 可在 Playwright 查询前完成减少动态并提交正确公共牌终态；原测试仍硬性要求 3 个 flight DOM 节点，造成与产品降级契约冲突的 flaky failure。既有最终公共牌和下注断言仍覆盖正确终态。 | P2 | 已修正：该步接受“3 个可见 flight”或 `data-reduced-motion="true"`；后续继续断言可下注、无 flight 残留、3 张公共牌及真实 rAF 报告。 |
+| F-08 | CI `e2e-real` #202 / WebKit axe：Ready 座位文字颜色对比度不足 | 有效。TEX-38 新增的 `lobby-seat-feedback` 从 `opacity: 0.45` 起始；玩家刚准备、座位以新 key 挂载而 axe 在动画窗口内扫描时，文字会与 `bg-emerald-50` 混合为约 `#979797` / `#b1b1b1`，对比度仅 2.84 / 2.09。现有真实链路 axe 门禁正确检出，但此前没有覆盖动画中间帧。 | P1 | 已修正：入场反馈只保留 transform 位移，不再改变文本不透明度；视觉节奏和 Reduced Motion 路径不变。 |
+| F-09 | CI `e2e-real` #202 / Firefox 多人旅程：新比赛的非当前玩家未命中“等待”或“弃牌”选择器 | 有效的测试缺陷，非牌局或动画行为缺陷。第二局开始后，非当前玩家正确看到 `当前行动：<玩家名>` 与行动 deadline；`table.waiting` 仅在没有 deadline 时渲染，故既不会有“等待其他玩家行动”，也不会有其本人的弃牌按钮。原测试未覆盖这个合法状态，且 CI 已在该场景超时。 | P2 | 已修正：断言改为接受服务端权威的“当前行动”显示或当前玩家的弃牌按钮，仍验证双方已经收到第二局行动状态。 |
 
-验证和对应原始线程回复在修复提交推送后完成。未发现 P0/P1、安全、授权、数据完整性或协议语义问题。
+审查线程的既有回复在此前修复提交推送后完成；本次 CI 发现并非审查线程，无需回复。除 F-08 外，未发现 P0/P1、安全、授权、数据完整性或协议语义问题。
