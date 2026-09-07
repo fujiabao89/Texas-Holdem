@@ -36,7 +36,7 @@ Unit Test → Poker Rule Test → Integration Test → Multiplayer/WebSocket Tes
 | Multiplayer/WebSocket Test | 多客户端一致性、Snapshot/Event、重连 | `apps/game-server/tests/ws` + `tests/clients/` | Vitest + 可编程 WS 客户端；`pnpm test:ws`【工程基线，TEX-12 已落地；WS 实现落地前受控跳过】 | §6 |
 | E2E Test | 完整用户旅程（创建房间 → 完赛） | `tests/e2e/`（mock WS 投影注入）+ `tests/e2e/real/`（真实链路） | Playwright + axe-core；`pnpm test:e2e` / `pnpm test:e2e:real`【工程基线，TEX-12 已落地；业务旅程随前端任务回填；TEX-28 已落地真实链路套件（真实浏览器 → web → game-server → PostgreSQL，runId 隔离 Schema + `TEX_TEST_RNG_SEED` 确定性重放），未配置 `TEX_TEST_DATABASE_URL` 时快速失败不静默降级】 | §9 |
 | Long-running Simulation | 随机长跑与不变量自动断言 | `tests/simulator/`（模块自测归 unit 层） | 独立 Node CLI；`pnpm test:sim -- --seed ...` / `--tier smoke\|nightly\|rc`【已落地 · TEX-16：长跑主循环、每转移不变量断言、Watchdog、Smoke/Nightly/RC 三档与失败产物】 | §5 |
-| Load / Soak Test | 多 Room/WS、突发命令、重连风暴与稳定性 | `tests/load/` | Artillery；`pnpm test:load`【工程基线，未实现】 | §10 |
+| Load / Soak Test | 多 Room/WS、突发命令、重连风暴与稳定性（真实链路 HTTP/WS/DB） | `tests/performance/`（模块自测归 unit 层） | 独立 Node CLI；`pnpm test:perf --scenario smoke\|normal\|burst\|reconnect\|soak\|headroom`【已落地 · TEX-29：真实链路压测工具 + SLO 门禁；PR 只跑 smoke，正式场景仅 Release/隔离环境运行】 | §10 |
 | Manual UI/Animation/UX Review | 真实设备人工验收 | 人工 | 不适用 | §9 |
 
 上游规划未指定测试工具；上表为基于既定 TypeScript/pnpm 技术栈作出的工程基线。根脚本必须作为唯一公共入口，包内命令可调整，但 CI、本地和文档不得各自维护不同命令。分层入口的落地事实（2026-08-21，TEX-12）：根 `vitest.config.ts` 以互斥 include 定义 unit/rules/integration/ws 四层（`pnpm test` 为 Vitest 层总入口），E2E 与 Simulator 分别为 Playwright 与独立 CLI；`tests/support/` 提供 Seed 解析、确定性 PRNG、Fake Clock、Fixture Builder 与测试数据库隔离工具（自带自测），`tests/meta/` 守护入口与分层互斥性；空层以 `passWithNoTests` 成功退出并明确输出未发现测试，不伪造结果。
@@ -266,7 +266,7 @@ P0 容量目标固定为单实例 **100 Room / 1,000 WS**；首轮基准不以�
 ### 10.2 监控验收【工程基线】
 
 - 每个 P0/P1 指标均需验证“代码产生 → 采集 → Dashboard → 告警”完整链路，不能只验证埋点函数被调用。
-- 发布前通过故障注入触发一次 Game Error/Invariant Violation、重连率、Action Rejection Rate 告警；校验告警包含版本、环境、room/tournament 关联标识且不含私密牌或 Token。
+- 发布前通过故障注入触发一次 Game Error/Invariant Violation、重连率、Action Rejection Rate 告警；校验告警包含 `environment`/`version` 标签、可经结构化应用日志字段（`roomId`/`tournamentId`）关联具体房间/比赛，且不含私密牌或 Token。`roomId`/`tournamentId` 不进指标标签（per-room 高基数违反有限标签集合红线），以日志字段承载关联（查询指引见 `docs/05-operations/README.md`）。
 - 告警总负责人为项目总负责人；P0 告警发送至其启用推送/电话提醒的即时渠道并以邮件兜底，P1 告警发送至同一即时渠道。具体服务账号可随部署环境选择，但未验证送达前不得宣称“监控已完成”。
 
 | 级别 | 告警条件 | 响应要求 |
@@ -294,6 +294,8 @@ CI 平台采用 GitHub Actions，工作流放置于 `.github/workflows/`【工�
 
 真实链路 E2E CI 落地事实（2026-09-03，TEX-28）：`ci.yml` 增设独立 `e2e-real` job——以 `postgres:16-alpine` service 容器（127.0.0.1:55432）提供真实 PostgreSQL，注入 `TEX_TEST_DATABASE_URL` 后运行 `pnpm test:e2e:real`（安装 chromium/firefox/webkit；chromium 全量 + firefox/webkit 关键 `@key` 用例，配置内置），失败上传 `tests/e2e/.artifacts-real` 产物；每次运行经 runId 隔离 Schema 自清理，与 mock 套件 `e2e` job 互补。
 Simulator CI 落地事实（2026-08-24，TEX-16）：PR Smoke 由 `ci.yml` 以 `pnpm test:sim -- --tier smoke --sha "$GITHUB_SHA"` 真实运行（已知失败 seed 回归集 + 提交 SHA 派生 ≥200 场，约 20s）；Nightly 经 `.github/workflows/simulator.yml` 的 `schedule`（每日 02:00 北京时间）或 `workflow_dispatch` 运行——按**每种 Blind Mode 各**派生 ≥10,000 个强制该模式的 seed（合计 ≥30,000，满足 §5 逐模式下限），并上传绑定提交 SHA 的 JSON Artifact（tier、gitSha、seed 范围、覆盖统计与失败现场；RC 将同类报告绑定候选提交保存，普通运行报告不提交仓库）；RC 需 seed 台账（`--ledger`），在本地/受控环境手动执行，不进入普通 PR CI。Nightly/RC 是合并后/候选发布阶段门禁，不阻塞 PR 创建。
+
+Performance CI 落地事实（2026-09-05，TEX-29）：`ci.yml` 的 `perf-smoke` job 在 postgres service 容器上以 `pnpm build` + `pnpm test:perf -- --scenario smoke --sha "$GITHUB_SHA"` 跑真实链路功能冒烟（PR 必跑，产物上传 Artifact，不判 SLO）；`.github/workflows/performance.yml` 以 schedule 每日跑 reconnect 风暴（绑定默认分支最新提交），以 workflow_dispatch 支持 reconnect/normal/burst/soak/headroom——正式 Load/Soak/Headroom 只在隔离测试环境以固定候选提交运行，产物绑定 SHA 传 Artifact（docs/06 §12.4 证据）。压测工具与协议锚点见 `tests/performance/README.md`。真实链路 E2E（TEX-28）被测实例也在隔离测试环境启用 `GAME_SERVER_RATE_LIMIT_PROFILE=load-test`：其高频建房/加入/WS 升级默认档会在单分钟窗口内触发 429（既有偶发），load-test 档有界且仅在测试隔离环境使用，生产环境禁 load-test（rate-limit.ts 硬校验）。
 
 场景加权裁决（2026-08-24）：初始加权为明确冻结值（见 `tests/simulator/README.md`「场景加权策略」）；在至少连续 3 次 Nightly 数据后，依据实际覆盖缺口调整权重，并在该文档记录原因与前后数据。引擎缺陷不在 Simulator 任务分支修复：模拟器确认的 P0/P1 规则缺陷创建独立 Linear 缺陷任务并阻塞验收，P2/P3 记录为后续任务。
 
@@ -349,7 +351,7 @@ Simulator CI 落地事实（2026-08-24，TEX-16）：PR Smoke 由 `ci.yml` 以 `
 - §3.2 的"持久化 Writer"与"崩溃恢复"测试项已随 TEX-22 落地（2026-08-25）：Writer/watermark 与恢复编排用 Fake Persistence（`apps/game-server/tests/fixtures/persistence.ts`）+ Fake Clock 在 unit 层覆盖（`apps/game-server/src/persistence/**/*.test.ts`）——成功/重复投递/退避/乱序完成/部分失败/软硬 watermark/损坏隔离/flush、正常恢复/孤立快照/事件缺口/checksum/版本不兼容/序列连续性；真实 PostgreSQL 恢复仓储（`hasCommittedEventsThrough`、`listActiveTournaments`/`listSnapshots`、`rollbackToSnapshot`）在 `apps/game-server/tests/integration/recovery.test.ts` 覆盖（缺测试库受控跳过）。
 - Hand History 投影读取 Integration（TEX-36，2026-08-27）已落地：`apps/game-server/tests/integration/hand-history-read.test.ts` 覆盖 token 摘要数据库侧鉴权（401/403/404）、`handNumber` 倒序 cursor 分页（默认 20/上限 50/非法参数 400）、接收者视角隐私隔离（本人底牌带牌面、他人底牌无牌面、Burn 牌面过滤并以全场唯一花色做字节级断言）、跨 Tournament 详情 404、损坏记录降级 500 不泄露细节；运行于真实 PostgreSQL 隔离 schema，缺测试库时受控跳过。
 - PR #30 审查回归（TEX-36，2026-09-03）：增加关闭/离开后的凭证拒绝、重复分页参数、事件首/中/尾缺失与 hand/global 双序列连续性；用真实 TournamentExecutor → Commit Bundle → PostgreSQL → HTTP 覆盖手间撤回归属及仍在房间的淘汰观战者读取无冠军终局。共享 v3 Schema、前端时间线与旧版本拒绝路径同步验证；完整判定见 [Findings Ledger](./03-engineering/TEX-36-findings-ledger.md)。
-- Artillery Load/Soak（`test:load`）仍未实现；Headless Simulator 长跑已按 TEX-16 落地（`tests/simulator/`，§5），大规模 Nightly/RC 运行记录随发布流程回填。
+- 真实链路 Load/Soak 工具已按 TEX-29 落地（`tests/performance/`，§10；原 `tests/load`+Artillery 规划由本目录取代，见 `tests/performance/README.md`）；正式 normal/burst/soak/headroom 数字需在隔离测试环境运行并回填 Release 证据，PR/Nightly 只覆盖 smoke 与 reconnect 风暴。
 - Simulator 失败 seed 的自动缩减未实现（§5 实施状态说明）：当前失败 seed 由人工确认后加入 `tests/simulator/known-seeds.ts`；首次大规模运行尚未执行，回归集为空。
 - 覆盖率工具（`@vitest/coverage-v8`）尚未安装；§2.2 覆盖率门槛在首个业务包落地任务中启用并回填。
 - §2.2 覆盖率和 §10.1 性能数字是初始门槛；实现后仍需基于真实基准验证其可达性，调整必须留有评审记录且不得掩盖回归。
@@ -385,7 +387,7 @@ Simulator CI 落地事实（2026-08-24，TEX-16）：PR Smoke 由 `ci.yml` 以 `
 
 | 决策 | 选择 | 理由 |
 | --- | --- | --- |
-| 测试工具 | Vitest + fast-check + Playwright/axe-core + Artillery + Node Simulator CLI | 与 TypeScript/pnpm Monorepo 一致，分别覆盖确定性、性质测试、真实浏览器/可访问性、WS 负载与长跑 |
+| 测试工具 | Vitest + fast-check + Playwright/axe-core + 自研真实链路压测 CLI（`tests/performance`，TEX-29，取代早期 Artillery 规划）+ Node Simulator CLI | 与 TypeScript/pnpm Monorepo 一致，分别覆盖确定性、性质测试、真实浏览器/可访问性、真实链路 WS 负载/Soak 与引擎长跑 |
 | CI | GitHub Actions + 受保护合并队列 | 让结果绑定最终合并提交，避免分支通过但合并后失败 |
 | 质量量化 | §2.2 覆盖率、§5 Simulation 分层、§10.1 性能基线 | 将“充分测试/性能可接受”变为可复核门禁 |
 | 发布追溯 | §12.4 候选版本证据包 | 确保自动化、人工与部署配置均绑定同一候选提交 |

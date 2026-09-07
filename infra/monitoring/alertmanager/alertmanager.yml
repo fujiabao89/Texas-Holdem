@@ -1,0 +1,33 @@
+# Alertmanager 配置（TEX-29）。权威要求：docs/06 §10.2。
+# 接收渠道：webhook（本地演练/即时渠道适配器）。Alertmanager 不展开 YAML 中的 shell
+# 占位符（${VAR:-...} 会被当字面值，导致 SMTP 主机解析失败），因此这里只放可解析的
+# 字面本地值。P0 邮件兜底（SMTP 凭据/收件人）未授权前不在此配置；授权后应使用
+# **另行渲染的** secret 配置注入（部署环境），并重跑送达演练后再宣称“监控已完成”。
+route:
+  receiver: default
+  group_by: ["alertname", "environment", "version"]
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 30m
+  routes:
+    - matchers:
+        - severity = "p0"
+      receiver: p0
+      continue: false
+    - matchers:
+        - severity = "p1"
+      receiver: p1
+
+receivers:
+  - name: default
+    webhook_configs:
+      - url: "http://webhook-sink:9000/hook"
+        send_resolved: true
+  - name: p0
+    webhook_configs:
+      - url: "http://webhook-sink:9000/hook"
+        send_resolved: true
+  - name: p1
+    webhook_configs:
+      - url: "http://webhook-sink:9000/hook"
+        send_resolved: true
