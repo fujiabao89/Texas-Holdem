@@ -145,6 +145,26 @@ describe("AudioController", () => {
     expect(play).toHaveBeenCalledTimes(3);
   });
 
+  it("replays a fresh turn reminder after its same-event action cue preempts it", async () => {
+    const completions: Array<() => void> = [];
+    const play = vi.fn(() => new Promise<void>((resolve) => { completions.push(resolve); }));
+    const stop = vi.fn(() => completions.shift()?.());
+    const audio = new AudioController(fakeAdapter({ play, stop }).adapter);
+    await audio.unlock();
+
+    // `useTableCues` sees the canonical action transition before the
+    // presentation subscription starts the action's own feedback sound.
+    audio.playTableCue("yourTurn");
+    audio.playEvent({ type: "PLAYER_CALLED", payload: { playerId: "opponent", seat: 1, source: "HUMAN_SOCKET", amount: 5, betTo: 10 } });
+    expect(stop).toHaveBeenCalledOnce();
+    expect(play).toHaveBeenCalledTimes(2);
+
+    completions.shift()?.();
+    await Promise.resolve();
+    expect(play).toHaveBeenCalledTimes(3);
+    expect(play).toHaveBeenLastCalledWith(expect.stringContaining("board-soft"), { volume: 0.8 * 0.7, playbackRate: 1.6 });
+  });
+
   it.each(["STRAIGHT", "FLUSH", "FULL_HOUSE", "FOUR_OF_A_KIND", "STRAIGHT_FLUSH"] as const)("uses only the server's winning %s for its non-verbal cue", async (category) => {
     const clock = createFakeClock();
     const play = vi.fn(async () => undefined);

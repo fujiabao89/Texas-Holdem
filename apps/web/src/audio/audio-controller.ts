@@ -16,6 +16,7 @@ export type SoundName =
   | "finish";
 
 export type TableCue = "yourTurn" | "blindLevel";
+type TableCueState = { readonly cue: TableCue; readonly expiresAt: number };
 
 type WinningCategory = NonNullable<Extract<GameEvent, { type: "POT_AWARDED" }>["payload"]["winningHandRank"]>["category"];
 
@@ -102,7 +103,9 @@ export class AudioController {
   private playing = false;
   private playGeneration = 0;
   private lastOrdinaryCue: { readonly sound: SoundName; readonly time: number } | null = null;
-  private tableCue: { readonly cue: TableCue; readonly expiresAt: number } | null = null;
+  private tableCue: TableCueState | null = null;
+  /** A reminder interrupted by an event cue gets one fresh chance afterwards. */
+  private activeTableCue: TableCueState | null = null;
   private readonly pending = new Set<unknown>();
 
   constructor(
@@ -223,13 +226,14 @@ export class AudioController {
 
   private flushTableCue(): void {
     if (this.tableCue === null || this.playing || this.pending.size > 0) return;
-    const { cue, expiresAt } = this.tableCue;
+    const reminder = this.tableCue;
+    const { cue, expiresAt } = reminder;
     this.tableCue = null;
     if (this.now() >= expiresAt || !this.canPlay() || this.channel?.isAvailable(this) === false) return;
     this.play(cue === "yourTurn" ? "board" : "blind", {
       volume: cue === "yourTurn" ? 0.7 : 0.65,
       playbackRate: cue === "yourTurn" ? 1.6 : 1.3,
-    });
+    }, reminder);
   }
 
   private schedule(sound: SoundName, delayMs: number, options?: AudioPlayOptions): void {
@@ -240,7 +244,7 @@ export class AudioController {
     this.pending.add(handle);
   }
 
-  private play(sound: SoundName, options?: AudioPlayOptions): void {
+  private play(sound: SoundName, options?: AudioPlayOptions, reminder: TableCueState | null = null): void {
     if (!this.canPlay()) return;
     // Repeated ordinary cues in a burst may coalesce, but card/All-in/payout
     // cues always preempt immediately and different actions retain their tone.
@@ -249,7 +253,14 @@ export class AudioController {
       if (this.lastOrdinaryCue?.sound === sound && time - this.lastOrdinaryCue.time < 90) return;
       this.lastOrdinaryCue = { sound, time };
     }
-    if (this.playing) this.stopActivePlayback();
+    if (this.playing) {
+      // An accepted action can make it the viewer's turn at the same time as
+      // its own feedback starts. Keep the reminder fresh until that feedback
+      // releases this controller's channel rather than truncating it forever.
+      if (this.activeTableCue !== null && this.now() < this.activeTableCue.expiresAt) this.tableCue = this.activeTableCue;
+      this.stopActivePlayback();
+    }
+    this.activeTableCue = reminder;
     // A newly mounted table takes ownership of the complete cue sequence;
     // the old table must not reclaim the channel with a delayed card sound.
     this.channel?.claim(this, () => this.cancelPending());
@@ -259,12 +270,14 @@ export class AudioController {
     const settle = (): void => {
       if (generation === this.playGeneration) {
         this.playing = false;
+        this.activeTableCue = null;
         this.channel?.release(this);
         this.flushTableCue();
       }
     };
     const fail = (error: unknown): void => {
       if (generation !== this.playGeneration) return;
+      this.activeTableCue = null;
       this.cancelTableCue();
       if (typeof error === "object" && error !== null && "name" in error && error.name === "NotAllowedError") {
         // Browsers can revoke playback permission after a media interruption.
@@ -281,6 +294,7 @@ export class AudioController {
   private stopActivePlayback(): void {
     this.playGeneration += 1;
     this.playing = false;
+    this.activeTableCue = null;
     try { this.adapter.stop?.(); } catch { /* detached media element */ }
     this.channel?.release(this);
   }

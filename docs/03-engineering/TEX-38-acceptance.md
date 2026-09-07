@@ -10,7 +10,7 @@
 
 ## 验证记录
 
-- `pnpm exec vitest run --project unit apps/web --maxWorkers 1`：167 项通过，19 个文件（队列顺序、跨手、去重、后台、静态分池、快进结果停留、慢帧、音频故障/清理、偏好及既有前端回归）。
+- `pnpm exec vitest run --project unit apps/web --maxWorkers 1`：168 项通过，19 个文件（队列顺序、跨手、去重、后台、静态分池、快进结果停留、慢帧、音频故障/清理、偏好及既有前端回归）。
 - `pnpm exec eslint apps/web tests/e2e/animation-audio`、`pnpm exec tsc --noEmit -p tsconfig.test.json`：通过。
 - `pnpm --filter @texas-holdem/web build`：通过生产编译、TypeScript 与静态路由生成。
 - 在独立 3138 端口启动该生产构建后，`$env:TEX_E2E_PORT='3138'; pnpm test:e2e --workers 1`：38 项通过，无重试；包含 11 项 TEX-38 专用回归及既有下注、Lobby、重连和错误门禁自测。3 个错误门禁负例以预期失败验证门禁，整套退出码为 0。
@@ -29,3 +29,7 @@
 日常浏览器模拟/CPU 限速不代替 [06 §9.1](../06-testing-strategy.md#91-release-设备与浏览器矩阵已裁决) 的 Android/iPhone 实机发布验收；本任务不发布生产，也不判定 TEX-29 的压力、稳定性或告警门禁完成。
 
 文档同步检查覆盖 Web/动画/音频/设置/牌桌/样式/消息目录 README、05 前端契约、06 测试范围、项目任务入口和本验收记录。安全/运维说明：已检查，无需更新；本任务沿用既有服务端投影、身份与部署边界，无新增秘密、数据权限或基础设施行为。
+
+PR 审查意见的逐项核验、严重度和处置见 [TEX-38 Findings Ledger](./TEX-38-findings-ledger.md)。
+
+审查修复复验（2026-09-07）：音频单元 43 项、TEX-38 浏览器回归 11 项、完整前端单元 168 项、ESLint、测试类型检查和生产构建均通过；CPU 场景不再把已按设计降级的终态误判为丢失飞牌。
