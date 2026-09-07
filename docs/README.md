@@ -1,7 +1,9 @@
 # 工程文档总索引
 
 > 状态：草稿
-> 更新：2026-09-03
+> 更新：2026-09-05
+
+> **2026-09-05 增量核对（TEX-29）**：服务端观测与真实链路压测落地——`apps/game-server` 暴露 Prometheus `GET /metrics`（Action→Event 延迟、WS 打开/关闭分类与消息写出、重连恢复、Action Rejection、持久化 watermark/DEGRADED、Engine Critical、Active Rooms/Tournaments、进程内存/CPU），监控配置与本地演练栈见 [infra/monitoring/README.md](../infra/monitoring/README.md)；真实链路压测工具（HTTP+WS+真实 game-server+PostgreSQL；smoke/burst/reconnect/soak/headroom + SLO 门禁 + 脱敏产物）见 [tests/performance/README.md](../tests/performance/README.md) 与 [06](./06-testing-strategy.md) §10/§11；运维演练见 [05-operations/README.md](./05-operations/README.md)。正式 Load/Soak/Headroom 数字仅在隔离测试环境运行并回填 Release 证据，PR/Nightly 只跑 smoke/reconnect。
 
 > **2026-09-03 增量核对（TEX-26 合并 TEX-27）**：保留两轮手牌飞行、公共牌逐张入框翻面、服务端 Best Five 组合、本地 Kenney CC0 单通道音效与 Snapshot/重连动画屏障，同时接入 main 的赛果/设置/手牌历史。投影只提交一次，历史与动画共享已校验事件；计时、操作与入口读取 canonical。相关规格与合并回归见 [05](./05-frontend-spec.md) §5/§9–§11、[06](./06-testing-strategy.md) §3.3。
 

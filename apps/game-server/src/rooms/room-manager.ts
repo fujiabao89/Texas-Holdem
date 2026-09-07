@@ -64,6 +64,8 @@ export interface RoomManager {
   transferHost(roomId: string): Promise<RoomCommandResult>;
   findRoom(roomId: string): RoomRuntime | undefined;
   getSnapshot(roomId: string): RoomSnapshot | undefined;
+  /** 当前活跃（内存）Room 数（TEX-29 Active Rooms 指标采样用）。 */
+  activeRoomCount(): number;
   subscribe(listener: RoomSnapshotListener): () => void;
   /** 由 token 摘要反查 playerId（常数时间比较每个候选真人）。 */
   authenticate(roomId: string, token: string): string;
@@ -197,6 +199,10 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
     getSnapshot(roomId) {
       const runtime = rooms.get(roomId);
       return runtime === undefined ? undefined : projectRoomSnapshot(runtime.current);
+    },
+
+    activeRoomCount() {
+      return rooms.size;
     },
 
     subscribe(listener) {

@@ -1,0 +1,132 @@
+name: Performance
+
+# TEX-29：真实链路压测。docs/06-testing-strategy.md §10/§11：
+# - PR 只跑 smoke（ci.yml 的 perf-smoke job）；
+# - Nightly 跑 reconnect 风暴（schedule）；
+# - Release Load/Soak/Headroom 只在隔离测试环境以固定候选提交运行（workflow_dispatch，
+#   需提供 --sha；正式门槛见 tests/performance/README.md）。Nightly/Release 不进入
+#   普通 PR CI。
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "压测场景（正式 Load/Soak/Headroom 需隔离测试环境与 sha）"
+        required: true
+        default: reconnect
+        type: choice
+        options:
+          - reconnect
+          - normal
+          - burst
+          - soak
+          - headroom
+      sha:
+        description: "绑定产物的候选提交 SHA（正式场景必填；缺省使用触发提交）"
+        required: false
+        type: string
+      rooms:
+        description: "覆盖房间数（可选；不得低于场景下限，下调即缩减运行不作为 Release 证据）"
+        required: false
+        type: number
+      players:
+        description: "覆盖每房玩家数 2–10（可选）"
+        required: false
+        type: number
+      duration_ms:
+        description: "覆盖持续时间毫秒（可选；下调即缩减运行）"
+        required: false
+        type: number
+  schedule:
+    # Nightly reconnect：每日 18:48（北京时间次日 02:48），与 Simulator Nightly（18:00）
+    # 错峰。
+    - cron: "48 18 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ inputs.sha || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: perf (${{ github.event_name == 'schedule' && 'reconnect' || inputs.scenario }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tex_test
+          POSTGRES_PASSWORD: tex_test_pw
+          POSTGRES_DB: tex_e2e
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U tex_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # schedule 取默认分支最新提交；dispatch 支持指定候选提交。
+          ref: ${{ inputs.sha || github.ref }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Install and build workspace packages
+        shell: bash
+        env:
+          TEX_TEST_DATABASE_URL: postgres://tex_test:tex_test_pw@127.0.0.1:55432/tex_e2e
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Guard formal scenarios require explicit candidate SHA
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          TEX_PERF_SCENARIO: ${{ inputs.scenario }}
+          TEX_PERF_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          case "$TEX_PERF_SCENARIO" in
+            normal|burst|soak|headroom)
+              if [[ -z "$TEX_PERF_SHA" ]]; then
+                echo "::error::正式场景 $TEX_PERF_SCENARIO 必须显式提供候选提交 sha（inputs.sha），不能用分支 ref 兜底作为 Release 证据。"
+                exit 1
+              fi
+              ;;
+          esac
+
+      - name: Run perf scenario
+        shell: bash
+        env:
+          TEX_TEST_DATABASE_URL: postgres://tex_test:tex_test_pw@127.0.0.1:55432/tex_e2e
+          TEX_PERF_SHA: ${{ inputs.sha || github.sha }}
+          TEX_PERF_SCENARIO: ${{ github.event_name == 'schedule' && 'reconnect' || inputs.scenario }}
+          TEX_PERF_ROOMS: ${{ inputs.rooms }}
+          TEX_PERF_PLAYERS: ${{ inputs.players }}
+          TEX_PERF_DURATION_MS: ${{ inputs.duration_ms }}
+        run: |
+          set -euo pipefail
+          overrides=()
+          if [[ -n "$TEX_PERF_ROOMS" ]]; then overrides+=(--rooms "$TEX_PERF_ROOMS"); fi
+          if [[ -n "$TEX_PERF_PLAYERS" ]]; then overrides+=(--players "$TEX_PERF_PLAYERS"); fi
+          if [[ -n "$TEX_PERF_DURATION_MS" ]]; then overrides+=(--duration-ms "$TEX_PERF_DURATION_MS"); fi
+          pnpm run test:perf -- --scenario "$TEX_PERF_SCENARIO" "${overrides[@]}"
+
+      - name: Upload perf artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # 产物绑定候选提交（docs/06 §12.4）：summary.json 含 scenario/sha/verdict/指标；
+          # 普通运行报告只存 Artifact，不提交仓库。
+          name: perf-${{ github.event_name == 'schedule' && 'reconnect' || inputs.scenario }}-${{ inputs.sha || github.sha }}
+          path: tests/performance/.artifacts
+          if-no-files-found: ignore
