@@ -45,10 +45,15 @@ flowchart TD
   T27 --> T28
   T22 --> T29[TEX-29 压测监控]
   T28 --> T29
-  T29 --> T30[TEX-30 发布验收]
+  T40[TEX-40 发布工件] --> T43[TEX-43 预发布演练]
+  T41[TEX-41 反代安全] --> T43
+  T42[TEX-42 数据恢复] --> T43
+  T29 --> T43
+  T43 --> T39[TEX-39 部署集成]
+  T39 --> T30[TEX-30 发布验收]
 ```
 
-`TEX-23` 只依赖 `TEX-17`，因此可与 `TEX-19` 至 `TEX-22` 的服务端链并行；`TEX-24` 同时等待 `TEX-19` 和 `TEX-23`，`TEX-25` 同时等待 `TEX-21` 和 `TEX-24`，`TEX-27` 还等待 `TEX-22`。
+`TEX-23` 只依赖 `TEX-17`，因此可与 `TEX-19` 至 `TEX-22` 的服务端链并行；`TEX-24` 同时等待 `TEX-19` 和 `TEX-23`，`TEX-25` 同时等待 `TEX-21` 和 `TEX-24`，`TEX-27` 还等待 `TEX-22`。发布链由 `TEX-40`、`TEX-41`、`TEX-42` 并行建立部署工件、入口安全与数据恢复基线；它们与有效的 `TEX-29` 容量/告警证据共同前置 `TEX-43`。`TEX-43` 完成预发布演练后交给 `TEX-39` 集成验收，最后才进入 `TEX-30` 发布决定。
 
 只有当前任务的依赖全部完成且目录范围没有和其他 Agent 冲突时，才可将它移入 `In Progress`。每个任务使用 `<type>/TEX-<number>-<kebab-case-summary>` 形式的 Git 分支；Linear/PR 标题使用 `[TEX-<number>] <可读摘要>`，两者 `TEX-<number>` 必须一致，但分支与标题格式不同（见 [CONTRIBUTING.md](../../CONTRIBUTING.md)）。Linear 自动建议的分支字段不是权威命名。
 
@@ -75,7 +80,12 @@ flowchart TD
 | 前端 | [TEX-27](https://linear.app/texas-holdem/issue/TEX-27/feattex-27-build-results-settings-and-player-hand-history) | Trae Work | 赛果、设置、个人手牌历史 | [前端与发布](./p0-web-and-release-tasks.md#tex-27赛果设置与个人历史) |
 | 验证 | [TEX-28](https://linear.app/texas-holdem/issue/TEX-28/testtex-28-implement-p0-integration-e2e-and-security-tests) | Trae Work | 全流程、重连和安全测试 | [前端与发布](./p0-web-and-release-tasks.md#tex-28联调e2e与安全测试) |
 | 验证 | [TEX-29](https://linear.app/texas-holdem/issue/TEX-29/testtex-29-run-load-soak-and-monitoring-validation) | Claude Code | 压力、稳定性、监控验证 | [前端与发布](./p0-web-and-release-tasks.md#tex-29压测稳定性与监控验证) |
-| 发布 | [TEX-30](https://linear.app/texas-holdem/issue/TEX-30/choretex-30-assemble-p0-release-evidence-and-acceptance) | Codex + 用户 | 发布证据与最终决定 | [前端与发布](./p0-web-and-release-tasks.md#tex-30发布验收) |
+| 部署 | [TEX-40](https://linear.app/texas-holdem/issue/TEX-40/tex-40-p0-发布工件与受控部署流水线) | 待分派 | 最小发布工件、受控迁移与回滚流水线 | [前端与发布](./p0-web-and-release-tasks.md#tex-40发布工件与受控部署流水线) |
+| 部署 | [TEX-41](https://linear.app/texas-holdem/issue/TEX-41/tex-41-p0-反代安全边界与单实例运行基线) | 待分派 | 反代信任边界、WS 安全与单实例准入限制 | [前端与发布](./p0-web-and-release-tasks.md#tex-41反代安全边界与单实例运行基线) |
+| 部署 | [TEX-42](https://linear.app/texas-holdem/issue/TEX-42/tex-42-p0-supabase-数据连接迁移与恢复基线) | 待分派 | Supabase 连接、迁移、备份与恢复 | [前端与发布](./p0-web-and-release-tasks.md#tex-42supabase-数据连接迁移与恢复基线) |
+| 部署 | [TEX-43](https://linear.app/texas-holdem/issue/TEX-43/tex-43-p0-预发布演练外部观测与回滚验证) | 待分派 | 预发布部署、外部观测、故障与回滚演练 | [前端与发布](./p0-web-and-release-tasks.md#tex-43预发布演练外部观测与回滚验证) |
+| 部署 | [TEX-39](https://linear.app/texas-holdem/issue/TEX-39/tex-39-p0-部署拓扑与预发布基线) | Codex + 用户 | 部署拓扑集成、外部决策与证据交接 | [前端与发布](./p0-web-and-release-tasks.md#tex-39部署拓扑与预发布基线) |
+| 发布 | [TEX-30](https://linear.app/texas-holdem/issue/TEX-30/tex-30-p0-发布证据包与最终验收) | Codex + 用户 | 发布证据包与最终决定 | [前端与发布](./p0-web-and-release-tasks.md#tex-30发布证据包与最终验收) |
 
 ## 5. 所有任务都必须遵守的交付门槛
 

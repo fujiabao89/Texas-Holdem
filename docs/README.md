@@ -32,7 +32,7 @@ PR #30 / TEX-36 已补齐 Hand History 投影读取，审查修正与证据见 [
 | 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | 草稿（TEX-23 基础、TEX-24 Lobby、TEX-25 牌桌、TEX-26 动画/音效/重连、TEX-27 赛果/设置/历史已实现；归档历史服务端读取仍待补齐） |
 | 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 草稿（Simulator 长跑 · TEX-16 已实现；其余设计意图） |
 | 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 提交前本地审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略、输出契约与提交/推送门禁 | 治理基线 |
-| 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
+| 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30、TEX-39 至 TEX-43 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
 | 工程 | [03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md) | pnpm monorepo、Turbo、质量命令、共享配置与环境变量 | TEX-11 工程地基 | 已实现 |
 | 工程 | [03-engineering/pull-request-and-linear-naming.md](./03-engineering/pull-request-and-linear-naming.md) | Linear、分支与 GitHub PR 的命名关联 | 开发流程与 PR 校验 | 已实现 |
 
