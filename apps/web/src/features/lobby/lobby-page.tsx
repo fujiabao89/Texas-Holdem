@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import type { RoomSnapshot, TournamentConfig } from "@texas-holdem/protocol";
 
 import { errorMessage, message } from "../../messages/zh-CN";
 import { primaryButton } from "./room-flows";
 import { useLobbyConnection, useRoomClient, useRoomSnapshot } from "./room-client";
 import { updateInitialBlind } from "./room-presets";
+import { usePresentationPreferences } from "../../state/use-presentation-preferences";
+import { visualTimings } from "../../animations/timings";
 
 export function LobbyPage({ roomId }: { readonly roomId: string }) {
   const { http, projection, tokens, websocket, connectionState } = useRoomClient();
@@ -54,7 +56,7 @@ export function LobbyPage({ roomId }: { readonly roomId: string }) {
     <div className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-3xl font-bold">{message("room.lobbyTitle")}</h1><p aria-live="polite" className="text-sm">{connectionState === "CONNECTED" ? message("room.connected") : connectionState === "CLOSED" ? message("room.disconnected") : message("room.connecting")}</p></div>
     {locked && <p className="rounded bg-amber-50 p-3 text-sm" role="status">{message("room.locked")}</p>}
     {room.status === "IN_GAME" && <Link className="w-fit rounded border border-neutral-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2" href={`/room/${roomId}/table`}>{message("room.enterTable")}</Link>}
-    <section className="grid gap-3" aria-labelledby="seats-heading"><h2 id="seats-heading" className="text-xl font-semibold">{message("room.seats")}</h2><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{seats.map((player, seat) => <div className="flex min-h-20 items-center justify-between rounded border border-neutral-200 p-3" key={seat}>{player === null ? <><span>{message("room.emptySeat")}</span>{!locked && <button className="underline" disabled={pending} onClick={() => void update({ type: "CHANGE_SEAT", seat })}>{message("room.selectSeat")}</button>}</> : <div><p>{player.displayName}{player.playerId === room.hostPlayerId ? ` · ${message("room.host")}` : ""}</p><p className="text-sm text-neutral-600">{player.ready ? message("room.readyState") : message("room.notReady")}{player.connectionStatus === "DISCONNECTED" ? ` · ${message("room.disconnectedMember")}` : ""}</p></div>}</div>)}</div>
+    <section className="grid gap-3" aria-labelledby="seats-heading"><h2 id="seats-heading" className="text-xl font-semibold">{message("room.seats")}</h2><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{seats.map((player, seat) => <div className={`lobby-seat-feedback flex min-h-20 items-center justify-between rounded-xl border p-3 ${player?.ready ? "border-emerald-200 bg-emerald-50" : "border-neutral-200 bg-white"}`} key={`${seat}:${player?.playerId ?? "empty"}:${player?.ready ?? false}`}>{player === null ? <><span>{message("room.emptySeat")}</span>{!locked && <button className="underline" disabled={pending} onClick={() => void update({ type: "CHANGE_SEAT", seat })}>{message("room.selectSeat")}</button>}</> : <div><p>{player.displayName}{player.playerId === room.hostPlayerId ? ` · ${message("room.host")}` : ""}</p><p className="text-sm text-neutral-600">{player.ready ? message("room.readyState") : message("room.notReady")}{player.connectionStatus === "DISCONNECTED" ? ` · ${message("room.disconnectedMember")}` : ""}</p></div>}</div>)}</div>
       {!locked && <div className="flex flex-wrap gap-2"><button className="rounded border px-3 py-2" disabled={pending || seats.every((player) => player !== null)} onClick={() => void update({ type: "CHANGE_SEAT", seat: seats.findIndex((player) => player === null) })}>{message("room.randomSeat")}</button>{self?.seat !== null && <button className="rounded border px-3 py-2" disabled={pending} onClick={() => void update({ type: "CHANGE_SEAT", seat: null })}>{message("room.leaveSeat")}</button>}<button className="rounded border px-3 py-2" disabled={pending || connectionState !== "CONNECTED"} onClick={setReady}>{self?.ready ? message("room.unready") : message("room.ready")}</button></div>}
     </section>
     <section className="grid gap-2" aria-labelledby="invite-heading"><h2 id="invite-heading" className="text-xl font-semibold">{message("room.invite")}</h2><p>{room.inviteCode ?? message("room.closed")}</p><div className="flex flex-wrap gap-2">{room.inviteCode !== null && <><button className="rounded border px-3 py-2" onClick={() => void copy(room.inviteCode as string)}>{message("room.copyCode")}</button><button className="rounded border px-3 py-2" onClick={() => void copy(`${window.location.origin}/join?code=${room.inviteCode}`)}>{message("room.copyLink")}</button></>}</div></section>
@@ -64,7 +66,10 @@ export function LobbyPage({ roomId }: { readonly roomId: string }) {
   </LobbyFrame>;
 }
 
-function LobbyFrame({ children }: { readonly children: ReactNode }) { return <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-white p-5 text-neutral-900">{children}</main>; }
+function LobbyFrame({ children }: { readonly children: ReactNode }) {
+  const { motion } = usePresentationPreferences();
+  return <main data-reduced-motion={motion === "reduce"} style={{ "--lobby-feedback-duration": `${visualTimings.lobbyFeedback}ms`, "--control-feedback-duration": `${visualTimings.controlFeedback}ms` } as CSSProperties} className="lobby-controls mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-white p-5 text-neutral-900">{children}</main>;
+}
 
 function subscribeNever(): () => void { return () => undefined; }
 
