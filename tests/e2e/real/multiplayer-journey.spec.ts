@@ -114,15 +114,17 @@ test.describe("真实链路多人主流程", () => {
     expect(await countTournamentsForRoom(roomId)).toBe(2);
     const newTournamentId = await latestTournamentIdForRoom(roomId);
     expect(newTournamentId).not.toBe(oldTournamentId);
-    // 新比赛第一手可行动（Bob 经大厅重新进入牌桌）：双方都能看到行动或等待态。
+    // 新比赛第一手可行动（Bob 经大厅重新进入牌桌）：当前玩家有行动按钮，
+    // 另一方看到服务端权威的当前行动者。Clock 仅在没有 deadline 时显示通用等待文案，
+    // 因而不能把该文案当作非当前玩家的唯一可观察状态。
     await bob.goto(`/room/${roomId}`);
     await enterTableWhenReady(bob);
     for (const current of [page, bob]) {
-      // strict mode：同一时刻可能「等待文案」与本人弃牌按钮并存，.or() 命中 2 个；
-      // 断言意图是「至少有其一」→ 取第一个可见匹配。
+      // strict mode：当前行动者也会显示在桌面上，且本人可能同时有弃牌按钮；
+      // 断言意图是「已收到新比赛的权威行动状态」→ 取第一个可见匹配。
       await expect(
         current
-          .getByText("等待其他玩家行动")
+          .getByText("当前行动")
           .or(current.getByRole("button", { name: /^弃牌$/ }))
           .first(),
       ).toBeVisible({ timeout: 30_000 });

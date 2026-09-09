@@ -6,3 +6,5 @@ WebSocket 的 `RECONNECT_RESULT` / `ROOM_SNAPSHOT` 都先经共享 Schema，再�
 Ready、座位、权限或锁定状态。
 
 连接 hook 同时监听浏览器 `online` 与恢复可见，以已有 `WebSocketTransport` 的单连接重试流程提前一次尝试；不创建第二套 WebSocket 或投影缓存。
+
+TEX-38 为权威入座/离座/Ready 更新提供 180ms 轻量淡入和 140ms 控件按压反馈；准备好的座位保留静态绿色状态。系统或设备偏好减少动态效果时取消位移，状态内容保持一致。时长复用 `animations/timings.ts`，不会为动画延迟 RoomSnapshot 或锁定操作。

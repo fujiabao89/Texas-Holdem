@@ -2,6 +2,8 @@
 
 唯一的前端路由、Provider 与应用启动入口。不得再引入并行的 `pages` 路由体系。
 
+TEX-38 的 `globals.css` 补充 Seat 动作/筹码/烧牌/派奖与轻量控件反馈，公共牌轨迹从实测 Deck 起点出发。时长由 `animations/timings.ts` 注入 CSS 变量，动态偏好关闭位移/翻转但保留静态结果；Showdown 不动画 filter。路由和网络入口未改变。
+
 TEX-23 提供 `/`、`/create`、`/join`、`/settings`、`/room/[roomId]`、`/room/[roomId]/table` 和 `/room/[roomId]/result/[tournamentId]` 的路由壳。TEX-24 实现创建/加入/Lobby；TEX-25 实现 `/room/[roomId]/table`，该路由仅组合 `features/poker-table/`，不接入第二套 WebSocket 或投影缓存。TEX-27 实现 `/settings`（组合 `features/settings/`）与 `/room/[roomId]/result/[tournamentId]`（组合 `features/result/`），两页均只读取 `RoomClient` 投影与既有 HTTP 端点，不引入新的连接或状态源。
 
 TEX-26 的 transform/opacity 手牌、公共牌、翻牌和摊牌组合关键帧：牌堆位于牌桌外左上角白色留白区，每张手牌都由独立 Event 展示实例从其实测中心沿浅弧线飞向座位，最后一张在落地边界原子交接给 Seat，避免飞行牌背覆盖翻面；两轮全部完成后本人两张牌再依次纵轴翻开。公共牌按“飞入 → 停顿 → 翻面”逐张可读地播放，Showdown 保留候选牌淡出与 Best Five 组合停留。Reduced Motion 下这些关键帧不运行，队列立即提交终态。
