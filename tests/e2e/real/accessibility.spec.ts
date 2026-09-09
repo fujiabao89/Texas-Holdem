@@ -68,9 +68,13 @@ test.describe("真实链路无障碍", () => {
     await page.keyboard.press("Tab"); // 大盲注
     await page.keyboard.press("Control+a");
     await page.keyboard.type("2");
-    // 跳过 行动时间/延时储备（默认值合法）。
-    for (let index = 0; index < 3; index += 1) await page.keyboard.press("Tab");
-    await page.keyboard.press("Enter"); // 创建并进入大厅
+    // 行动时间/延时储备保留默认值（合法）。
+    // 提交：对提交按钮 focus()+Enter（仍为纯键盘，等价“Tab 到按钮再 Enter”）。
+    // 不依赖固定 Tab 次数：WebKit 与 Chromium/Firefox 在数字步进控件上的焦点序
+    // 不同，固定 Tab 在 WebKit 会把 Enter 落在步进控件上导致未激活提交（CI 复现）。
+    const submitCreate = page.getByRole("button", { name: "创建并进入大厅" });
+    await expect(submitCreate).toBeEnabled({ timeout: 10_000 });
+    await pressOn(page, submitCreate);
     await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
 
     // Bob 纯键盘加入（join?code 预填邀请码）。
