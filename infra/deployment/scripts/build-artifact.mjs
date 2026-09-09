@@ -33,6 +33,7 @@ import {
   checksumsForFiles,
   computeTreeDigest,
   ensureDir,
+  normalizeSymlinksRelative,
   removeTree,
   runShell,
   sha256OfFile,
@@ -201,6 +202,10 @@ async function main() {
     await removeTree(join(stageDir, name)).catch(() => undefined);
   }
   await ensureWorkspaceDepsSelfContained(stageDir);
+  // POSIX：把产物内指向自身的绝对符号链接规范化为相对链接，使 tar 解压后的
+  // 整树摘要与构建时一致（可移植校验）。win32 跳过（junction 需绝对目标）。
+  const relinks = await normalizeSymlinksRelative(stageDir);
+  if (relinks > 0) process.stdout.write(`  normalized ${relinks} symlinks to relative\n`);
 
   // 5. runtime package.json（覆盖 deploy 复制来的开发 package.json）
   await writeJson(join(stageDir, "package.json"), {

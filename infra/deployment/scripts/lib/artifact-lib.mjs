@@ -17,9 +17,10 @@ import {
   mkdir,
   writeFile,
   rm,
+  symlink,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 
 /** sha256(buf) -> hex */
@@ -37,6 +38,49 @@ export function isInside(root, target) {
   const r = resolve(root);
   const t = resolve(target);
   return t === r || t.startsWith(r + sep);
+}
+
+/**
+ * 把产物内指向本目录树内部的符号链接规范化为相对链接（POSIX）。
+ *
+ * 背景：pnpm 在某些环境（CI 工作目录/符号链接解析设置）会生成指向产物内部的
+ * 绝对符号链接。tar 往返解压到新路径后，绝对链接仍指向原 staging 路径，导致
+ * 解压后的整树摘要遍历与构建时不一致（重复计数/路径漂移）。改为相对链接后，
+ * “构建 stage 摘要 == 解压后摘要”在同一根下成立，跨机可移植。
+ *
+ * Windows 的 junction 必须用绝对目标，本函数在 win32 下直接跳过
+ * （Windows 本地不做 tar 往返移植验证，CI Linux 为权威）。
+ */
+export async function normalizeSymlinksRelative(root) {
+  if (process.platform === "win32") return 0;
+  let converted = 0;
+  async function walk(dir) {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      let st;
+      try {
+        st = await lstat(full);
+      } catch {
+        continue;
+      }
+      if (st.isSymbolicLink()) {
+        const targetAbs = await realpath(full).catch(() => null);
+        if (targetAbs !== null && isInside(root, targetAbs)) {
+          const rel = relative(dirname(full), targetAbs).split(sep).join("/");
+          const targetStat = await stat(full).catch(() => null);
+          const type = targetStat?.isDirectory() ? "dir" : "file";
+          await rm(full, { force: true });
+          await symlink(rel, full, type);
+          converted += 1;
+        }
+      } else if (st.isDirectory()) {
+        await walk(full);
+      }
+    }
+  }
+  await walk(root);
+  return converted;
 }
 
 /**
