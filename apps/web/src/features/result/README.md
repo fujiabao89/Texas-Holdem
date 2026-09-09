@@ -6,3 +6,5 @@
 - `result-view.ts` — 纯展示模型：`resultRows` 按服务端 `displayOrder` 排行（UI 不重排序）、`resultAvailableFor` 的 FINISHED 门禁与 `canPlayAgain` 的房主/非 CLOSED 条件。
 
 排名、名次（含并列区间）与最终筹码全部来自服务端投影快照，客户端不计算赛果。
+
+TEX-44 使用深绿冠军区和暖白排名表，手机下保留可读数值与导航；仅改变视觉样式，排名和再来一局仍消费既有服务端数据与接口。

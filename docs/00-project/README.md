@@ -12,3 +12,5 @@
 - [P0 任务卡：Web 前端、验证、部署与发布](./p0-web-and-release-tasks.md)：TEX-23 至 TEX-30，以及 TEX-39 至 TEX-43。
 
 任务的实时状态、评论和依赖以 [Linear 项目](https://linear.app/texas-holdem/project/texas-holdem-70cb976c03d2) 为准；本目录提供稳定的中文任务说明。
+
+- [TEX-44 产品首页与视觉交互升级](https://linear.app/texas-holdem/issue/TEX-44)：用户直接委派 Codex；范围为既有 Web 展示层与产品首页，保留游戏协议和服务端权威边界。分支 `feat/TEX-44-river-and-raise-design`；[验收记录](../03-engineering/TEX-44-acceptance.md)。

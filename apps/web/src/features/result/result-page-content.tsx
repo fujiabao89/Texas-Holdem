@@ -66,13 +66,13 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
       </nav>
     </header>
     {rows.filter((row) => row.champion).map((row) => (
-      <section aria-label={message("result.champion")} className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm" key={row.playerId}>
+      <section aria-label={message("result.champion")} className="rr-champion" key={row.playerId}>
         <p className="text-sm font-semibold text-amber-800">{message("result.champion")}</p>
         <p className="mt-1 text-xl font-bold text-amber-950">{row.displayName}</p>
         <p className="mt-1 text-sm text-amber-900">{message("result.finalChips")}：{numberFormat.format(row.finalChips)}</p>
       </section>
     ))}
-    <section aria-labelledby="rankings-heading" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+    <section aria-labelledby="rankings-heading" className="rr-panel">
       <h2 id="rankings-heading" className="font-semibold">{message("table.rankings")}</h2>
       <table className="mt-3 w-full text-left text-sm">
         <thead>
@@ -94,10 +94,10 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
       </table>
     </section>
     {canPlayAgain(room.status, isHost) && (
-      <section aria-labelledby="play-again-heading" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <section aria-labelledby="play-again-heading" className="rr-panel">
         <h2 id="play-again-heading" className="font-semibold">{message("result.playAgain")}</h2>
         <p className="mt-1 text-sm text-slate-600">{message("room.startNeedPlayers")}</p>
-        <button className="mt-3 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60" disabled={pending} onClick={() => void playAgain()} type="button">{pending ? message("room.operationPending") : message("result.playAgain")}</button>
+        <button className="rr-button rr-button-primary mt-3" disabled={pending} onClick={() => void playAgain()} type="button">{pending ? message("room.operationPending") : message("result.playAgain")}</button>
       </section>
     )}
     {feedback !== null && <p className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900" role="alert">{feedback}</p>}
@@ -105,7 +105,7 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
 }
 
 function ResultFrame({ children }: { readonly children: React.ReactNode }) {
-  return <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-[#f7faf8] p-5 text-slate-900 sm:p-8">{children}</main>;
+  return <main className="rr-page rr-results flex flex-col gap-6">{children}</main>;
 }
 
 function subscribeNever(): () => void { return () => undefined; }

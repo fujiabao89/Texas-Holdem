@@ -33,6 +33,7 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
   const state = useProjectionState(projection);
   const [list, dispatchList] = useReducer(reduceHandHistoryList, initialListState);
   const [detail, dispatchDetail] = useReducer(reduceHandHistoryDetail, initialDetailState);
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   // 同步锁：滚动事件先于重渲染到达时，`canLoadMore(list)` 仍读到旧的
   // `loadingMore:false`，会以同一 cursor 双发请求并把同一页追加两次；
@@ -58,11 +59,11 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
   }, [load]);
 
   useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
     closeButtonRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+    return () => dialog?.close();
+  }, []);
 
   const loadMore = () => {
     if (loadMoreInFlight.current || !canLoadMore(list)) return;
@@ -85,9 +86,9 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
 
   const detailHandNumber = detail.detail === null ? null : handNumberOf(detail.detail.events);
 
-  return <div className="fixed inset-0 z-50">
-    <button aria-label={message("history.close")} className="absolute inset-0 h-full w-full cursor-default bg-black/30" onClick={onClose} tabIndex={-1} type="button" />
-    <section aria-label={message("history.title")} className="absolute inset-y-0 right-0 flex h-full w-full flex-col bg-white shadow-2xl sm:w-[400px]" role="dialog" aria-modal="true">
+  return <dialog ref={dialogRef} className="rr-history-dialog" aria-label={message("history.title")} onCancel={(event) => { event.preventDefault(); onClose(); }}>
+    <button aria-hidden="true" className="rr-history-backdrop absolute inset-0 h-full w-full cursor-default" onClick={onClose} tabIndex={-1} type="button" />
+    <section aria-label={message("history.title")} className="rr-history-panel absolute inset-y-0 right-0 flex h-full w-full flex-col shadow-2xl sm:w-[440px]">
       <header className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3">
         <h2 className="text-lg font-bold">{message("history.title")}</h2>
         <button className="min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" onClick={onClose} ref={closeButtonRef} type="button">{message("history.close")}</button>
@@ -131,7 +132,7 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
         </div>
       )}
     </section>
-  </div>;
+  </dialog>;
 }
 
 function HandHistoryListRow({ item, lookup, onSelect }: { readonly item: HandHistoryItem; readonly lookup: (playerId: string) => string; readonly onSelect: () => void }) {

@@ -135,7 +135,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const seatSlots = tableSeatSlots(game);
 
   return <TableFrame reducedMotion={presentation.reducedMotion}>
-    <header className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm sm:px-5">
+    <header className="rr-table-header mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm sm:px-5">
       <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="mt-0.5 text-sm text-slate-500">{message("table.handPhase")}：{phaseName(game.handPhase)}</p></div>
       <div className="flex flex-wrap items-center gap-2">
         <button className={buttonClass} onClick={() => setHistoryOpen(true)} ref={historyButtonRef} type="button">{message("history.open")}</button>
@@ -151,7 +151,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     )}
     <section className="relative mx-auto w-full max-w-[1240px] pb-10 pt-[4.5rem] sm:pb-16 sm:pt-[5.5rem]" aria-label={message("table.title")}>
       <DealerDeck onElement={setDeckElement} />
-      <div ref={setTableElement} data-presentation-mode={presentation.mode} className="table-presentation relative mx-auto aspect-[0.56/1] w-full rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:aspect-[1.72/1] sm:border-[18px]">
+      <div ref={setTableElement} data-presentation-mode={presentation.mode} className="rr-table-felt table-presentation relative mx-auto aspect-[0.56/1] w-full rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:aspect-[1.72/1] sm:border-[18px]">
         <div aria-hidden="true" className="absolute inset-[4%] rounded-[46%] border border-emerald-300/25 bg-[radial-gradient(ellipse_at_center,rgba(20,148,111,0.28),transparent_65%)]" />
         <p aria-hidden="true" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none whitespace-nowrap font-serif text-3xl font-semibold tracking-[0.2em] text-emerald-200/10 sm:text-6xl">TEXAS HOLD&apos;EM</p>
         <div className="absolute left-1/2 top-[31%] z-20 flex -translate-x-1/2 items-center gap-2 text-center sm:top-[34%]">
@@ -254,14 +254,14 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
           : <HoleDealBacks landedCount={stagedCardCount} variant={viewer ? "hole" : "seat"} />
         : <HoleCardsReveal cards={revealCards} landedCount={stagedCardCount ?? 2} />}
     </div>
-    <div data-seat-chips className={`relative rounded-xl border px-1.5 py-1.5 shadow-lg sm:rounded-2xl sm:px-3 sm:py-2 ${award !== null ? "border-amber-100 bg-[#315d37] ring-2 ring-amber-200" : active ? "border-amber-300 bg-[#315d37] ring-2 ring-amber-300/75" : "border-slate-700 bg-[#092a35]"} ${departing ? "table-seat-departing" : ""} ${player.pokerStatus === "ELIMINATED" || player.pokerStatus === "WITHDRAWN" ? "opacity-55" : ""}`} style={playerEvent === null ? undefined : { "--feedback-duration": `${playerEvent.durationMs}ms` } as CSSProperties}>
+    <div data-seat-chips className={`relative rounded-xl border px-1.5 py-1.5 shadow-lg sm:rounded-2xl sm:px-3 sm:py-2 ${award !== null ? "border-amber-100 bg-[#315d37] ring-2 ring-amber-200" : active ? "border-amber-300 bg-[#315d37] ring-2 ring-amber-300/75" : "border-slate-700 bg-[#203c2e]"} ${departing ? "table-seat-departing" : ""} ${player.pokerStatus === "ELIMINATED" || player.pokerStatus === "WITHDRAWN" ? "opacity-55" : ""}`} style={playerEvent === null ? undefined : { "--feedback-duration": `${playerEvent.durationMs}ms` } as CSSProperties}>
       {player.seat === game.dealerSeat && <span aria-label={message("table.dealer")} className="absolute -left-2 -top-2 grid h-5 w-5 place-items-center rounded-full border-2 border-white bg-slate-950 text-[9px] font-bold text-white shadow">D</span>}
       <strong className="block truncate text-[10px] font-semibold text-white sm:text-sm">{player.displayName}</strong>
       <span className="mt-0.5 block font-mono text-[9px] font-semibold text-emerald-300 sm:text-xs">{player.stack}</span>
       {award !== null && <span key={overlay?.eventKey} className="table-seat-award absolute -right-2 -top-3 rounded-full border border-amber-100 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-950" style={{ "--feedback-duration": `${animationTimings.winner}ms` } as CSSProperties}>{formatMessage("table.feedback.winnerAmount", { amount: award })}</span>}
     </div>
     {eventText !== null && <span className={`table-action-badge absolute left-1/2 top-full z-50 mt-1 w-max max-w-36 -translate-x-1/2 rounded-full px-2 py-1 text-[9px] font-semibold shadow sm:text-xs ${playerEvent?.event.type === "PLAYER_ALL_IN" ? "bg-amber-200 text-amber-950" : "bg-white text-slate-900"}`} style={{ "--feedback-duration": `${playerEvent?.durationMs ?? 0}ms` } as CSSProperties} key={playerEvent?.eventKey}>{eventText}</span>}
-    {(player.streetBet > 0 || status !== null) && <div className="mt-1 flex flex-col items-center gap-0.5"><span className="rounded-full bg-[#004b38] px-1.5 py-0.5 text-[8px] font-semibold text-amber-200 shadow sm:px-2 sm:text-[10px]">{player.streetBet > 0 ? `${message("table.streetBet")} ${player.streetBet}` : status}</span>{player.streetBet > 0 && status !== null && <span className="text-[8px] font-medium text-emerald-100 sm:text-[10px]">{status}</span>}</div>}
+    {(player.streetBet > 0 || status !== null) && <div className="mt-1 flex flex-col items-center gap-0.5"><span className="rounded-full bg-[#244c35] px-1.5 py-0.5 text-[8px] font-semibold text-amber-200 shadow sm:px-2 sm:text-[10px]">{player.streetBet > 0 ? `${message("table.streetBet")} ${player.streetBet}` : status}</span>{player.streetBet > 0 && status !== null && <span className="text-[8px] font-medium text-emerald-100 sm:text-[10px]">{status}</span>}</div>}
   </article>;
 }
 
@@ -336,7 +336,7 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
   const dimensions = cardDimensions(variant);
   const cornerText = variant === "seat" ? "text-[8px] sm:text-xs" : "text-[10px] sm:text-sm";
   const color = red ? "text-rose-600" : "text-slate-900";
-  return <span role="img" className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#ffffff,#f6f8fb)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
+  return <span role="img" className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#fffef9,#eeeee2)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
     <CardPips card={card} variant={variant} />
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
@@ -344,9 +344,9 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
 }
 
 function CardBack({ variant, className = "" }: { readonly variant: "board" | "seat" | "hole"; readonly className?: string }) {
-  return <span role="img" className={`relative grid ${cardDimensions(variant)} ${className} shrink-0 place-items-center overflow-hidden rounded-[0.45rem] border border-blue-100/70 bg-[#1f4698] shadow-[0_3px_7px_rgba(15,23,42,0.24)]`} aria-label={message("table.hiddenCard")}>
-    <span aria-hidden="true" className="absolute inset-1 rounded-[0.28rem] border border-blue-200/60 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.13)_0_1px,transparent_1px_5px)]" />
-    <span aria-hidden="true" className="relative h-1/3 w-1/2 rounded-full border border-blue-100/70 bg-blue-200/20" />
+  return <span role="img" className={`relative grid ${cardDimensions(variant)} ${className} shrink-0 place-items-center overflow-hidden rounded-[0.45rem] border border-[#dce5c9]/70 bg-[#355e40] shadow-[0_3px_7px_rgba(15,23,42,0.24)]`} aria-label={message("table.hiddenCard")}>
+    <span aria-hidden="true" className="absolute inset-1 rounded-[0.28rem] border border-[#dce5c9]/60 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.13)_0_1px,transparent_1px_5px)]" />
+    <span aria-hidden="true" className="relative h-1/3 w-1/2 rounded-full border border-[#dce5c9]/70 bg-[#dce5c9]/20" />
   </span>;
 }
 
@@ -507,8 +507,8 @@ function BackCardFlight({ from, to, durationMs, kind }: { readonly from: Point; 
 
 function DealerDeck({ onElement }: { readonly onElement: (element: HTMLDivElement | null) => void }) {
   return <div ref={onElement} className="pointer-events-none absolute left-4 top-1 z-40 h-14 w-10 sm:left-6 sm:top-2 sm:h-16 sm:w-11" aria-label={message("table.deck")}>
-    <span className="absolute inset-0 translate-x-2 translate-y-2 rotate-[5deg] rounded-[0.45rem] border border-blue-200/40 bg-[#16377d] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
-    <span className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2deg] rounded-[0.45rem] border border-blue-100/60 bg-[#1a408c] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
+    <span className="absolute inset-0 translate-x-2 translate-y-2 rotate-[5deg] rounded-[0.45rem] border border-[#dce5c9]/40 bg-[#24462f] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
+    <span className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2deg] rounded-[0.45rem] border border-[#dce5c9]/60 bg-[#2b5036] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
     <CardBack variant="seat" className="!absolute inset-0 !h-full !w-full" />
     <span className="absolute left-full top-1/2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-full bg-slate-900/80 px-2 py-0.5 text-[9px] font-semibold text-white shadow-sm sm:text-[10px]">{message("table.deck")}</span>
   </div>;
@@ -563,7 +563,7 @@ function isProjectedBestCard(bestFiveCards: readonly Card[], candidate: Card): b
 function RankingSummary({ game }: { readonly game: GameSnapshot }) { const players = new Map(game.players.map((player) => [player.playerId, player.displayName])); return <section aria-labelledby="rankings-heading" className="mx-auto w-full max-w-xl rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><h2 id="rankings-heading" className="font-semibold">{message("table.tournamentFinished")}</h2><ol className="mt-2 list-decimal pl-5">{game.rankings.map((ranking) => <li key={ranking.playerId}>{players.get(ranking.playerId) ?? message("table.player")} · {formatMessage("table.rank", { position: ranking.placement.from })}</li>)}</ol></section>; }
 type ButtonTone = "neutral" | "fold" | "call" | "bet" | "allIn";
 function ActionButton({ label, onClick, disabled = false, ariaLabel, tone = "neutral" }: { readonly label: string; readonly onClick: () => void; readonly disabled?: boolean; readonly ariaLabel?: string; readonly tone?: ButtonTone }) { return <button aria-label={ariaLabel} className={`${actionButtonClass} ${buttonToneClass[tone]}`} disabled={disabled} onClick={onClick}>{label}</button>; }
-function TableFrame({ children, reducedMotion = false }: { readonly children: ReactNode; readonly reducedMotion?: boolean }) { return <main data-reduced-motion={reducedMotion} style={tableMotionStyle} className="table-controls mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-4 bg-[#f7faf8] p-3 text-slate-900 sm:gap-5 sm:p-6">{children}</main>; }
+function TableFrame({ children, reducedMotion = false }: { readonly children: ReactNode; readonly reducedMotion?: boolean }) { return <main data-reduced-motion={reducedMotion} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-4 bg-[#f7faf8] p-3 text-slate-900 sm:gap-5 sm:p-6">{children}</main>; }
 const tableMotionStyle = {
   "--board-flight-duration": `${visualTimings.boardFlight}ms`,
   "--board-flip-duration": `${visualTimings.boardFlip}ms`,
@@ -605,15 +605,12 @@ const tableSeatPositions = [
   { left: "50%", top: "8%" }, { left: "76%", top: "14%" }, { left: "91%", top: "34%" }, { left: "91%", top: "64%" }, { left: "73%", top: "83%" },
   { left: "50%", top: "93%" }, { left: "27%", top: "83%" }, { left: "9%", top: "64%" }, { left: "9%", top: "34%" }, { left: "24%", top: "14%" },
 ] as const;
-const buttonClass = "min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700";
-const actionButtonClass = "min-h-11 rounded-xl px-3 py-2 text-sm font-bold shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-950";
+const buttonClass = "rr-button";
+const actionButtonClass = "rr-action";
 const buttonToneClass: Record<ButtonTone, string> = {
-  neutral: "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50",
-  fold: "bg-[#f48b7d] text-slate-950 hover:bg-[#ef7868]",
-  call: "bg-[#14a9e7] text-slate-950 hover:bg-[#0596d2]",
-  bet: "bg-[#20c9b6] text-slate-950 hover:bg-[#10b49f]",
-  allIn: "bg-[#ffdc32] text-slate-950 hover:bg-[#f6c915]",
+  neutral: "rr-action-neutral", fold: "rr-action-fold", call: "rr-action-call", bet: "rr-action-bet", allIn: "rr-action-allin",
 };
+
 function tableSeatSlots(game: GameSnapshot): ReadonlyArray<number | null> {
   const slots = Array<number | null>(10).fill(null);
   const viewer = game.players.find((player) => player.playerId === game.viewer.playerId);

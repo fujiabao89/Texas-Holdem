@@ -19,3 +19,5 @@
 处理 GitHub Pull Request 审查意见时，须按 `AGENTS.md` 的“Pull Request 审查意见闭环”要求：完成修改、验证、提交并推送后，在对应的原始审查评论线程回复 `已修正`。
 
 DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它。用户提供审查结果后，按上述 PR 审查意见闭环处理。
+
+- [TEX-44-acceptance.md](./TEX-44-acceptance.md)：产品首页、全站品牌交互、移动端/键盘/动态偏好与既有牌桌回归证据。

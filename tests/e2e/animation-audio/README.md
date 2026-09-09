@@ -23,3 +23,7 @@ pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/animation-
 CPU 采样只报告当前机器和浏览器条件下的帧间隔，不将 CDP 6x 等同于指定 Android/iPhone，也不要求高性能主机必然触发慢帧降级。持续慢帧的确定性阈值由 `FrameHealth` 单元测试覆盖；本浏览器用例在真实受限 CPU 下验证事件终帧与操作可达性。点击至命令耗时包含自动化开销，不作为原生输入延迟的精确测量。
 
 `table-fixture.ts` 只经真实 WS 客户端入口发送 Schema 校验消息；不导入或修改浏览器投影 store。音频使用可控的浏览器 Audio 替身定位失败降级与取消行为，不证明实际编码支持、听感、真实浏览器自动播放策略或设备性能。模拟 visibility 和 viewport 也不替代手机系统后台、真实移动网络及实机动画验收；这些仍按 [测试权威规格](../../../docs/06-testing-strategy.md) §9 验证。
+
+TEX-44 新增全站动态偏好容器后，CPU 回归的降级断言精确定位 `main[data-reduced-motion]`，继续测量牌桌自己的自动性能降级，而不是外层设备偏好。
+
+CPU 用例先用 MutationObserver 记录飞牌或自动降级，避免跨进程轮询漏掉瞬态。90 个真实帧采样与 trace/video 共享的整条用例时限为 60 秒；没有放宽下注序列或终帧断言。验证记录见 [TEX-44](../../../docs/03-engineering/TEX-44-acceptance.md)。

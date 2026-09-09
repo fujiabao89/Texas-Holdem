@@ -32,3 +32,5 @@ pnpm --filter @texas-holdem/web typecheck  # tsc --noEmit
 ## 环境变量
 
 见 [.env.example](./.env.example)。仅 `NEXT_PUBLIC_*` 前缀变量暴露到浏览器，只放非敏感公开配置；敏感值只由部署平台注入。HTTP API 和 WebSocket base URL 可以使用该公开配置；`playerToken` 绝不能写入 URL、环境变量或日志。
+
+TEX-44 接入 River & Raise 产品首页，并统一暖白、深绿、陶橙视觉、表单分组、按钮和路由反馈。`SiteChrome` 位于既有 Provider 内但在页面外，入场动画不重置根 Provider；连接仍由既有房间 hook 按路由管理。系统/设备减少动态效果覆盖新展示层。运行与验收见 [TEX-44 记录](../../docs/03-engineering/TEX-44-acceptance.md)。

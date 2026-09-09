@@ -186,6 +186,9 @@ for (const viewport of [{ width: 360, height: 800 }, { width: 390, height: 844 }
 }
 
 test("TEX-38 6x CPU 限速时动画期间仍可下注并记录实际帧间隔", async ({ page, browserName }, testInfo) => {
+  // Collect 90 real frames under CPU throttling plus trace/video overhead.
+  // The default whole-test deadline is not a product input-latency budget.
+  test.setTimeout(60_000);
   test.skip(browserName !== "chromium", "CPU throttling requires the Chromium CDP API");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -209,14 +212,31 @@ test("TEX-38 6x CPU 限速时动画期间仍可下注并记录实际帧间隔", 
       };
       requestAnimationFrame(sample);
     }));
+    // Observe the transient DOM state before sending the event. Cross-process
+    // polling can miss an entire flight under CPU contention even when it ran.
+    // This observer only reads the DOM; it never forces product frame health.
+    const animationObservation = await page.locator("main[data-reduced-motion]").evaluateHandle((tableNode) => {
+      const observed = new Promise<boolean>((resolve) => {
+        const observer = new MutationObserver(check);
+        const timeout = window.setTimeout(() => { observer.disconnect(); resolve(false); }, 5_000);
+        function check() {
+          if (tableNode.querySelectorAll(".board-deal-flight").length === 3 || tableNode.getAttribute("data-reduced-motion") === "true") {
+            observer.disconnect();
+            window.clearTimeout(timeout);
+            resolve(true);
+          }
+        }
+        observer.observe(tableNode, { attributes: true, childList: true, subtree: true });
+        check();
+      });
+      return { observed };
+    });
     table.event({ type: "FLOP_DEALT", payload: { cards: board.slice(0, 3) } }, { board: board.slice(0, 3), handPhase: "FLOP" });
-    // Under enough actual pressure the product may reach its documented
-    // reduced-motion final frame before Playwright observes the flight.
-    await expect.poll(async () => {
-      const flights = await page.locator(".board-deal-flight").count();
-      const reduced = await page.locator("[data-reduced-motion]").getAttribute("data-reduced-motion");
-      return flights === 3 || reduced === "true";
-    }).toBe(true);
+    try {
+      expect(await animationObservation.evaluate(({ observed }) => observed)).toBe(true);
+    } finally {
+      await animationObservation.dispose();
+    }
     const started = performance.now();
     await page.getByRole("button", { name: "跟注 5" }).click();
     await expect.poll(() => table.commands.filter(({ type }) => type === "SUBMIT_ACTION").length).toBe(1);
@@ -231,7 +251,7 @@ test("TEX-38 6x CPU 限速时动画期间仍可下注并记录实际帧间隔", 
       samples: intervals.length, frameIntervalMeanMs: intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length,
       frameIntervalP95Ms: sorted[Math.ceil(sorted.length * 0.95) - 1], slowFramesOver34Ms: intervals.filter((interval) => interval > 34).length,
       automationToCommandMs,
-      automaticReducedMotion: await page.locator("[data-reduced-motion]").getAttribute("data-reduced-motion"),
+      automaticReducedMotion: await page.locator("main[data-reduced-motion]").getAttribute("data-reduced-motion"),
       boundary: "Chromium desktop CDP simulation; frame intervals are observed, not a real-device FPS certification. Command duration includes Playwright automation overhead.",
     };
     await testInfo.attach("TEX-38-cpu-6x", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
