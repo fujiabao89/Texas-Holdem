@@ -1,0 +1,193 @@
+name: Release artifact
+
+# TEX-40：在同一**不可变 commit SHA** 的干净 checkout 上完成质量门禁 → 构建 Game
+# Server 最小运行 artifact → 生成 checksum/manifest → 校验 → 隔离 PostgreSQL 上的
+# artifact HTTP/WS smoke → 上传不可变产物。
+#
+# 不可变 SHA 策略：
+#  - push/PR 一律使用 github.sha（事件已解析为不可变提交），绝不使用可移动分支 ref；
+#  - workflow_dispatch 的 inputs.sha 在 checkout 前校验为 40 位十六进制 commit SHA；
+#  - checkout 后断言 `git rev-parse HEAD` 与预期 SHA 一致；build-artifact 再以
+#    --expect-git-sha 二次断言，artifact 文件名/manifest.gitSha 均取实际 HEAD。
+#
+# 质量门禁（本 workflow 实际运行的集合）：
+#  lint/typecheck/build/unit/rules/integration/ws/release + Simulator smoke（真实
+#  postgres service）。完整 E2E/Playwright、Nightly/RC 大规模任务由 ci.yml /
+#  simulator.yml / performance.yml 承担（docs/06 §11），此处不复述未运行的门禁。
+#
+# 上传门禁：仅当 build + verify + isolated smoke 全部成功（job 成功）才上传正式
+# release artifact；失败时如仍保留中间产物，则以 `-DIAG-NOT-PUBLISHABLE` 明确命名，
+# 不会被误认为可发布产物。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/deployment/**"
+      - ".github/workflows/release-artifact.yml"
+      - "apps/game-server/src/infrastructure/persistence/migrations/**"
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "构建产物的不可变候选提交 SHA（40 位十六进制；缺省使用触发提交）"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-artifact-${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-smoke:
+    name: artifact build + verify + isolated smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tex_test
+          POSTGRES_PASSWORD: tex_test_pw
+          POSTGRES_DB: postgres
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U tex_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      # 1) 解析并校验不可变提交 SHA（在 checkout 之前执行）。
+      - name: Resolve immutable commit sha
+        id: sha
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_SHA: ${{ inputs.sha }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == "workflow_dispatch" && -n "$INPUT_SHA" ]]; then
+            if [[ ! "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::workflow_dispatch inputs.sha 必须是 40 位十六进制 commit SHA（得到 ${INPUT_SHA}）"
+              exit 1
+            fi
+            echo "expected=$INPUT_SHA" >> "$GITHUB_OUTPUT"
+          else
+            # push/PR 使用 github.sha（不可变提交），不用可移动分支 ref。
+            if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::github.sha 非法（${GITHUB_SHA}）"
+              exit 1
+            fi
+            echo "expected=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # 只 checkout 不可变提交：dispatch 用校验过的输入 sha，push/PR 用 github.sha。
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert checkout HEAD equals expected immutable sha
+        shell: bash
+        env:
+          EXPECTED: ${{ steps.sha.outputs.expected }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "expected=$EXPECTED actual=$actual"
+          if [[ "$actual" != "$EXPECTED" ]]; then
+            echo "::error::checkout HEAD($actual) 与预期不可变提交($EXPECTED) 不一致"
+            exit 1
+          fi
+          echo "ACTUAL_SHA=$actual" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Install frozen dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      # 2) 质量门禁（实际执行集；Simulator smoke 绑定实际 checkout SHA）。
+      - name: Quality gates (lint/typecheck/build/unit/rules/integration/ws/release + sim)
+        shell: bash
+        env:
+          TEX_TEST_DATABASE_URL: postgres://tex_test:tex_test_pw@127.0.0.1:55432/postgres
+        run: |
+          set -euo pipefail
+          pnpm run lint
+          pnpm run typecheck
+          pnpm run build
+          pnpm run test:unit
+          pnpm run test:rules
+          pnpm run test:integration
+          pnpm run test:ws
+          pnpm run test:release
+          # Simulator smoke：与 ci.yml quality job 同款，绑定实际 checkout SHA。
+          pnpm run test:sim -- --tier smoke --sha "$ACTUAL_SHA"
+
+      # 3) 构建最小运行 artifact（在预期不可变提交上，build-artifact 自身拒绝脏工作树）。
+      - name: Build minimal release artifact
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.sha.outputs.expected }}
+        run: |
+          set -euo pipefail
+          node infra/deployment/scripts/build-artifact.mjs \
+            --out-dir "release-artifact" \
+            --label "game-server" \
+            --expect-git-sha "$EXPECTED_SHA"
+
+      # 4) 校验：tarball sha256 + 解压到隔离目录后复核内容摘要/关键文件。
+      - name: Verify tarball sha256 and unpack into isolated dir, then re-verify content digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$(ls release-artifact/game-server-*.manifest.json)"
+          archive="$(ls release-artifact/game-server-*.tar.gz)"
+          node infra/deployment/scripts/verify-artifact.mjs \
+            --archive "$archive" --manifest "$manifest" \
+            --unpack-to "$RUNNER_TEMP/release-unpack"
+
+      # 5) 隔离 smoke：从解压出的 artifact（非仓库源码）以生产启动命令运行，
+      #    在独立 postgres 临时 schema 上由 artifact 自身执行版本化迁移。
+      - name: Isolated artifact HTTP/WS smoke
+        shell: bash
+        env:
+          TEX_TEST_DATABASE_URL: postgres://tex_test:tex_test_pw@127.0.0.1:55432/postgres
+        run: |
+          set -euo pipefail
+          node infra/deployment/scripts/artifact-smoke.mjs \
+            --runtime-dir "$RUNNER_TEMP/release-unpack/stage" \
+            --database-url "$TEX_TEST_DATABASE_URL"
+
+      # 6) 正式上传：仅当上述（含 smoke）全部成功（job 成功）才执行。
+      - name: Upload immutable release artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # 产物与 manifest 绑定不可变提交 SHA（docs/06 §12.4 证据）。
+          name: game-server-artifact-${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.sha }}
+          path: |
+            release-artifact/game-server-*.tar.gz
+            release-artifact/game-server-*.tar.gz.sha256
+            release-artifact/game-server-*.manifest.json
+          if-no-files-found: error
+
+      # 7) 失败诊断：明确非发布命名，防止被误认为可发布产物。
+      - name: Upload diagnostic (non-publishable)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: game-server-release-DIAG-NOT-PUBLISHABLE-${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.sha }}
+          path: |
+            release-artifact/
+          if-no-files-found: ignore
