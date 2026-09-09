@@ -18,6 +18,7 @@ import {
   writeFile,
   rm,
   symlink,
+  readlink,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -84,13 +85,16 @@ export async function normalizeSymlinksRelative(root) {
 }
 
 /**
- * 稳定目录内容摘要：按相对路径字典序遍历整个目录树（含 node_modules 符号链接），
- * 对每个普通文件散列「相对路径 + 内容」；目录符号链接按 realpath 去重，避免环。
- * 结果只依赖文件内容与相对路径，build 与 verify 使用同一遍历，跨机可复现。
+ * 稳定目录内容摘要（tar 语义、可移植）：
+ *  - 普通文件：散列「相对路径 + 内容」；
+ *  - 符号链接：作为叶子散列「link 相对路径 -> 目标串」（readlink 原始字符串），
+ *    **不解析/不跟随**——与 tar 解压后的条目一致，结果与链接指向的机器路径无关，
+ *    因此「构建 stage 摘要 == 解压后摘要」在同一根下成立；
+ *  - 真实目录：递归（.pnpm 虚拟 store 为真实目录，其内容因此恰好计入一次）。
+ * 真实目录与叶子条目按相对路径字典序遍历，build 与 verify 用同一函数，跨机可复现。
  */
 export async function computeTreeDigest(root) {
   const hash = createHash("sha256");
-  const visitedDirs = new Set();
   let files = 0;
 
   async function walk(dir) {
@@ -104,34 +108,21 @@ export async function computeTreeDigest(root) {
       } catch {
         continue; // 竞态删除/无权限：跳过，保持确定性与 build 侧一致
       }
-      const canon = await realpath(full).catch(() => full);
-      if (linkStat.isDirectory()) {
-        if (visitedDirs.has(canon)) continue;
-        visitedDirs.add(canon);
-        await walk(full);
-      } else if (linkStat.isSymbolicLink()) {
-        const targetStat = await stat(full).catch(() => null);
-        if (targetStat === null) continue;
-        if (targetStat.isDirectory()) {
-          if (visitedDirs.has(canon)) continue;
-          visitedDirs.add(canon);
-          await walk(full);
-        } else if (targetStat.isFile()) {
-          hash.update(`file ${posixRel(root, full)}\0`);
-          hash.update(await readFile(full));
-          hash.update("\0");
-          files += 1;
-        }
+      if (linkStat.isSymbolicLink()) {
+        const target = await readlink(full).catch(() => "");
+        hash.update(`link ${posixRel(root, full)}\0${target}\0`);
+        files += 1;
       } else if (linkStat.isFile()) {
         hash.update(`file ${posixRel(root, full)}\0`);
         hash.update(await readFile(full));
         hash.update("\0");
         files += 1;
+      } else if (linkStat.isDirectory()) {
+        await walk(full);
       }
     }
   }
 
-  visitedDirs.add(await realpath(root));
   await walk(root);
   return { digest: hash.digest("hex"), files };
 }
