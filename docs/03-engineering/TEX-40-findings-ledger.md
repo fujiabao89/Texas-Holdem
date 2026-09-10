@@ -21,7 +21,8 @@
 - 修改前：F-01 场景下 `deploy --apply` 在 `verify-unpacked` 必然失败（release 目录摘要含部署侧 manifest）；F-03 场景下 `rollback` 可记录错误的运行版本。
 - 修改后定向单测：`node --test "infra/deployment/tests/**/*.test.mjs"` —— **16/16 通过**（原 13 + 新增 3：摘要排除 manifest、恢复动词 restart、none 回滚拒绝）。
 - `node --check` 全部脚本通过；`git diff --check` 干净。
-- 远端 CI 与 PR 线程闭环记录见下节（推送后回填）。
+- 远端 CI（修复提交 `3ef3d54a`）：**Release artifact** [run 34430869032](https://github.com/fujiabao89/Texas-Holdem/actions/runs/34430869032) ✅（构建 → tarball SHA/解压摘要校验 → 隔离 HTTP/WS smoke → 正式上传）；**PR Policy** ✅；**Dependency Review** ✅；[CI run 34430869011](https://github.com/fujiabao89/Texas-Holdem/actions/runs/34430869011) 的 `repository-hygiene`/`quality`/`workflow-lint`(actionlint)/`perf-smoke`/`e2e` 均 ✅。
+- **独立于本任务的既有失败**：同一 CI run 的 `e2e-real` 为可复现失败（重跑仍失败）——日志显示 game-server 进程因持久化层未处理的 `pg` 连接错误退出（`terminating connection due to administrator command` → pool 错误 → `launch-game-server.ts` 退出码 1），随后 webkit 无障碍用例因服务不可达而超时。该崩溃发生在 `apps/game-server` 持久化路径，**不涉及本 PR 改动面**（本 PR 无 game-server/DB/E2E 代码改动），建议作为独立缺陷任务并交接 TEX-42（DB 韧性/恢复基线）；本台账不将其计为 TEX-40 审查 finding，也未在 TEX-40 内修复。
 
 ## 文档与范围
 
@@ -33,10 +34,10 @@
 
 | Finding | 原线程内的回复 | 结果 |
 | --- | --- | --- |
-| F-01 | 待回填 | 已修正 |
-| F-02 | 待回填 | 已修正 |
-| F-03 | 待回填 | 已修正 |
-| F-04 | 待回填 | 已修正 |
-| F-05 | 待回填 | 已修正 |
-| F-06 | 待回填 | 重复项，已随 F-01 修正 |
-| F-07 | 待回填 | 重复项，已随 F-03 修正 |
+| F-01 | [3975006214](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3975006214) | 已修正、已 resolved |
+| F-02 | [3975006341](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3975006341) | 已修正、已 resolved |
+| F-03 | [3975006541](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3975006541) | 已修正、已 resolved |
+| F-04 | [3975006716](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3975006716) | 已修正、已 resolved |
+| F-05 | [3975007238](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3975007238) | 已修正、已 resolved |
+| F-06 | [3975007088](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3975007088) | 重复项，已随 F-01 修正、已 resolved |
+| F-07 | [3975006874](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3975006874) | 重复项，已随 F-03 修正、已 resolved |
