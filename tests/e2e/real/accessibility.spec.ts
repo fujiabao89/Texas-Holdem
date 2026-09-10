@@ -43,11 +43,7 @@ test.describe("真实链路无障碍", () => {
     diagnostics.allow("WebSocket is closed before the connection is established");
     // 首页/创建页：键盘填写表单并提交（昵称 autoFocus，Tab 序自然覆盖全部字段）。
     await page.goto("/");
-    await expect(
-      page
-        .getByRole("heading", { name: "德州扑克" })
-        .or(page.getByRole("heading", { name: "首页" })),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: /好牌，\s*不如好牌友。/ })).toBeVisible();
     expect(await scanAxeViolations(page, { minImpact: "serious" })).toEqual([]);
 
     await page.goto("/create");
