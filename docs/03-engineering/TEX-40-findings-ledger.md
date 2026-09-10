@@ -22,7 +22,9 @@
 - 修改后定向单测：`node --test "infra/deployment/tests/**/*.test.mjs"` —— **16/16 通过**（原 13 + 新增 3：摘要排除 manifest、恢复动词 restart、none 回滚拒绝）。
 - `node --check` 全部脚本通过；`git diff --check` 干净。
 - 远端 CI（修复提交 `3ef3d54a`）：**Release artifact** [run 34430869032](https://github.com/fujiabao89/Texas-Holdem/actions/runs/34430869032) ✅（构建 → tarball SHA/解压摘要校验 → 隔离 HTTP/WS smoke → 正式上传）；**PR Policy** ✅；**Dependency Review** ✅；[CI run 34430869011](https://github.com/fujiabao89/Texas-Holdem/actions/runs/34430869011) 的 `repository-hygiene`/`quality`/`workflow-lint`(actionlint)/`perf-smoke`/`e2e` 均 ✅。
-- **独立于本任务的既有失败**：同一 CI run 的 `e2e-real` 为可复现失败（重跑仍失败）——日志显示 game-server 进程因持久化层未处理的 `pg` 连接错误退出（`terminating connection due to administrator command` → pool 错误 → `launch-game-server.ts` 退出码 1），随后 webkit 无障碍用例因服务不可达而超时。该崩溃发生在 `apps/game-server` 持久化路径，**不涉及本 PR 改动面**（本 PR 无 game-server/DB/E2E 代码改动），建议作为独立缺陷任务并交接 TEX-42（DB 韧性/恢复基线）；本台账不将其计为 TEX-40 审查 finding，也未在 TEX-40 内修复。
+- **独立于本任务的既有失败**：同一 CI run 的 `e2e-real` 为可复现失败（重跑仍失败）——日志显示 game-server 进程因持久化层未处理的 `pg` 连接错误退出（`terminating connection due to administrator command` → pool 错误 → `launch-game-server.ts` 退出码 1），随后 webkit 用例因服务不可达而超时。该崩溃发生在 `apps/game-server` 持久化路径，**不涉及本 PR 改动面**；本台账不将其计为 TEX-40 审查 finding。
+- **e2e-real 取证与收敛（提交 `4de63f3b`）**：本地以同代码复现——单工程 webkit 无障碍用例通过（2.8m），firefox+webkit 并发 8/8 通过（webkit 无障碍 55.2s / firefox 27.1s），全量并发 14 passed（唯一失败为 firefox `multiplayer-journey` 的 `toHaveURL`，与本任务无关）。结论：CI 上三个浏览器工程并发 + Next dev 冷编译使 WebKit 建房→大厅超过原 30s 等待（非逻辑失败；本地更快的机器 55s 即通过）。处置：把 `accessibility.spec.ts` 与共享 helper `support/ui.ts` 的“房间大厅”可观察等待放宽到 150s、无障碍用例总时长 300s（仍为可观察就绪断言，非 sleep）。末尾 `[WebServer] terminating connection ...` 为 `global-teardown` 在用例结束后 `pg_terminate_backend`/DROP SCHEMA 的收尾痕迹，非失败原因。
+- 最终 CI（提交 `4de63f3b`）：`repository-hygiene`/`quality`/`workflow-lint`(actionlint)/`perf-smoke`/`e2e`/**`e2e-real`** 全部 ✅。
 
 ## 文档与范围
 
