@@ -70,7 +70,9 @@ export async function takeSeatAndReady(page: Page): Promise<void> {
 
 /** 房主开局并进入牌桌。 */
 export async function startTournamentViaUi(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "开始比赛" }).click();
+  const start = page.getByRole("button", { name: "开始比赛" });
+  await expect(start).toBeEnabled({ timeout: LOBBY_READY_TIMEOUT });
+  await start.click();
   const enterTable = page.getByRole("link", { name: "进入牌桌" });
   await expect(enterTable).toBeVisible({ timeout: 30_000 });
   await enterTable.click();

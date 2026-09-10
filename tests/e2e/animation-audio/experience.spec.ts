@@ -10,8 +10,7 @@ test("TEX-38 键盘调整音量和动态效果，刷新与牌桌音效开关共�
   await page.goto("/settings");
   const sound = page.getByRole("switch", { name: message("settings.soundSwitchLabel") });
   await expect(sound).toHaveAttribute("aria-checked", "true");
-  await sound.focus();
-  await page.keyboard.press("Space");
+  await sound.press("Space");
   await expect(sound).toHaveAttribute("aria-checked", "false");
   const volume = page.getByRole("slider", { name: message("settings.volumeLabel") });
   await volume.focus();

@@ -27,7 +27,7 @@
 :root {
   --paper: #f5f4ee;
   --ink: #203c32;
-  --muted: #64715f;
+  --muted: #4f5f4d;
   --orange: #cc4824;
   --line: #d9ddd3;
   --serif: Georgia, "Times New Roman", serif;
@@ -860,7 +860,7 @@ body:has(.rr-dialog[open]) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
 }
 .landing-page :is(.fine-print, .art-caption, .kicker, .step-num) {
-  color: #58674f;
+  color: #43563d;
 }
 @media (max-width: 760px) {
   .landing-page .hero {
