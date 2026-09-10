@@ -2,6 +2,8 @@
 
 任务：[TEX-44](https://linear.app/texas-holdem/issue/TEX-44)。分支：`feat/TEX-44-river-and-raise-design`；基线：`ebdbce16`。用户先确认 River & Raise 首页原型，再明确委派 Codex 按同一风格优化现有前端。产品与交互权威见 [05 前端规格 §6.1](../05-frontend-spec.md#61-home)，本记录只保存交付范围与验证证据。
 
+审阅入口：[PR #45](https://github.com/fujiabao89/Texas-Holdem/pull/45)。
+
 ## 交付范围
 
 - 产品首页接入真实 App Router，保留创建、加入与邀请码链接；开局选择使用原生 dialog。
