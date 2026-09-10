@@ -183,8 +183,9 @@ button:disabled {
   border-color: #7e9474;
 }
 .rr-button-primary {
-  background: var(--orange);
-  border-color: var(--orange);
+  /* White 14px labels need a 4.5:1 contrast ratio (WCAG 2 AA). */
+  background: #b83d1d;
+  border-color: #b83d1d;
   color: #fff;
   box-shadow: 0 3px 0 #9c351b;
 }
