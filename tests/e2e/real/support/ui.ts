@@ -30,7 +30,9 @@ export async function createRoomViaUi(page: Page, options: CreateRoomOptions): P
   if (options.bigBlind !== undefined)
     await page.getByLabel("大盲注").fill(String(options.bigBlind));
   await page.getByRole("button", { name: "创建并进入大厅" }).click();
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
+  // 建房/加入后等待大厅可观察就绪。CI 上三个浏览器工程并发、Next dev 冷编译 +
+  // WebKit 渲染较慢，30s 会偶发超时；放宽到 150s 仍为可观察断言（非 sleep）。
+  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 150_000 });
 }
 
 export async function readInviteCode(page: Page): Promise<string> {
@@ -50,7 +52,9 @@ export async function joinViaUi(
   await expect(page.getByRole("heading", { name: "加入私人房间" })).toBeVisible();
   await page.getByLabel("昵称").fill(displayName);
   await page.getByRole("button", { name: "加入房间" }).click();
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
+  // 建房/加入后等待大厅可观察就绪。CI 上三个浏览器工程并发、Next dev 冷编译 +
+  // WebKit 渲染较慢，30s 会偶发超时；放宽到 150s 仍为可观察断言（非 sleep）。
+  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 150_000 });
 }
 
 /** 入座第一个空位并点击准备。 */

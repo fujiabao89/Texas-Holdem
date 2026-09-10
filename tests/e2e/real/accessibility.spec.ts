@@ -37,7 +37,7 @@ async function pressOn(
 
 test.describe("真实链路无障碍", () => {
   test("纯键盘主流程与关键页面 axe 扫描 @key", async ({ browser, page, diagnostics }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(300_000);
     // 预期内的 WS 连接中断噪声（导航/关闭时 teardown），非产品缺陷（Firefox/WebKit）。
     diagnostics.allow(/can't establish a connection/);
     diagnostics.allow("WebSocket is closed before the connection is established");
@@ -79,7 +79,7 @@ test.describe("真实链路无障碍", () => {
     // 关键用例并发运行，Next dev 冷编译 + WebKit 渲染较慢（本地并发实测该用例约 55s），
     // 30s 会在 CI 偶发超时（表现为“element(s) not found”）；放宽到 90s 仍以真实可观察
     // 条件为断言，未掩盖提交/导航的真实失败。
-    await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 150_000 });
 
     // Bob 纯键盘加入（join?code 预填邀请码）。
     const bobContext = await browser.newContext();
@@ -150,7 +150,7 @@ test.describe("真实链路无障碍", () => {
   });
 
   test("Reduced Motion：跳过运动动画，业务结果不变", async ({ browser }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(300_000);
     const aliceContext = await browser.newContext({ reducedMotion: "reduce" });
     const bobContext = await browser.newContext({ reducedMotion: "reduce" });
     const alice = await aliceContext.newPage();
