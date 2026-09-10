@@ -8,6 +8,8 @@ import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  RECOVERY_SERVICE_VERB,
+  assertRollbackServiceControl,
   buildDeployPlan,
   buildRollbackPlan,
   currentTargetSha,
@@ -15,6 +17,7 @@ import {
   parseCliArgv,
   parseConfig,
   readState,
+  releaseTreeDigest,
   resolveRollbackTarget,
   setCurrentTarget,
   wireCli,
@@ -159,4 +162,30 @@ test("current 运行目标：setCurrentTarget/currentTargetSha 往返", async ()
   assert.equal(await currentTargetSha(cfg), null);
   await setCurrentTarget(cfg, sha);
   assert.equal(await currentTargetSha(cfg), sha);
+});
+
+test("F1/F6：release 目录摘要排除部署侧 manifest.json", async () => {
+  const dir = tempDir();
+  mkdirSync(join(dir, "dist"), { recursive: true });
+  writeFileSync(join(dir, "dist/main.js"), "x");
+  const withoutManifest = (await releaseTreeDigest(dir)).digest;
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify({ rootDigestSha256: withoutManifest }));
+  // 排除后摘要不变（部署/回滚校验通过）
+  assert.equal((await releaseTreeDigest(dir)).digest, withoutManifest);
+  // 未排除时摘要随 manifest 存在而变化——即 CI 中 deploy/rollback 必然失败的场景
+  assert.notEqual((await computeTreeDigest(dir)).digest, withoutManifest);
+});
+
+test("F2：恢复旧运行目标使用 restart（可覆盖候选仍在运行）", () => {
+  assert.equal(RECOVERY_SERVICE_VERB, "restart");
+});
+
+test("F3/F7：SERVICE_CONTROL=none 时回滚被拒绝", () => {
+  const none = parseConfig({ RELEASE_ROOT: tempDir() }, "rollback");
+  assert.throws(() => assertRollbackServiceControl(none), /不支持回滚/);
+  const systemctl = parseConfig(
+    { RELEASE_ROOT: tempDir(), SERVICE_CONTROL: "systemctl", SERVICE_NAME: "game-server" },
+    "rollback",
+  );
+  assert.doesNotThrow(() => assertRollbackServiceControl(systemctl));
 });

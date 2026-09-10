@@ -91,7 +91,9 @@ node infra/deployment/scripts/release.mjs deploy --apply --health-timeout-ms 900
 
 - **默认安全失败**：无 `--apply` 一律 dry-run；所有路径/标识符校验；禁止 `eval` 与 shell 拼接外部数据；服务控制只允许固定动词。
 - **migration/start/health 任一失败不激活**新版本；保留旧版本及可审计日志。
-- **回滚前置**：验目标 release 完整性与 manifest；校验目标迁移 journal 是当前 journal 的**前缀**（schema 兼容，只切二进制、不做 down migration）；再停旧/启目标/health/对调 state。前缀不兼容则拒绝并提示 TEX-42 前向修复。
+- **回滚前置**：验目标 release 完整性与 manifest；校验目标迁移 journal 是当前 journal 的**前缀**（schema 兼容，只切二进制、不做 down migration）；再停旧/启目标/health/对调 state。前缀不兼容则拒绝并提示 TEX-42 前向修复。**`SERVICE_CONTROL=none` 拒绝执行回滚**（无法真正停止/启动进程，只会产生错误的运行版本记录；`none` 仅用于首装）。
+- **失败恢复**：把运行目标回切旧版并使用 `restart`（而非 `start`）拉起旧服务——候选可能仍在运行，`start` 对运行中的单元是 no-op，会假性“恢复成功”。
+- **release 目录校验范围**：对 `releases/<sha>` 计算内容摘要时排除部署侧写入的 `manifest.json`，与构建时 `rootDigestSha256` 的 stage 范围一致（否则每次部署/回滚都会在校验阶段失败）。
 - **审计**：deploy/migrate/start/activate/rollback/status 每次追加不含 Secret 的记录（`at/action/phase/sha/result/operator/runId`），经 `sanitizeForAudit` 脱敏。Release 证据保留 180 天（对齐 `docs/06-testing-strategy.md` §10.2/§12.4）。
 
 > **真实 systemd 服务名、服务器地址、域名、数据库凭据、发布介质、告警通道一律不得臆造**——以显式参数/占位提供，属 TEX-39/用户决策项（云厂商、区域、域名、备案、套餐、备份、预算、TLS），见 `docs/05-operations/README.md` 决策清单。

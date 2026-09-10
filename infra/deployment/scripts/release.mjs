@@ -47,10 +47,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   computeTreeDigest,
   ensureDir,
+  removeTree,
   runShell,
   sanitizeForAudit,
   sha256OfFile,
 } from "./lib/artifact-lib.mjs";
+
+/** 恢复旧运行目标时使用的服务动词：restart 可覆盖“候选已在运行”的情况。 */
+export const RECOVERY_SERVICE_VERB = "restart";
 
 const slash = (p) => p.replace(/\\/g, "/");
 const SHA = /^[0-9a-f]{40}$/;
@@ -219,11 +223,17 @@ export async function currentTargetSha(cfg) {
 /* ---------------- 内部实现 ---------------- */
 
 async function appendAudit(cfg, entry) {
-  await ensureDir(cfg.auditDir);
-  const line = JSON.stringify(
-    sanitizeForAudit({ ...entry, at: new Date().toISOString(), operator: cfg.operator, runId: cfg.runId }),
-  );
-  await writeFile(join(cfg.auditDir, "release.jsonl"), `${line}\n`, { flag: "a" });
+  // 审计写入失败不得回滚已激活的部署/回滚（F5）：记录告警并继续，
+  // 否则 activate 之后的审计异常会让运行目标与 state 处于不一致状态。
+  try {
+    await ensureDir(cfg.auditDir);
+    const line = JSON.stringify(
+      sanitizeForAudit({ ...entry, at: new Date().toISOString(), operator: cfg.operator, runId: cfg.runId }),
+    );
+    await writeFile(join(cfg.auditDir, "release.jsonl"), `${line}\n`, { flag: "a" });
+  } catch (error) {
+    console.error(`审计写入失败（非致命，不改变已激活状态）：${error instanceof Error ? error.message : error}`);
+  }
 }
 
 async function acquireLock(cfg) {
@@ -259,13 +269,30 @@ async function readJournalTags(releaseRootDir) {
   return data.entries.map((e) => e.tag);
 }
 
+/**
+ * release 目录内容摘要：排除部署侧后写入的 manifest.json，使校验范围与构建时
+ * 计算 rootDigestSha256 的 stage 范围一致（F1/F6：否则每次 deploy/rollback 必失败）。
+ */
+export async function releaseTreeDigest(releaseDir) {
+  return computeTreeDigest(releaseDir, { exclude: ["manifest.json"] });
+}
+
+/** 回滚必须能真正切换并重启进程：无服务控制时拒绝，避免假成功（F3/F7）。 */
+export function assertRollbackServiceControl(cfg) {
+  if (cfg.serviceControl === "none") {
+    throw new Error(
+      "SERVICE_CONTROL=none 不支持回滚：无法停止当前进程/启动目标版本，只会切换链接并产生错误的运行版本记录。请配置 systemctl/docker（TEX-41/用户决策）。",
+    );
+  }
+}
+
 async function verifyReleaseDir(cfg, sha) {
   const dir = join(cfg.releasesDir, sha);
   if (!existsSync(join(dir, "dist/main.js")) || !existsSync(join(dir, "manifest.json"))) {
     throw new Error(`release ${sha} 不完整（缺 dist/main.js 或 manifest.json）`);
   }
   const manifest = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8"));
-  const digest = await computeTreeDigest(dir);
+  const digest = await releaseTreeDigest(dir);
   if (digest.digest !== manifest.rootDigestSha256) throw new Error(`release ${sha} 内容摘要不匹配 manifest`);
 }
 
@@ -332,9 +359,11 @@ async function restoreOldTarget(cfg, oldTarget) {
     await setCurrentTarget(cfg, oldTarget);
   }
   if (cfg.serviceControl !== "none") {
-    const start = await serviceCtl(cfg, "start");
-    if (start && start.code !== 0) {
-      console.error(`旧版本启动失败，需人工介入：${start.stderr.slice(-1000)}`);
+    // 用 restart 而非 start：候选可能已在运行，start 对运行中的单元是 no-op，
+    // 会留下候选进程继续服务并让后续 health 误判为“已恢复旧版”（F2）。
+    const recovery = await serviceCtl(cfg, RECOVERY_SERVICE_VERB);
+    if (recovery && recovery.code !== 0) {
+      console.error(`旧版本恢复（${RECOVERY_SERVICE_VERB}）失败，需人工介入：${recovery.stderr.slice(-1000)}`);
       return;
     }
     try {
@@ -359,6 +388,7 @@ async function execDeploy(cfg, plan) {
   let locked = false;
   let switched = false;
   let stopped = false;
+  let activated = false;
   try {
     await runPhased(plan, async (p) => {
       switch (p.step) {
@@ -415,6 +445,7 @@ async function execDeploy(cfg, plan) {
             previous: oldTarget,
             updatedAt: new Date().toISOString(),
           });
+          activated = true;
           break;
         default:
           throw new Error(`未实现步骤 ${p.step}`);
@@ -424,6 +455,9 @@ async function execDeploy(cfg, plan) {
     console.log(`\ndeploy ${sha} 完成：current 已切换并激活。`);
   } catch (error) {
     if (switched || stopped) await restoreOldTarget(cfg, oldTarget);
+    // 失败且未激活时清理候选目录，避免残留 releases/<sha> 让同一不可变 artifact
+    // 因“目录已存在”永久无法重试（F4）。
+    if (!activated) await removeTree(join(cfg.releasesDir, sha)).catch(() => undefined);
     throw error;
   } finally {
     if (locked) await releaseLock(cfg);
@@ -431,6 +465,7 @@ async function execDeploy(cfg, plan) {
 }
 
 async function execRollback(cfg, plan, target) {
+  assertRollbackServiceControl(cfg);
   let locked = false;
   let oldTarget = null;
   let switched = false;

@@ -93,8 +93,9 @@ export async function normalizeSymlinksRelative(root) {
  *  - 真实目录：递归（.pnpm 虚拟 store 为真实目录，其内容因此恰好计入一次）。
  * 真实目录与叶子条目按相对路径字典序遍历，build 与 verify 用同一函数，跨机可复现。
  */
-export async function computeTreeDigest(root) {
+export async function computeTreeDigest(root, { exclude = [] } = {}) {
   const hash = createHash("sha256");
+  const excluded = new Set(exclude);
   let files = 0;
 
   async function walk(dir) {
@@ -102,6 +103,9 @@ export async function computeTreeDigest(root) {
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const entry of entries) {
       const full = join(dir, entry.name);
+      // exclude 用于“部署侧后写入的文件”（如 release 目录中的 manifest.json），
+      // 使校验范围与构建时计算 rootDigestSha256 的范围一致。
+      if (excluded.has(posixRel(root, full))) continue;
       let linkStat;
       try {
         linkStat = await lstat(full);
