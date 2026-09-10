@@ -201,8 +201,16 @@ button:disabled {
   box-shadow: none;
 }
 .rr-button:disabled {
-  opacity: 0.5;
+  background: #e1e6dc;
+  border-color: #c6d0bf;
+  color: #465443;
+  cursor: not-allowed;
   box-shadow: none;
+}
+.rr-button-primary:disabled {
+  background: #7d4938;
+  border-color: #7d4938;
+  color: #fff;
 }
 .rr-arrow {
   display: inline-block;
