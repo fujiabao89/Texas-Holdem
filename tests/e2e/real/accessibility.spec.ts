@@ -75,7 +75,11 @@ test.describe("真实链路无障碍", () => {
     const submitCreate = page.getByRole("button", { name: "创建并进入大厅" });
     await expect(submitCreate).toBeEnabled({ timeout: 10_000 });
     await pressOn(page, submitCreate);
-    await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
+    // 等待可观察就绪（导航到大厅并渲染标题）。CI 上 chromium 全量、firefox/webkit
+    // 关键用例并发运行，Next dev 冷编译 + WebKit 渲染较慢（本地并发实测该用例约 55s），
+    // 30s 会在 CI 偶发超时（表现为“element(s) not found”）；放宽到 90s 仍以真实可观察
+    // 条件为断言，未掩盖提交/导航的真实失败。
+    await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 90_000 });
 
     // Bob 纯键盘加入（join?code 预填邀请码）。
     const bobContext = await browser.newContext();
@@ -86,7 +90,7 @@ test.describe("真实链路无障碍", () => {
     await bob.keyboard.type("玩家乙");
     await bob.keyboard.press("Tab"); // 加入房间
     await bob.keyboard.press("Enter");
-    await expect(bob.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
+    await expect(bob.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 90_000 });
 
     // 先等待双方连接就绪，再入座/准备：SET_READY 需经已认证 WS 提交，早于
     // CONNECTED 按准备会被客户端丢弃（allReady 不满足则开局按钮禁用、流程卡死）。
