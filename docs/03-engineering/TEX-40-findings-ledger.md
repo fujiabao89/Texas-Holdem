@@ -26,6 +26,20 @@
 - **e2e-real 取证与收敛（提交 `4de63f3b`）**：本地以同代码复现——单工程 webkit 无障碍用例通过（2.8m），firefox+webkit 并发 8/8 通过（webkit 无障碍 55.2s / firefox 27.1s），全量并发 14 passed（唯一失败为 firefox `multiplayer-journey` 的 `toHaveURL`，与本任务无关）。结论：CI 上三个浏览器工程并发 + Next dev 冷编译使 WebKit 建房→大厅超过原 30s 等待（非逻辑失败；本地更快的机器 55s 即通过）。处置：把 `accessibility.spec.ts` 与共享 helper `support/ui.ts` 的“房间大厅”可观察等待放宽到 150s、无障碍用例总时长 300s（仍为可观察就绪断言，非 sleep）。末尾 `[WebServer] terminating connection ...` 为 `global-teardown` 在用例结束后 `pg_terminate_backend`/DROP SCHEMA 的收尾痕迹，非失败原因。
 - 最终 CI（提交 `4de63f3b`）：`repository-hygiene`/`quality`/`workflow-lint`(actionlint)/`perf-smoke`/`e2e`/**`e2e-real`** 全部 ✅。
 
+## e2e-real webkit 超时：原诊断被证伪与真实根因
+
+提交 `00f91b64` 仅改本台账，CI `e2e-real` 再次失败（[run 34435054935](https://github.com/fujiabao89/Texas-Holdem/actions/runs/34435054935)），证明**上一条「WebKit 渲染慢」的结论不成立**——同一代码在 `4de63f3b` 通过、在仅改文档的 `00f91b64` 失败，是 flake 而非回归，且放宽等待到 150s 后仍复现。
+
+本地复现（`--project=webkit -g "双人完整锦标赛"`）并取证，推翻原诊断：
+
+- 失败断言落在 `support/ui.ts` 的「房间大厅」等待；`requests` 中**完全没有** `POST /api/v1/rooms`，`consoleErrors` 与 `pageErrors` 均为空。
+- trace 显示 `fill("玩家甲")` 已写入（该节点 `__playwright_value_` 有值），但失败截图里「昵称」为空且被浏览器聚焦——即 HTML5 校验拦截了提交。
+- 真实根因：**React 水合竞态**。Next dev 下表单首屏可见早于水合完成；若 `fill` 发生在水合之前，其 `input` 事件没有 React 监听者，组件 state 保持初值，水合提交随后把受控输入的 DOM 值同步回 state，清空用户输入。接着 `required minLength=2` 的表单校验静默阻止提交：不发请求、不导航、浏览器零报错，表现为等待大厅超时。三个浏览器中 WebKit 水合最慢，故只在该工程暴露；同一次运行内先填的文本字段被清空、后填的数字字段（水合后）保留，与截图完全吻合。**该状态是永久卡死而非渲染缓慢**，因此放宽超时在原理上不可能修复。
+
+处置：`support/ui.ts` 在点击提交前对账受控输入（`commitVerifiedForm`），被水合清空则重新填入——重试而非固定等待，水合完成后填入的值稳定保留，循环必然收敛；断言仍挂在可观察状态上（docs/06 §5，未引入 sleep 或 route 伪造）。`createRoomViaUi` 与 `joinViaUi` 均覆盖，公开签名不变。
+
+未改动 `apps/web` 产品代码：真实用户在极慢水合下同样会丢失输入，属产品层面的既有边界；本次只消除测试对水合时序的隐含依赖，产品侧输入保活如需处理应单独立项。
+
 ## 文档与范围
 
 `infra/deployment/README.md` 同步“回滚必须有服务控制（`none` 仅用于首装）”“恢复使用 restart”“release 目录校验排除部署侧 manifest”。未改动业务逻辑、扑克规则、协议、Nginx、数据库 schema/SQL 迁移或监控实现；未执行无关重构。

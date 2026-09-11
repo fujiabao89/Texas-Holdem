@@ -15,24 +15,71 @@ export interface CreateRoomOptions {
   readonly bigBlind?: number;
 }
 
+/** 受控输入及其期望值，供提交前对账使用（见 commitVerifiedForm）。 */
+interface VerifiedField {
+  readonly locator: Locator;
+  readonly value: string;
+}
+
+/**
+ * 提交前对账受控输入，必要时重新填入。
+ *
+ * 根因（PR #44 e2e-real webkit 于 CI 与本地复现）：Next dev 的 React 水合可能晚于
+ * 表单首屏可见。若 fill 发生在水合完成之前，其 input 事件没有 React 监听者，组件
+ * state 保持初值；水合提交随后把受控输入的 DOM 值同步回 state，清空刚输入的文本。
+ * 于是提交时字段为空，HTML5 校验（required minLength=2）静默阻止表单提交——既不
+ * 产生 HTTP 请求也不发生导航，表现为等待「房间大厅」超时（浏览器零报错、网络无
+ * POST）。放宽等待时间无法修复：该状态是永久卡死而非渲染缓慢。
+ *
+ * 这里在点击提交前统一对账：值已被水合清空就重新填入。用重试而非固定等待——水合
+ * 完成后填入的值可稳定保留，循环必然收敛，断言仍挂在可观察状态上（docs/06 §5）。
+ */
+async function commitVerifiedForm(fields: readonly VerifiedField[]): Promise<void> {
+  await expect(async () => {
+    for (const field of fields) {
+      if ((await field.locator.inputValue()) !== field.value) await field.locator.fill(field.value);
+    }
+    for (const field of fields) await expect(field.locator).toHaveValue(field.value);
+  }).toPass({ timeout: 30_000 });
+}
+
+/** 建房/加入后等待大厅可观察就绪（超时仅为上限；正常路径为秒级）。 */
+function expectLobbyReady(page: Page): Promise<void> {
+  return expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 150_000 });
+}
+
 export async function createRoomViaUi(page: Page, options: CreateRoomOptions): Promise<void> {
   await page.goto("/create");
   await expect(page.getByRole("heading", { name: "创建私人房间" })).toBeVisible();
-  await page.getByLabel("昵称").fill(options.displayName);
-  if (options.maxPlayers !== undefined)
-    await page.getByLabel("最大人数").fill(String(options.maxPlayers));
-  if (options.startingStack !== undefined)
-    await page.getByLabel("初始筹码").fill(String(options.startingStack));
+  const fields: VerifiedField[] = [];
+  const displayName = page.getByLabel("昵称");
+  await displayName.fill(options.displayName);
+  fields.push({ locator: displayName, value: options.displayName });
+  if (options.maxPlayers !== undefined) {
+    const maxPlayers = page.getByLabel("最大人数");
+    await maxPlayers.fill(String(options.maxPlayers));
+    fields.push({ locator: maxPlayers, value: String(options.maxPlayers) });
+  }
+  if (options.startingStack !== undefined) {
+    const startingStack = page.getByLabel("初始筹码");
+    await startingStack.fill(String(options.startingStack));
+    fields.push({ locator: startingStack, value: String(options.startingStack) });
+  }
   // 表单默认盲注 50/100（room-presets.ts）；小筹码场景必须显式降低盲注，
   // 否则筹码 < 大盲注会导致每手自动全下、锦标赛秒级自动完成（房间直接 FINISHED）。
-  if (options.smallBlind !== undefined)
-    await page.getByLabel("小盲注").fill(String(options.smallBlind));
-  if (options.bigBlind !== undefined)
-    await page.getByLabel("大盲注").fill(String(options.bigBlind));
+  if (options.smallBlind !== undefined) {
+    const smallBlind = page.getByLabel("小盲注");
+    await smallBlind.fill(String(options.smallBlind));
+    fields.push({ locator: smallBlind, value: String(options.smallBlind) });
+  }
+  if (options.bigBlind !== undefined) {
+    const bigBlind = page.getByLabel("大盲注");
+    await bigBlind.fill(String(options.bigBlind));
+    fields.push({ locator: bigBlind, value: String(options.bigBlind) });
+  }
+  await commitVerifiedForm(fields);
   await page.getByRole("button", { name: "创建并进入大厅" }).click();
-  // 建房/加入后等待大厅可观察就绪。CI 上三个浏览器工程并发、Next dev 冷编译 +
-  // WebKit 渲染较慢，30s 会偶发超时；放宽到 150s 仍为可观察断言（非 sleep）。
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 150_000 });
+  await expectLobbyReady(page);
 }
 
 export async function readInviteCode(page: Page): Promise<string> {
@@ -50,11 +97,15 @@ export async function joinViaUi(
 ): Promise<void> {
   await page.goto(`/join?code=${inviteCode}`);
   await expect(page.getByRole("heading", { name: "加入私人房间" })).toBeVisible();
-  await page.getByLabel("昵称").fill(displayName);
+  const displayNameField = page.getByLabel("昵称");
+  await displayNameField.fill(displayName);
+  // 邀请码同样来自受控 state（由 URL 预填），一并纳入提交前对账。
+  await commitVerifiedForm([
+    { locator: page.getByLabel("邀请码"), value: inviteCode },
+    { locator: displayNameField, value: displayName },
+  ]);
   await page.getByRole("button", { name: "加入房间" }).click();
-  // 建房/加入后等待大厅可观察就绪。CI 上三个浏览器工程并发、Next dev 冷编译 +
-  // WebKit 渲染较慢，30s 会偶发超时；放宽到 150s 仍为可观察断言（非 sleep）。
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 150_000 });
+  await expectLobbyReady(page);
 }
 
 /** 入座第一个空位并点击准备。 */
