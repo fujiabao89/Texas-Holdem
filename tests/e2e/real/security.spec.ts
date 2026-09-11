@@ -207,8 +207,12 @@ test.describe("真实链路字段级安全", () => {
 
     // 数据库权威事实：全部真实底牌 + 公开牌（公共牌与摊牌亮牌）。
     const tournamentId = await latestTournamentIdForRoom(roomId);
+    // 客户端已显示「比赛已结束」，但手牌落库是写后读：轮询等待权威事实出现，避免读取
+    // 早于持久化完成（chromium CI 曾偶发读到 0 手牌）。等待有界，真正缺失仍会超时失败。
+    await expect
+      .poll(async () => (await fetchTournamentGroundTruth(tournamentId)).length, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(1);
     const hands = await fetchTournamentGroundTruth(tournamentId);
-    expect(hands.length).toBeGreaterThanOrEqual(1);
     const publicCards = new Set<string>();
     for (const hand of hands) {
       for (const card of hand.boardCards) publicCards.add(truthCardKey(card));

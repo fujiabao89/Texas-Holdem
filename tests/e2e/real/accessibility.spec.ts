@@ -37,7 +37,7 @@ async function pressOn(
 
 test.describe("真实链路无障碍", () => {
   test("纯键盘主流程与关键页面 axe 扫描 @key", async ({ browser, page, diagnostics }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(300_000);
     // 预期内的 WS 连接中断噪声（导航/关闭时 teardown），非产品缺陷（Firefox/WebKit）。
     diagnostics.allow(/can't establish a connection/);
     diagnostics.allow("WebSocket is closed before the connection is established");
@@ -68,10 +68,42 @@ test.describe("真实链路无障碍", () => {
     await page.keyboard.press("Tab"); // 大盲注
     await page.keyboard.press("Control+a");
     await page.keyboard.type("2");
-    // 跳过 行动时间/延时储备（默认值合法）。
-    for (let index = 0; index < 3; index += 1) await page.keyboard.press("Tab");
-    await page.keyboard.press("Enter"); // 创建并进入大厅
-    await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
+    // 行动时间/延时储备保留默认值（合法）。
+    // 提交：对提交按钮 focus()+Enter（仍为纯键盘，等价“Tab 到按钮再 Enter”）。
+    // 不依赖固定 Tab 次数：WebKit 与 Chromium/Firefox 在数字步进控件上的焦点序
+    // 不同，固定 Tab 在 WebKit 会把 Enter 落在步进控件上导致未激活提交（CI 复现）。
+    // 水合竞态（根因与处置同 support/ui.ts 的 commitVerifiedForm）：Next dev 下
+    // React 水合可能晚于表单首屏可见，水合会把水合前写入的受控值同步回 state 并清空。
+    // 此时 required 校验静默拦截提交——无请求、无导航、浏览器零报错，表现为等待大厅
+    // 超时（WebKit CI 复现）。提交前用纯键盘逐项核对，被清空则补输。
+    const expectedFields = [
+      ["昵称", "玩家甲"],
+      ["最大人数", "2"],
+      ["初始筹码", "20"],
+      ["小盲注", "1"],
+      ["大盲注", "2"],
+    ] as const;
+    await expect(async () => {
+      for (const [label, value] of expectedFields) {
+        const field = page.getByLabel(label);
+        if ((await field.inputValue()) !== value) {
+          await field.focus();
+          await page.keyboard.press("Control+a");
+          await page.keyboard.type(value);
+        }
+      }
+      for (const [label, value] of expectedFields) {
+        await expect(page.getByLabel(label)).toHaveValue(value);
+      }
+    }).toPass({ timeout: 30_000 });
+    const submitCreate = page.getByRole("button", { name: "创建并进入大厅" });
+    await expect(submitCreate).toBeEnabled({ timeout: 10_000 });
+    await pressOn(page, submitCreate);
+    // 等待可观察就绪（导航到大厅并渲染标题）。CI 上 chromium 全量、firefox/webkit
+    // 关键用例并发运行，Next dev 冷编译 + WebKit 渲染较慢（本地并发实测该用例约 55s），
+    // 30s 会在 CI 偶发超时（表现为“element(s) not found”）；放宽到 90s 仍以真实可观察
+    // 条件为断言，未掩盖提交/导航的真实失败。
+    await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 150_000 });
 
     // Bob 纯键盘加入（join?code 预填邀请码）。
     const bobContext = await browser.newContext();
@@ -82,7 +114,7 @@ test.describe("真实链路无障碍", () => {
     await bob.keyboard.type("玩家乙");
     await bob.keyboard.press("Tab"); // 加入房间
     await bob.keyboard.press("Enter");
-    await expect(bob.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
+    await expect(bob.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 90_000 });
 
     // 先等待双方连接就绪，再入座/准备：SET_READY 需经已认证 WS 提交，早于
     // CONNECTED 按准备会被客户端丢弃（allReady 不满足则开局按钮禁用、流程卡死）。
@@ -142,7 +174,7 @@ test.describe("真实链路无障碍", () => {
   });
 
   test("Reduced Motion：跳过运动动画，业务结果不变", async ({ browser }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(300_000);
     const aliceContext = await browser.newContext({ reducedMotion: "reduce" });
     const bobContext = await browser.newContext({ reducedMotion: "reduce" });
     const alice = await aliceContext.newPage();
