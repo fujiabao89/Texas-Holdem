@@ -14,6 +14,12 @@
 | F-06 | [Greptile 3974962830](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3974962830) | 与 F-01 完全相同的缺陷（同一行、同一失败场景），仅表述与复现产物不同。 | P1 | 合并到 F-01，跳过重复实现；单独回复原线程。 |
 | F-07 | [Greptile 3974962832](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3974962832) | 与 F-03 相同的缺陷（`SERVICE_CONTROL=none` 回滚假成功）。 | P1 | 合并到 F-03，跳过重复实现；单独回复原线程。 |
 
+第二轮审查（2026-09-11，Codex 1 条）：
+
+| ID | 来源 | 有效性、精确场景与现有覆盖 | 等级 | 处置 |
+| --- | --- | --- | --- | --- |
+| F-08 | [Codex 3989627686](https://github.com/fujiabao89/Texas-Holdem/pull/44#discussion_r3989627686) | 有效。F-04 引入的失败清理是无条件的：对同一 SHA 并发 `deploy --apply` 时，两者都能通过锁前的 `existsSync(releases/<sha>)` 检查（release.mjs:386），抢锁失败方进入 catch 时 `locked === false`，仍执行 `removeTree(releases/<sha>)`，删掉持锁者正在解包、迁移或已激活运行的目录——获胜部署中途失败，或 `state.current` 指向已被删除的 release 而服务进程文件已不存在。发布锁本身是全局的（`lockDir/deploy.lock`），故「持锁」即足以排除并发者。 | P1 | 修复：新增 `shouldCleanupCandidate({activated, createdReleaseDir, locked})`，仅当本次调用解包落位过候选目录且仍持锁、且未激活时才清理（`unpack` 步骤前置标记，部分解包失败仍可清理，保留 F-04 语义）。新增单测覆盖四种组合。 |
+
 未计入缺陷的 Conversation 项：CodeRabbit 仅为“仓库未启用自动审查”的配置说明与提示（无行级 finding）；Qodo 因试用额度暂停审查；Vercel 为部署状态通知；`linear-code` 为 TEX-40 关联链接。均非代码缺陷。
 
 ## 验证

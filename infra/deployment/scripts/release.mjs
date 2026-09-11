@@ -249,6 +249,19 @@ async function releaseLock(cfg) {
   await rm(join(cfg.lockDir, "deploy.lock"), { recursive: true, force: true });
 }
 
+/**
+ * 失败时是否清理候选目录 `releases/<sha>`。
+ *
+ * 清理本身是为了避免残留目录让同一不可变 artifact 因“目录已存在”永久无法重试（F4）；
+ * 但只允许由**创建了该目录、且仍持有发布锁**的那次调用执行（F8）：并发 `deploy --apply`
+ * 对同一 SHA 会同时通过锁前的存在性检查，抢锁失败的一方 `locked === false`，
+ * 若其仍做无条件清理，就会删除持锁者正在解包、迁移或已经激活运行的目录——导致获胜部署
+ * 中途失败，或 state.current 记录到一个已被删除的 release，而服务进程的文件已不存在。
+ */
+export function shouldCleanupCandidate({ activated, createdReleaseDir, locked }) {
+  return !activated && createdReleaseDir && locked;
+}
+
 async function readAppEnvFile(cfg) {
   if (!cfg.appEnvFile || !existsSync(cfg.appEnvFile)) return {};
   const out = {};
@@ -389,6 +402,9 @@ async function execDeploy(cfg, plan) {
   let switched = false;
   let stopped = false;
   let activated = false;
+  // 候选目录是否由本次调用落位。并发 deploy 对同一 SHA 会同时通过上面的存在性检查，
+  // 抢锁失败的一方若也清理，会删掉持锁者正在解包/运行的 releases/<sha>（F8）。
+  let createdReleaseDir = false;
   try {
     await runPhased(plan, async (p) => {
       switch (p.step) {
@@ -404,6 +420,8 @@ async function execDeploy(cfg, plan) {
           locked = true;
           break;
         case "unpack":
+          // 解包前标记：部分解包失败同样需要清理（F4），而到达本步骤即已持有发布锁。
+          createdReleaseDir = true;
           await unpackTarball(cfg, sha);
           break;
         case "verify-unpacked":
@@ -455,9 +473,9 @@ async function execDeploy(cfg, plan) {
     console.log(`\ndeploy ${sha} 完成：current 已切换并激活。`);
   } catch (error) {
     if (switched || stopped) await restoreOldTarget(cfg, oldTarget);
-    // 失败且未激活时清理候选目录，避免残留 releases/<sha> 让同一不可变 artifact
-    // 因“目录已存在”永久无法重试（F4）。
-    if (!activated) await removeTree(join(cfg.releasesDir, sha)).catch(() => undefined);
+    if (shouldCleanupCandidate({ activated, createdReleaseDir, locked })) {
+      await removeTree(join(cfg.releasesDir, sha)).catch(() => undefined);
+    }
     throw error;
   } finally {
     if (locked) await releaseLock(cfg);

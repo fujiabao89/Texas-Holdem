@@ -20,6 +20,7 @@ import {
   releaseTreeDigest,
   resolveRollbackTarget,
   setCurrentTarget,
+  shouldCleanupCandidate,
   wireCli,
   writeState,
 } from "../scripts/release.mjs";
@@ -188,4 +189,27 @@ test("F3/F7：SERVICE_CONTROL=none 时回滚被拒绝", () => {
     "rollback",
   );
   assert.doesNotThrow(() => assertRollbackServiceControl(systemctl));
+});
+
+test("F8：只允许创建了候选目录且仍持锁的调用做失败清理", () => {
+  // 本次调用已解包且仍持锁、未激活：保留 F4 的清理，使同一 artifact 可重试。
+  assert.equal(
+    shouldCleanupCandidate({ activated: false, createdReleaseDir: true, locked: true }),
+    true,
+  );
+  // 并发 deploy 抢锁失败方：不得删除持锁者正在解包/运行的 releases/<sha>。
+  assert.equal(
+    shouldCleanupCandidate({ activated: false, createdReleaseDir: false, locked: false }),
+    false,
+  );
+  // 尚未解包（目录非本次创建）：无目录可清理，也不得误删。
+  assert.equal(
+    shouldCleanupCandidate({ activated: false, createdReleaseDir: false, locked: true }),
+    false,
+  );
+  // 已激活：正在运行的候选永不清理。
+  assert.equal(
+    shouldCleanupCandidate({ activated: true, createdReleaseDir: true, locked: true }),
+    false,
+  );
 });
