@@ -29,11 +29,11 @@
   border-radius: 50%;
 }
 .landing-page h1 {
-  font-family: "STXihei", "Heiti SC", "PingFang SC", "Microsoft JhengHei", sans-serif;
+  font-family: "Noto Sans SC", "Microsoft YaHei", "Microsoft JhengHei", sans-serif;
   font-size: clamp(48px, 5.1vw, 76px);
   line-height: 1.3;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-weight: 800;
+  letter-spacing: -0.045em;
   margin: 24px 0 22px;
 }
 .landing-page h1 .second {
