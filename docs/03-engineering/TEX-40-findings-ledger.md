@@ -40,6 +40,13 @@
 
 未改动 `apps/web` 产品代码：真实用户在极慢水合下同样会丢失输入，属产品层面的既有边界；本次只消除测试对水合时序的隐含依赖，产品侧输入保活如需处理应单独立项。
 
+同批次另修两处（同一 CI 轮流暴露，均已单独记录）：
+
+- `accessibility.spec.ts` 的纯键盘建房流程未走共享 helper，存在**同一水合竞态**，提交前增加纯键盘核对与补输（仍是 focus + Control+A + 键入，无 sleep）。
+- `security.spec.ts` 在读手牌权威事实时存在**写后读竞态**：客户端已渲染「比赛已结束」，但断言读到的仍是 0 手牌。改为有界轮询（`expect.poll`，15s），真正缺失仍会超时失败。
+
+修后 CI（run 34602131903，提交 `11327ee0`）：**14 passed / 1 failed**，webkit 水合类失败全部消除。唯一剩余失败与本任务改动无关且**尚未定根因**：`security.spec.ts:176`「WS 投影隔离」在 firefox 上 `开始比赛` 按钮 60s 内始终 disabled（房主 `allReady` 未更新）；同一用例在前一轮 chromium 上是另一种表现（读到 0 手牌）。该用例两轮内以不同方式失败，提示其自身存在竞态，需单独立项取证（含多页面 diagnostics——现 fixture 只采集默认 `page`，Bob 等次级页面无取证，是本案反复定位困难的原因之一）。
+
 ## 文档与范围
 
 `infra/deployment/README.md` 同步“回滚必须有服务控制（`none` 仅用于首装）”“恢复使用 restart”“release 目录校验排除部署侧 manifest”。未改动业务逻辑、扑克规则、协议、Nginx、数据库 schema/SQL 迁移或监控实现；未执行无关重构。
