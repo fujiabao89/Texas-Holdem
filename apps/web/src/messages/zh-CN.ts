@@ -206,6 +206,11 @@ export const zhCN = {
     disconnected: "连接已中断",
   },
   table: {
+    gameType: "无限注德州扑克",
+    unlimitedTime: "本桌不限行动时间",
+    blinds: "盲注 {small} / {big}",
+    yourTurn: "轮到你行动",
+    you: "你",
     feedback: {
       mainPot: "主池",
       sidePot: "边池 {index}",
