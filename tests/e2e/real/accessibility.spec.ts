@@ -72,6 +72,30 @@ test.describe("真实链路无障碍", () => {
     // 提交：对提交按钮 focus()+Enter（仍为纯键盘，等价“Tab 到按钮再 Enter”）。
     // 不依赖固定 Tab 次数：WebKit 与 Chromium/Firefox 在数字步进控件上的焦点序
     // 不同，固定 Tab 在 WebKit 会把 Enter 落在步进控件上导致未激活提交（CI 复现）。
+    // 水合竞态（根因与处置同 support/ui.ts 的 commitVerifiedForm）：Next dev 下
+    // React 水合可能晚于表单首屏可见，水合会把水合前写入的受控值同步回 state 并清空。
+    // 此时 required 校验静默拦截提交——无请求、无导航、浏览器零报错，表现为等待大厅
+    // 超时（WebKit CI 复现）。提交前用纯键盘逐项核对，被清空则补输。
+    const expectedFields = [
+      ["昵称", "玩家甲"],
+      ["最大人数", "2"],
+      ["初始筹码", "20"],
+      ["小盲注", "1"],
+      ["大盲注", "2"],
+    ] as const;
+    await expect(async () => {
+      for (const [label, value] of expectedFields) {
+        const field = page.getByLabel(label);
+        if ((await field.inputValue()) !== value) {
+          await field.focus();
+          await page.keyboard.press("Control+a");
+          await page.keyboard.type(value);
+        }
+      }
+      for (const [label, value] of expectedFields) {
+        await expect(page.getByLabel(label)).toHaveValue(value);
+      }
+    }).toPass({ timeout: 30_000 });
     const submitCreate = page.getByRole("button", { name: "创建并进入大厅" });
     await expect(submitCreate).toBeEnabled({ timeout: 10_000 });
     await pressOn(page, submitCreate);
