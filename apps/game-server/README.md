@@ -49,6 +49,8 @@ pnpm --filter @texas-holdem/game-server db:migrate   # 对 DATABASE_SCHEMA 执�
 
 ## 环境变量
 
+TEX-51：监听前恢复 Room、ACTIVE 身份与最新已提交 Tournament；需先执行数据库迁移，并保留未关闭 Room 对应的 HMAC secret/key ID。Lobby 重启后重新入座/准备，比赛仅恢复整手边界。诊断与操作步骤见 [恢复运行手册](../../docs/05-operations/room-recovery.md)。
+
 见 [.env.example](./.env.example)。非敏感运行配置（`PORT`、`HOST`）可本地覆盖；敏感值（数据库凭据、令牌密钥等）只由部署平台注入。
 
 | 变量 | 必需 | 说明 |

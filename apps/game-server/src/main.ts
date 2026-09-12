@@ -9,6 +9,7 @@ import {
   createHandHistoryRepository,
   createRecoveryRepository,
   createRoomRepository,
+  createRoomRecoveryRepository,
 } from "./infrastructure/persistence/repositories";
 import { createNodeIdSource } from "./rooms/id-source";
 import { createRoomManager, type RoomManager } from "./rooms/room-manager";
@@ -23,7 +24,7 @@ import { createConnectionEpochRegistry } from "./realtime/connection-epochs";
 import { createTournamentEventBus } from "./realtime/tournament-event-bus";
 import { createBackpressureLatch } from "./persistence/backpressure";
 import { createPersistenceWriter } from "./persistence/persistence-writer";
-import { recoverActiveTournaments } from "./persistence/recovery";
+import { recoverRoomsOnStartup } from "./persistence/room-recovery";
 import { createTestRngFactory } from "./test-rng-factory";
 import { createServerMetrics, N as MetricName } from "./observability/server-metrics";
 import { createRateLimiter, parseRateLimitProfile } from "./http/middleware/rate-limit";
@@ -238,15 +239,19 @@ const host = process.env.HOST ?? "0.0.0.0";
 
 /** 启动屏障（docs/04 §13）：监听前恢复活跃比赛；失败则快速退出，不对外提供服务。 */
 async function recoverOnStartup(): Promise<void> {
-  const summary = await recoverActiveTournaments({
+  const summary = await recoverRoomsOnStartup({
+    roomRecoveryRepo: createRoomRecoveryRepository(database),
+    roomRepository,
+    roomManager,
+    tokenKeyId: config.token.keyId,
     recoveryRepo: createRecoveryRepository(database),
     manager: tournamentManager,
     clock: tournamentClock,
     ids,
     scheduler,
     rngFactory,
-    onUnrecoverable: (tournamentId, reason) => {
-      console.error(`unrecoverable tournament=${tournamentId} isolated: ${reason}`);
+    onIsolated: ({ roomId, tournamentId, reason }) => {
+      console.error(`recovery isolated room=${roomId} tournament=${tournamentId ?? "none"} reason=${reason}`);
     },
   });
   if (summary.recovered.length > 0) {
@@ -255,8 +260,9 @@ async function recoverOnStartup(): Promise<void> {
   if (summary.reinitialized.length > 0) {
     console.info(`reinitialized ${summary.reinitialized.length} tournament(s) (no committed hand)`);
   }
-  if (summary.unrecovered.length > 0) {
-    console.error(`${summary.unrecovered.length} tournament(s) have no verifiable recovery root`);
+  console.info(`restored ${summary.restoredRooms.length} room(s)`);
+  if (summary.isolated.length > 0) {
+    console.error(`${summary.isolated.length} recovery record(s) isolated`);
   }
 }
 

@@ -54,6 +54,8 @@ export interface RoomCommandResult {
 export interface RoomRuntimeDeps {
   readonly persistence: RoomPersistence;
   readonly ids: IdSource;
+  /** 启动时持久预留的 revision 号段；不得向其他进程的号段溢出（ADR-0003）。 */
+  readonly revisionCeiling?: number;
   /** Transport-private epoch guard, checked after this Room command obtains queue ownership. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
   /**
@@ -92,6 +94,9 @@ export class RoomRuntime {
   private async process(command: RoomCommand): Promise<RoomCommandResult> {
     const before = this.state;
     const { next, persisted, tournamentId } = this.apply(before, command);
+    if (!Number.isSafeInteger(next.roomRevision) || next.roomRevision > (this.deps.revisionCeiling ?? Number.MAX_SAFE_INTEGER)) {
+      throw new RoomDomainError("GAME_UNAVAILABLE");
+    }
     // 开局参与者冻结请求只构建一次：控制面落库与提交后的运行时注册共享同一份
     // TournamentStartRequest，保证 tournament_player.id 与运行时 seed 一一对应。
     const startRequest =

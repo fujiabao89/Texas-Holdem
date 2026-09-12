@@ -64,7 +64,7 @@ export function makeBundle(
       { seatIndex: 2, name: "P2", kind: "human", status: "ACTIVE", chips: 100, startingStack: 100 },
     ],
     forfeitedChips: 0,
-    initialTotalChips: 100,
+    initialTotalChips: 300,
     champion: null,
     eliminations: [],
     finalStandings: [],

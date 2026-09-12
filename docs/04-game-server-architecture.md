@@ -482,6 +482,10 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 
 ## 13. 进程生命周期与崩溃恢复
 
+**TEX-51 完整启动屏障**：先以一致读取重建 Room/ACTIVE 成员/Host/邀请码/凭证，再验证最新 Tournament 的锁定配置、参赛者与手末根。验证成功后预留新 Room revision 号段、完成必要的水位回退/状态协调，先注册 Room 再等待 Tournament 的恢复 START 成功，全部完成才监听。未知 key ID、缺 Host/成员、配置/座位冲突或无可验证根隔离整个 Room；其他 Room 正常服务。仅输出 ID 和固定诊断码。重复屏障调用共享 Promise；已注册 Room 不被覆盖。数据库整体读取失败则拒绝监听。
+
+持久 Host 必须仍为 ACTIVE HUMAN；不猜选新 Host。全部连接恢复 DISCONNECTED/未准备；Lobby 座位归空，比赛座位/状态从锁定成员与已提交根重建。最新场由最大 tournamentNo 唯一选定，较旧 IN_GAME 场仅诊断不注册；Room FINISHED 与最新 IN_GAME 可由异步终局提交延迟造成，按验证根协调控制面状态。终局根不重开发牌。完整裁决和 migration/号段边界见 [ADR-0003](./adr/0003-tex-51-room-recovery-authority.md)。
+
 - **启动屏障**：恢复完成前不接受创建/加入/Action。按 `rooms`/`tournaments` 元数据定位活跃比赛，只选择 [03](./03-data-model.md) §4.3 定义的最新“整手已完整提交”Commit Bundle；校验版本、checksum、事件连续性与 Snapshot.sequence，孤立 Snapshot、部分事务或事件缺口一律拒绝并回退到上一个可验证检查点。
 - **进行中 Hand 崩溃**：P0 不回放 Snapshot 之后未完整提交的 Hand Events。恢复到最近手末 Snapshot 后，丢弃崩溃 Hand 的内存牌面、Action、Timer 与未提交事件，再以新的随机结果开始下一 Hand；该丢弃 Hand 不进入 Hand History。若首手尚无手末 Snapshot，则从已持久化的 Tournament 配置和锁定参与者重新初始化比赛。
 - **恢复后重建**：从 Snapshot 中恢复 Tournament 全局 sequence、盲注进度、Dealer/参与者/筹码等 Engine 状态；重新建立 Tournament 执行器与未来 Timer，不恢复旧进程 Timer 回调或 `connectionEpoch`。所有连接均视为断开，客户端重新认证并接受新的 Snapshot 屏障，清空旧动画与待发送 Action。

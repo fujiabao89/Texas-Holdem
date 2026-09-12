@@ -1,5 +1,7 @@
 # tournaments（TEX-20）
 
+TEX-51：恢复注册返回可等待的启动结果，只有所有断线初始化与 START 成功后才解除屏障；失败撤销本次执行器和所有计时器。相同 tournamentId 不允许覆盖旧执行器。完整恢复由 `persistence/room-recovery.ts` 先验证 Room 与身份，不再单独暴露无 Room 的比赛。
+
 单桌 Tournament 运行时与唯一串行执行器。权威规格：docs/04-game-server-architecture.md §6/§7、docs/02-protocol-spec.md §7、docs/03-data-model.md §7。
 
 ## 模块

@@ -1,5 +1,7 @@
 # rooms — Room/Lobby 权威状态与串行执行
 
+TEX-51：`registerRecovered` 仅供启动屏障使用，注册已验证的成员/摘要/Host/邀请码和比赛关联；失败用 `unregisterRecovered` 撤销本次注册。`RoomRuntime` 在持久化前检查 revision 号段上界，跨重启预留规则见 [ADR-0003](../../../../docs/adr/0003-tex-51-room-recovery-authority.md)。Lobby 重启后 seat=null、ready=false、全部断线；比赛座位以锁定参赛者为准。
+
 权威规格：[docs/04-game-server-architecture.md](../../../../docs/04-game-server-architecture.md) §5；wire 契约引用 [docs/02-protocol-spec.md](../../../../docs/02-protocol-spec.md) §4/§5。
 
 - **内存权威**：seat/ready/connectionStatus/activeTournamentId 只在内存；`rooms`/`room_players` 不落这些运行态，DB 只记录身份、成员关系、状态、配置与 Host（docs/03 §5）。

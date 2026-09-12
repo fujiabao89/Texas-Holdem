@@ -4,6 +4,8 @@
 
 ## 模块
 
+TEX-51 启动链路：`main.ts` → `persistence/room-recovery.ts` → 一致元数据/检查点验证 → Room 身份注册 → 等待 Tournament START → 监听。未知/损坏记录逐房隔离，不开放半恢复 Room。
+
 | 目录 | 职责 | 权威规格 |
 | --- | --- | --- |
 | `http/` | HTTP 入口与安全（routes/middleware/errors） | docs/04 §10；docs/02 §4/§8/§11 |

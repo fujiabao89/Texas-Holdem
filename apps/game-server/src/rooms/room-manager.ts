@@ -21,7 +21,7 @@ import { generatePlayerToken } from "./player-token";
 import { RoomDomainError } from "./room-errors";
 import { RoomRuntime, type RoomCommand, type RoomCommandResult } from "./room-executor";
 import type { RoomPersistence } from "./room-persistence";
-import { createRoomState, projectRoomSnapshot } from "./room-runtime";
+import { createRoomState, projectRoomSnapshot, type RoomState } from "./room-runtime";
 import type { TournamentStartRequest } from "./tournament-starter";
 
 export interface RoomManagerDeps {
@@ -49,6 +49,10 @@ export interface PlayerSession {
 export type RoomSnapshotListener = (snapshot: RoomSnapshot) => void;
 
 export interface RoomManager {
+  /** 启动屏障专用：只注册已验证的完整 Room，不替换现有运行时。 */
+  registerRecovered(state: RoomState, revisionCeiling: number): void;
+  /** 撤销本次失败的启动注册；不得用于正常运行期关闭。 */
+  unregisterRecovered(roomId: string): void;
   createRoom(input: {
     readonly displayName: string;
     readonly displayNameKey: string;
@@ -93,6 +97,26 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
   }
 
   return {
+    registerRecovered(state, revisionCeiling) {
+      if (rooms.has(state.roomId) || (state.inviteCode !== null && inviteByCode.has(state.inviteCode))) {
+        throw new RoomDomainError("GAME_UNAVAILABLE");
+      }
+      if (state.status === "CLOSED" || state.roomRevision > revisionCeiling) {
+        throw new RoomDomainError("GAME_UNAVAILABLE");
+      }
+      const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids, revisionCeiling, isConnectionCurrent: deps.isConnectionCurrent, onStartCommitted: deps.onStartCommitted });
+      rooms.set(state.roomId, runtime);
+      if (state.inviteCode !== null) inviteByCode.set(state.inviteCode, state.roomId);
+    },
+
+    unregisterRecovered(roomId) {
+      const runtime = rooms.get(roomId);
+      if (runtime === undefined) return;
+      const code = runtime.current.inviteCode;
+      if (code !== null && inviteByCode.get(code) === roomId) inviteByCode.delete(code);
+      rooms.delete(roomId);
+    },
+
     async createRoom(input) {
       // soft watermark 后停止创建新 Room（docs/04 §12.2）；已开始的 Hand 不受影响。
       if (deps.isPersistenceAvailable !== undefined && !deps.isPersistenceAvailable()) {
@@ -123,7 +147,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
         },
         config: input.config,
       });
-      const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids, isConnectionCurrent: deps.isConnectionCurrent, onStartCommitted: deps.onStartCommitted });
+      const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids, revisionCeiling: 4_294_967_295, isConnectionCurrent: deps.isConnectionCurrent, onStartCommitted: deps.onStartCommitted });
       rooms.set(roomId, runtime);
       inviteByCode.set(inviteCode, roomId);
       const roomSnapshot = projectRoomSnapshot(state);

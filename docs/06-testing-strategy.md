@@ -1,5 +1,7 @@
 # 06 · 测试方案与发布门槛（`tests/`）
 
+TEX-51 恢复专项：`src/persistence/room-recovery.test.ts` 验证身份/配置/检查点交叉一致性、缺房/损坏隔离、重复屏障及失败撤销；真实 PostgreSQL `tests/integration/room-recovery.test.ts` 验证一致读取和 revision 号段；`room-restart.test.ts` 使用生产入口子进程与两个真实 WS 客户端，整手提交后 SIGKILL、原库重启、原 token 认证并再完成一手，核对 Host、邀请码、筹码、Game sequence 与私有投影。缺测试数据库按现有约定跳过，跳过不得作为 TEX-51 完成证据。
+
 > 状态：草稿（实施基线 v0.5；测试基础设施已按 TEX-12 落地，持久化 Integration 已按 TEX-18 落地，Headless Simulator 长跑已按 TEX-16 落地，其余业务测试随对应任务回填）
 > 规划核对：2026-08-21（TEX-12 基线）；2026-08-23（TEX-18 持久化 Integration 落地）；2026-08-24（TEX-16 Headless Simulator 落地）——其余章节在对应任务落地前仍为**设计意图**
 > 权威范围：本文是测试体系的唯一权威来源——测试分层与归属、确定性回归集、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级处理与发布门槛。范围之外的事实见对应文档：规则语义 [01](./01-engine-spec.md)、协议与错误码 [02](./02-protocol-spec.md)、持久化 [03](./03-data-model.md)、服务端运行时行为 [04](./04-game-server-architecture.md)、前端交互与验收界面 [05](./05-frontend-spec.md)。

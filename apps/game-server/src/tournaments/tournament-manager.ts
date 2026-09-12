@@ -21,6 +21,7 @@ import {
   type PlayerSeed,
   type TournamentRuntimeDeps,
   type TournamentRuntimeView,
+  type TournamentRuntimeState,
 } from "./tournament-runtime";
 import type { RandomSource, TournamentEngine, TournamentEngineOptions } from "@texas-holdem/poker-engine";
 import type { TournamentConfig } from "@texas-holdem/protocol";
@@ -68,9 +69,9 @@ export interface TournamentManager {
   /** 创建并注册一场 Tournament 的串行执行器；随后投递 START 驱动首手。 */
   create(input: TournamentCreateInput): void;
   /** 从权威手末快照恢复并注册一场 Tournament（崩溃恢复，docs/04 §13）；随后投递 START 驱动下一手。 */
-  createRecovered(input: TournamentRecoverInput): void;
+  createRecovered(input: TournamentRecoverInput): void | Promise<void>;
   /** 水位 0 恢复感知重初始化（首手未提交）：标记断开 + 启动宽限，随后投递 START（§13）。 */
-  createRecoveredFresh(input: TournamentRecoverFreshInput): void;
+  createRecoveredFresh(input: TournamentRecoverFreshInput): void | Promise<void>;
   submit(tournamentId: string, command: TournamentCommand): Promise<unknown>;
   getView(tournamentId: string): TournamentRuntimeView | undefined;
   /** 断线/重连（WS 层上报；仅 HUMAN，幂等）。 */
@@ -84,8 +85,36 @@ export interface TournamentManager {
 export function createTournamentManager(deps: TournamentManagerDeps): TournamentManager {
   const runtimes = new Map<string, TournamentExecutor>();
 
+  function assertUnregistered(tournamentId: string): void {
+    if (runtimes.has(tournamentId)) throw new TournamentDomainError("TOURNAMENT_NOT_ACTIVE");
+  }
+
+  async function startRecovered(runtime: TournamentRuntimeState, executor: TournamentExecutor): Promise<void> {
+    runtimes.set(runtime.tournamentId, executor);
+    try {
+      for (const player of runtime.players.values()) {
+        if (player.kind === "HUMAN") await executor.submit({ type: "CONNECTION_CHANGED", playerId: player.playerId, connected: false });
+      }
+      await executor.submit({ type: "START" });
+      if (executor.getView().status === "FROZEN") throw new TournamentDomainError("GAME_UNAVAILABLE");
+    } catch (error) {
+      // 尚在启动屏障：不留半注册执行器/计时器，失败向上传递给 Room 恢复编排。
+      if (runtime.actionTimerHandle !== null) deps.scheduler.clearTimeout(runtime.actionTimerHandle);
+      if (runtime.blindTimerHandle !== null) deps.scheduler.clearTimeout(runtime.blindTimerHandle);
+      runtime.actionTimerGeneration += 1;
+      runtime.blindTimerGeneration += 1;
+      for (const player of runtime.players.values()) {
+        if (player.graceHandle !== null) deps.scheduler.clearTimeout(player.graceHandle);
+        player.graceGeneration += 1;
+      }
+      if (runtimes.get(runtime.tournamentId) === executor) runtimes.delete(runtime.tournamentId);
+      throw error;
+    }
+  }
+
   return {
     create(input) {
+      assertUnregistered(input.tournamentId);
       const runtime = createTournamentRuntimeState(
         {
           tournamentId: input.tournamentId,
@@ -108,7 +137,8 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
       });
     },
 
-    createRecovered(input) {
+    async createRecovered(input) {
+      assertUnregistered(input.tournamentId);
       const runtime = createRecoveredTournamentRuntimeState(
         {
           tournamentId: input.tournamentId,
@@ -123,21 +153,11 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         ...deps.executorDeps,
         output: deps.output,
       });
-      runtimes.set(input.tournamentId, executor);
-      // 恢复后所有连接视为断开（docs/04 §13）：对每个 HUMAN 投递断线以启动 10 分钟
-      // 宽限计时（不重连的缺席玩家到期转 WITHDRAWN，避免无限行动阻塞）。
-      for (const player of input.players) {
-        if (player.kind === "HUMAN") {
-          void executor.submit({ type: "CONNECTION_CHANGED", playerId: player.playerId, connected: false });
-        }
-      }
-      // 驱动下一手为 fire-and-forget；恢复后事件从快照水位继续（sequence 无缝衔接）。
-      void executor.submit({ type: "START" }).catch(() => {
-        runtimes.delete(input.tournamentId);
-      });
+      await startRecovered(runtime, executor);
     },
 
-    createRecoveredFresh(input) {
+    async createRecoveredFresh(input) {
+      assertUnregistered(input.tournamentId);
       const runtime = createTournamentRuntimeState(
         {
           tournamentId: input.tournamentId,
@@ -154,16 +174,7 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         ...deps.executorDeps,
         output: deps.output,
       });
-      runtimes.set(input.tournamentId, executor);
-      // 恢复感知：所有连接视为断开（§13），对每个 HUMAN 投递断线以启动宽限计时。
-      for (const player of input.players) {
-        if (player.kind === "HUMAN") {
-          void executor.submit({ type: "CONNECTION_CHANGED", playerId: player.playerId, connected: false });
-        }
-      }
-      void executor.submit({ type: "START" }).catch(() => {
-        runtimes.delete(input.tournamentId);
-      });
+      await startRecovered(runtime, executor);
     },
 
     submit(tournamentId, command) {

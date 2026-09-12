@@ -1,5 +1,7 @@
 # Operations documents
 
+- [Room / 身份 / Tournament 重启恢复运行手册（TEX-51）](./room-recovery.md)
+
 部署、发布、回滚、事故响应和运行维护说明。
 
 ## TEX-36 协议升级

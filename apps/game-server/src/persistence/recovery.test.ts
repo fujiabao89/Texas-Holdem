@@ -246,7 +246,7 @@ describe("recoverActiveTournaments（崩溃恢复编排）", () => {
     const state3 = { ...(fresh3.state as Record<string, unknown>) } as Record<string, unknown>;
     state3.config = { ...(state3.config as Record<string, unknown>), timeBank: 0 };
     delete state3.serverTimeBank;
-    repo3.setActive([makeActiveTournament("t1", "r1", 10n)]);
+    repo3.setActive([makeActiveTournament("t1", "r1", 10n, { configJson: state3.config })]);
     repo3.setSnapshots([
       { ...fresh3, schemaVersion: 2, state: state3, stateChecksum: sha256Checksum(state3) },
     ]);
@@ -426,6 +426,7 @@ describe("崩溃恢复 Time Bank 保留（P1-B）", () => {
     const repo = createFakeRecoveryRepository();
     repo.setActive([
       makeActiveTournament("t1", "r1", bundle.snapshot.sequence, {
+        configJson: makeConfig(),
         players: players.map((p) => ({
           id: p.tournamentPlayerId,
           playerId: p.playerId,
@@ -488,6 +489,7 @@ describe("崩溃恢复端到端序列连续性", () => {
     const repo = createFakeRecoveryRepository();
     repo.setActive([
       makeActiveTournament("t1", "r1", BigInt(watermark), {
+        configJson: makeConfig(),
         players: players.map((p) => ({
           id: p.tournamentPlayerId,
           playerId: p.playerId,
