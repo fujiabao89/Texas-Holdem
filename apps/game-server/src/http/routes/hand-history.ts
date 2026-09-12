@@ -57,8 +57,8 @@ import { extractBearerToken } from "../middleware/auth";
 
 export interface HandHistoryRoutesDeps {
   readonly repository: HandHistoryReadRepository;
-  /** 与 RoomManager 同源的 token HMAC 密钥（config.token.secret）。 */
-  readonly tokenSecret: string;
+  /** 与 RoomManager 同源，按持久化 keyId 解析当前或保留期旧 HMAC 密钥。 */
+  readonly tokenSecretForKeyId: (keyId: string) => string | undefined;
   /** @fastify/rate-limit 路由级配置（CodeQL 识别 config.rateLimit 为路由级限流）。 */
   readonly rateLimit: { readonly max: number; readonly timeWindow: string };
   readonly now: () => number;
@@ -170,7 +170,7 @@ async function authorizeViewer(
     return null;
   }
   const members = await deps.repository.listRoomMemberCredentials(tournament.roomId);
-  const playerId = resolveViewerByToken(members, tournament.roomId, token, deps.tokenSecret);
+  const playerId = resolveViewerByToken(members, tournament.roomId, token, deps.tokenSecretForKeyId);
   if (playerId === null) {
     sendError(reply, new RoomDomainError("AUTH_FAILED"), traceId);
     return null;
@@ -188,12 +188,14 @@ function resolveViewerByToken(
   members: readonly RoomMemberCredentialRecord[],
   roomId: string,
   token: string,
-  secret: string,
+  secretForKeyId: (keyId: string) => string | undefined,
 ): string | null {
   for (const member of members) {
     if (member.kind !== "HUMAN" || member.tokenDigest === null || member.tokenKeyId === null) {
       continue;
     }
+    const secret = secretForKeyId(member.tokenKeyId);
+    if (secret === undefined) continue;
     const digest = computePlayerTokenDigest({
       roomId,
       playerId: member.playerId,

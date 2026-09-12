@@ -7,8 +7,10 @@ import {
   type ProtocolError,
   type TournamentConfig,
 } from "@texas-holdem/protocol";
-import type { AppConfig } from "./config";
+import { resolveTokenSecret, type AppConfig } from "./config";
 import type { HandHistoryReadRepository } from "./infrastructure/persistence/repositories/hand-history";
+import type { TournamentResultReadRepository } from "./infrastructure/persistence/repositories/tournament-result";
+import { registerTournamentResultRoutes, TOURNAMENT_RESULT_PATH } from "./http/routes/tournament-result";
 import { registerHandHistoryRoutes } from "./http/routes/hand-history";
 import { registerRoomRoutes } from "./http/routes/rooms";
 import { registerLobbyGateway, type LobbyGatewayClock } from "./realtime/gateway/lobby-gateway";
@@ -64,6 +66,8 @@ export interface BuildAppOptions {
   readonly connectionEpochs?: ConnectionEpochRegistry;
   /** Hand History 投影读取仓储（TEX-36）；生产装配必传，缺省时端点不注册。 */
   readonly handHistoryRepository?: HandHistoryReadRepository;
+  /** Persisted public results; production supplies this independently of runtime. */
+  readonly tournamentResultRepository?: TournamentResultReadRepository;
   /** @fastify/rate-limit 全局 per-IP 额度（CodeQL 识别为 RateLimitingMiddleware）。 */
   readonly rateLimit?: { readonly max: number; readonly timeWindow: string };
   /** TEX-29 服务端指标注册表；缺省创建空注册表并暴露 /metrics。 */
@@ -96,6 +100,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   // HTTP 观测（TEX-29）：请求计数/耗时、5xx。标签仅含方法（有界），不含路径（路径含 roomId）。
   const httpStart = new WeakMap<object, bigint>();
   app.addHook("onRequest", (request, _reply, done) => {
+    if (request.routeOptions.url === TOURNAMENT_RESULT_PATH) _reply.header("Cache-Control", "no-store");
     httpStart.set(request, process.hrtime.bigint());
     done();
   });
@@ -188,7 +193,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     if (options.handHistoryRepository !== undefined) {
       registerHandHistoryRoutes(app, {
         repository: options.handHistoryRepository,
-        tokenSecret: options.config.token.secret,
+        tokenSecretForKeyId: (keyId) => resolveTokenSecret(options.config, keyId),
+        rateLimit: globalRateLimit,
+        now: options.now ?? Date.now,
+        makeTraceId: ids.uuid,
+      });
+    }
+    if (options.tournamentResultRepository !== undefined) {
+      registerTournamentResultRoutes(app, {
+        repository: options.tournamentResultRepository,
+        tokenSecretForKeyId: (keyId) => resolveTokenSecret(options.config, keyId),
         rateLimit: globalRateLimit,
         now: options.now ?? Date.now,
         makeTraceId: ids.uuid,

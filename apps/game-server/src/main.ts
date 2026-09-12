@@ -1,9 +1,13 @@
 import { buildApp } from "./app";
-import { parseAppConfig } from "./config";
-import { createDatabase, parseDatabaseConfig } from "./infrastructure/persistence/database";
+import { parseAppConfig, resolveTokenSecret } from "./config";
+import {
+  createDatabase,
+  parseDatabaseConfig,
+} from "./infrastructure/persistence/database";
 import {
   createHandCommitRepository,
   createHandHistoryRepository,
+  createTournamentResultRepository,
   createRecoveryRepository,
   createRoomRepository,
   createRoomRecoveryRepository,
@@ -161,6 +165,7 @@ roomManager = createRoomManager({
   onObserverError: (roomId) => console.error(`room snapshot observer failed room=${roomId}`),
   tokenSecret: config.token.secret,
   tokenKeyId: config.token.keyId,
+  tokenSecretForKeyId: (keyId) => resolveTokenSecret(config, keyId),
   isConnectionCurrent: connectionEpochs.isCurrent,
   isPersistenceAvailable,
   onStartCommitted: registerRuntime.register,
@@ -178,6 +183,7 @@ const app = buildApp({
   // Hand History 投影读取（TEX-36）：归档历史经 token 摘要数据库侧鉴权，
   // 不依赖内存 RoomManager（进程重启/房间关闭后仍可读）。
   handHistoryRepository: createHandHistoryRepository(database),
+  tournamentResultRepository: createTournamentResultRepository(database),
 });
 
 // ---- TEX-29 进程采样器：Active Room/Tournament、持久化队列/水位、内存/CPU/事件循环滞后 ----

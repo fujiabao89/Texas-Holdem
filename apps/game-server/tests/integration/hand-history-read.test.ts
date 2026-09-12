@@ -48,7 +48,7 @@ describeTestDatabase("hand history projection read: 鉴权/分页/隐私/损坏"
     app = Fastify({ logger: false });
     registerHandHistoryRoutes(app, {
       repository: createHandHistoryRepository(testDb.database),
-      tokenSecret: TOKEN_SECRET,
+      tokenSecretForKeyId: (keyId) => keyId === TOKEN_KEY_ID ? TOKEN_SECRET : undefined,
       rateLimit: { max: 1000, timeWindow: "1 minute" },
       now: () => NOW,
       makeTraceId: randomUUID,

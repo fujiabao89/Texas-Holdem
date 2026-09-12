@@ -123,7 +123,7 @@ describeTestDatabase(
       const app = Fastify({ logger: false });
       registerHandHistoryRoutes(app, {
         repository: createHandHistoryRepository(testDb!.database),
-        tokenSecret: TOKEN_SECRET,
+        tokenSecretForKeyId: (keyId) => keyId === "test-key" ? TOKEN_SECRET : undefined,
         rateLimit: { max: 1000, timeWindow: "1 minute" },
         now: () => clock.now(),
         makeTraceId: randomUUID,

@@ -22,3 +22,5 @@
 DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它。用户提供审查结果后，按上述 PR 审查意见闭环处理。
 
 - [TEX-44-acceptance.md](./TEX-44-acceptance.md)：产品首页、全站品牌交互、移动端/键盘/动态偏好与既有牌桌回归证据。
+
+- [TEX-54-acceptance.md](./TEX-54-acceptance.md)：持久化赛果读取的协议/真实PostgreSQL/授权隐私验收与既有终局写入边界。

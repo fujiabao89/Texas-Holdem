@@ -43,6 +43,7 @@ export interface RoomManagerDeps {
   /** token HMAC 密钥与版本（docs/03-data-model.md §5.2）：只存服务端环境注入。 */
   readonly tokenSecret: string;
   readonly tokenKeyId: string;
+  readonly tokenSecretForKeyId?: (keyId: string) => string | undefined;
   /** Optional WS authority guard; only transport-originated commands carry an epoch. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
   /** 持久化降级门控：soft watermark 后停止创建新 Room（docs/04 §12.2）。 */
@@ -373,14 +374,15 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
     authenticate(roomId, token) {
       const runtime = requireRuntime(roomId);
       for (const member of runtime.current.members.values()) {
-        if (member.kind !== "HUMAN" || member.tokenDigest === null || member.tokenKeyId === null)
-          continue;
+        if (member.kind !== "HUMAN" || member.tokenDigest === null || member.tokenKeyId === null) continue;
+        const secret = deps.tokenSecretForKeyId?.(member.tokenKeyId) ?? (member.tokenKeyId === deps.tokenKeyId ? deps.tokenSecret : undefined);
+        if (secret === undefined) continue;
         const digest = computePlayerTokenDigest({
           roomId,
           playerId: member.playerId,
           token,
           keyId: member.tokenKeyId,
-          secret: deps.tokenSecret,
+          secret,
         });
         if (playerTokenDigestsEqual(digest, member.tokenDigest)) {
           return member.playerId;
