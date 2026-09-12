@@ -8,10 +8,16 @@ const lobbySnapshot = {
   players: [{ playerId: "player-1", displayName: "玩家甲", seat: null, ready: false, connectionStatus: "CONNECTED", pokerStatus: "ACTIVE" }],
 };
 
-test("Home 只提供创建和加入入口", async ({ page }) => {
+test("产品首页的开局选择保留创建和加入流程", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("navigation")).toHaveCount(1);
-  await expect(page.getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("heading", { level: 1, name: /好牌，\s*不如好牌友。/ })).toBeVisible();
+  await page.getByRole("button", { name: "开始一局", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "今晚，你来开桌？" });
+  await expect(dialog.getByRole("link", { name: /创建房间/ })).toHaveAttribute("href", "/create");
+  await expect(dialog.getByRole("link", { name: /加入房间/ })).toHaveAttribute("href", "/join");
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "开始一局", exact: true })).toBeFocused();
   expect(await criticalViolations(page)).toEqual([]);
 });
 

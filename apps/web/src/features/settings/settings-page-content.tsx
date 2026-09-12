@@ -11,12 +11,12 @@ export function SettingsPageContent() {
   const volumePercent = Math.round(soundVolume * 100);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-white p-6 text-slate-900 sm:p-10">
+    <main className="rr-page rr-settings flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold tracking-tight">{message("settings.title")}</h1>
         <Link className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2" href="/">{message("shell.backHome")}</Link>
       </header>
-      <section aria-labelledby="sound-heading" className="rounded-2xl border border-neutral-200 p-5 shadow-sm">
+      <section aria-labelledby="sound-heading" className="rr-panel">
         <h2 id="sound-heading" className="font-semibold">{message("settings.soundTitle")}</h2>
         <div className="mt-3 flex items-center justify-between gap-4">
           <p className="text-sm text-slate-600">{soundEnabled ? message("settings.soundEnabled") : message("settings.soundDisabled")}</p>
@@ -54,7 +54,7 @@ export function SettingsPageContent() {
           {message("settings.audioCredit")} · {message("settings.audioLicense")}
         </p>
       </section>
-      <section aria-labelledby="motion-heading" className="rounded-2xl border border-neutral-200 p-5 shadow-sm">
+      <section aria-labelledby="motion-heading" className="rr-panel">
         <h2 id="motion-heading" className="font-semibold">{message("settings.motionTitle")}</h2>
         <label className="mt-3 block text-sm font-medium" htmlFor="motion-preference">{message("settings.motionLabel")}</label>
         <select
@@ -69,7 +69,7 @@ export function SettingsPageContent() {
         </select>
         <p className="mt-3 text-sm leading-relaxed text-slate-600" id="motion-help">{message("settings.motionHelp")}</p>
       </section>
-      <section aria-labelledby="rules-heading" className="rounded-2xl border border-neutral-200 p-5 shadow-sm">
+      <section aria-labelledby="rules-heading" className="rr-panel">
         <h2 id="rules-heading" className="font-semibold">{message("settings.rulesTitle")}</h2>
         <ol className="mt-3 grid gap-3 text-sm leading-relaxed text-slate-700">
           {messageList("settings.rules").map((paragraph) => <li className="rounded-xl bg-slate-50 p-3" key={paragraph}>{paragraph}</li>)}

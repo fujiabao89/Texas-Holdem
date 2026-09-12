@@ -2,8 +2,38 @@ import type { ErrorCode } from "@texas-holdem/protocol";
 
 export const zhCN = {
   app: {
-    title: "德州扑克",
-    description: "极简、白色主体、响应式的德州扑克游戏",
+    title: "River & Raise · 德州扑克",
+    description: "与朋友共享一张私人德州牌桌。无需下载，邀请码入座，只玩模拟筹码。",
+  },
+  brand: {
+    name: "river & raise", tagline: "THE FRIENDS’ TABLE", homeLabel: "River & Raise 首页",
+    skipContent: "跳到主要内容", how: "如何开始", enter: "进入牌局", close: "关闭",
+    footer: "© 2026 River & Raise · 为每一次相聚发牌。", playMoney: "模拟筹码 · 无现金价值",
+    takeSeat: "TAKE YOUR SEAT", entryTitle: "今晚，你来开桌？", entryDescription: "创建你的私人牌桌，或者加入朋友的房间。",
+    createHint: "定好规则，等朋友入座", joinHint: "带上邀请码，找到牌友",
+    eyebrow: "A LITTLE POKER. A LOT OF GOOD COMPANY.", headlineFirst: "好牌，", headlineSecond: "不如", headlineAccent: "好牌友。",
+    introFirst: "把朋友约到同一张牌桌。", introSecond: "从第一手试探，到最后一张河牌。",
+    start: "开始一局", haveCode: "我有邀请码", noDownload: "无需下载", privateRoom: "私人房间", chipsOnly: "只玩模拟筹码", features: "游戏特点",
+    artLabel: "两张 A、牌背与绿色和橙色筹码的扑克牌插画", artNote: "Your seat is waiting.", artCaption: "GOOD HANDS. GREAT NIGHTS.",
+    facts: {
+      people: {title: "2–10 位牌友", description: "朋友到齐，随时开桌"},
+      game: {title: "无限注德州扑克", description: "一张牌桌，一场锦标赛"},
+      private: {title: "你的私人主场", description: "一个邀请码，就能相聚"},
+    },
+    howFirst: "少一点准备，", howSecond: "多一点「再来一局」。", howDescription: "不管隔着一张桌子，还是一座城市。打开浏览器，把今晚留给牌友。",
+    steps: {
+      create: {title: "开一张自己的桌", description: "设置人数、筹码和盲注节奏。轻松小局，还是认真较量，由你决定。"},
+      invite: {title: "喊朋友来坐坐", description: "把邀请码发给朋友。选个昵称，找到座位，准备好就可以开始。"},
+      play: {title: "剩下的，交给这手牌", description: "跟注、加注，或等下一个机会。从翻牌到河牌，享受每一次选择。"},
+    },
+    closing: "人齐了，好戏就开场。", closingAction: "叫上朋友，开一局",
+    createIntro: "你的牌桌，你的节奏。", createDescription: "先定好今晚的玩法，再把邀请码发给朋友。",
+    joinIntro: "留了个位置，等你来。", joinDescription: "带上朋友发来的邀请码，选个昵称就能入座。",
+    identity: "01 / 你的身份", tableConfig: "02 / 牌桌设置", rhythm: "03 / 行动节奏",
+    namePlaceholder: "朋友们怎么称呼你", codePlaceholder: "输入 6 位邀请码", codeHelp: "邀请码由 6 位大写字母或数字组成。",
+    readyHint: "选好座位，准备开始。", inviteHint: "把这个邀请码分享给你的牌友。", seatNumber: "座位 {number}",
+    seconds: "{value} 秒", unlimited: "不限时", off: "关闭", settingsIntro: "按你的节奏，享受每一手牌。",
+    resultIntro: "好牌局，值得回味。", lobbyKicker: "THE FRIENDS’ TABLE", settingsKicker: "MAKE YOURSELF AT HOME", resultKicker: "UNTIL THE NEXT HAND",
   },
   navigation: {
     home: "首页",

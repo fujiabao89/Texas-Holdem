@@ -7,6 +7,43 @@
  */
 import { expect, type Locator, type Page } from "@playwright/test";
 
+// 在 CI 的 WebKit worker 中，创建/加入后还要等待 token 水合、首个房间快照和
+// WebSocket 认证完成；只等待标题会使下一位玩家在前一位加入尚未稳定时继续加入。
+// 这里始终等待可观察状态，避免以固定 sleep 掩盖真实状态。
+const LOBBY_READY_TIMEOUT = 60_000;
+// 表单控件在 React 水合前仍是原生节点，此窗口内写入的值会被首次水合覆盖。
+const HYDRATION_TIMEOUT = 60_000;
+
+/**
+ * 等待目标控件被 React 接管（水合完成）后再交互。
+ *
+ * `next dev` 下服务端 HTML 先到达、客户端 JS 后执行：水合前控件未受控，此时 `fill()`
+ * 写入的值会被 React 首次提交用初始 state（空串）覆盖；留下的空 `required` 项又会被
+ * HTML5 校验静默拦截提交——无请求、无控制台报错，只表现为大厅标题永不出现。点击未水合
+ * 的按钮同样不会触发 onClick/onSubmit。React 水合时会在宿主节点挂载 `__reactFiber$*`
+ * 等内部属性，据此等待可观察状态，而非固定 sleep（docs/06 §5）。
+ */
+async function waitForReactHydration(locator: Locator): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        locator
+          .evaluate((node) =>
+            Object.keys(node).some(
+              (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactProps$"),
+            ),
+          )
+          .catch(() => false),
+      { timeout: HYDRATION_TIMEOUT, message: "等待表单控件完成 React 水合" },
+    )
+    .toBe(true);
+}
+
+async function waitForLobbyReady(page: Page): Promise<void> {
+  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: LOBBY_READY_TIMEOUT });
+  await expect(page.getByText("已连接").first()).toBeVisible({ timeout: LOBBY_READY_TIMEOUT });
+}
+
 export interface CreateRoomOptions {
   readonly displayName: string;
   readonly startingStack?: number;
@@ -18,7 +55,9 @@ export interface CreateRoomOptions {
 export async function createRoomViaUi(page: Page, options: CreateRoomOptions): Promise<void> {
   await page.goto("/create");
   await expect(page.getByRole("heading", { name: "创建私人房间" })).toBeVisible();
-  await page.getByLabel("昵称").fill(options.displayName);
+  const displayName = page.getByLabel("昵称");
+  await waitForReactHydration(displayName);
+  await displayName.fill(options.displayName);
   if (options.maxPlayers !== undefined)
     await page.getByLabel("最大人数").fill(String(options.maxPlayers));
   if (options.startingStack !== undefined)
@@ -30,7 +69,7 @@ export async function createRoomViaUi(page: Page, options: CreateRoomOptions): P
   if (options.bigBlind !== undefined)
     await page.getByLabel("大盲注").fill(String(options.bigBlind));
   await page.getByRole("button", { name: "创建并进入大厅" }).click();
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
+  await waitForLobbyReady(page);
 }
 
 export async function readInviteCode(page: Page): Promise<string> {
@@ -48,14 +87,16 @@ export async function joinViaUi(
 ): Promise<void> {
   await page.goto(`/join?code=${inviteCode}`);
   await expect(page.getByRole("heading", { name: "加入私人房间" })).toBeVisible();
-  await page.getByLabel("昵称").fill(displayName);
+  const displayNameField = page.getByLabel("昵称");
+  await waitForReactHydration(displayNameField);
+  await displayNameField.fill(displayName);
   await page.getByRole("button", { name: "加入房间" }).click();
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
+  await waitForLobbyReady(page);
 }
 
 /** 入座第一个空位并点击准备。 */
 export async function takeSeatAndReady(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: LOBBY_READY_TIMEOUT });
   await page.getByRole("button", { name: "选择此座位" }).first().click();
   // 入座后「准备」按钮才渲染；点击后切换为「取消准备」（lobby-page.tsx）。
   const ready = page.getByRole("button", { name: "准备", exact: true });
@@ -66,7 +107,9 @@ export async function takeSeatAndReady(page: Page): Promise<void> {
 
 /** 房主开局并进入牌桌。 */
 export async function startTournamentViaUi(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "开始比赛" }).click();
+  const start = page.getByRole("button", { name: "开始比赛" });
+  await expect(start).toBeEnabled({ timeout: LOBBY_READY_TIMEOUT });
+  await start.click();
   const enterTable = page.getByRole("link", { name: "进入牌桌" });
   await expect(enterTable).toBeVisible({ timeout: 30_000 });
   await enterTable.click();

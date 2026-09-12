@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AppProviders } from "../components/app-providers";
 import { message } from "../messages/zh-CN";
+import { SiteChrome } from "../components/site-chrome";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body><AppProviders>{children}</AppProviders></body>
+      <body><AppProviders><SiteChrome>{children}</SiteChrome></AppProviders></body>
     </html>
   );
 }

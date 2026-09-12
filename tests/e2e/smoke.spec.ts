@@ -8,7 +8,7 @@ import { expect, test } from "./fixtures/observability";
 
 test("Playwright 基础设施可加载页面", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "德州扑克" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /好牌，\s*不如好牌友。/ })).toBeVisible();
 });
 
 test("axe-core 扫描可运行且脚手架页面无 critical 违规", async ({ page }) => {

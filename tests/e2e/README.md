@@ -42,3 +42,5 @@ TEX-38 新增 [animation-audio/](./animation-audio/README.md) 的动画/音频/�
 ## 可访问性扫描
 
 [fixtures/a11y.ts](./fixtures/a11y.ts) 封装 `@axe-core/playwright`：`criticalViolations(page)` 或按 impact 阈值扫描。具体页面的 WCAG 2.2 AA 验收门槛由前端任务按 docs/05-frontend-spec.md §16 落地。
+
+TEX-44 在 [create-room/](./create-room/README.md) 增加品牌首页键盘开局、390/1366 布局、严重可访问性、设备/系统动态偏好、历史焦点与服务端赛果展示回归；沿用既有可观测性门禁，不将受控 HTTP/WS 夹具当作真实后端联调。

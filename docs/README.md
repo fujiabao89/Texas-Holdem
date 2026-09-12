@@ -60,3 +60,5 @@ PR #30 / TEX-36 已补齐 Hand History 投影读取，审查修正与证据见 [
 
 - **编号体系**：`01-` 前缀编号源自用户命名，后续文档沿用 `NN-<topic>.md`。编号 04 `game-server`、05 `frontend`、06 `testing`（测试方案，均已创建）。编号 07 及以后未规划，候选主题（未确认，勿据此开工）：`architecture`（系统架构）。
 - **文档体系方案**：建议在开工下一个模块前，按 P0/P1/P2 一次性确认完整文档清单（Skill 要求大任务先出方案）。
+
+TEX-44：River & Raise 产品首页与现有前端视觉交互统一的契约见 [05 §6.1](./05-frontend-spec.md)，验证与未覆盖边界见 [验收记录](./03-engineering/TEX-44-acceptance.md)。
