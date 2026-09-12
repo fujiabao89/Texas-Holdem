@@ -12,7 +12,7 @@ it("result read failure is a safe retryable HTTP error, never logs private excep
   app.get("/health", () => ({ status: "ok" }));
   registerTournamentResultRoutes(app, {
     repository: { async read() { throw new Error(secret); } },
-    tokenSecret: "test-secret", now: Date.now, makeTraceId: randomUUID,
+    tokenSecretForKeyId: () => "test-secret", now: Date.now, makeTraceId: randomUUID,
     rateLimit: { max: 100, timeWindow: "1 minute" },
   });
   try {

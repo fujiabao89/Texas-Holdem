@@ -11,7 +11,7 @@ export const TOURNAMENT_RESULT_PATH = "/api/v1/tournaments/:tournamentId/result"
 
 export interface TournamentResultRoutesDeps {
   readonly repository: TournamentResultReadRepository;
-  readonly tokenSecret: string;
+  readonly tokenSecretForKeyId: (keyId: string) => string | undefined;
   readonly rateLimit: { readonly max: number; readonly timeWindow: string };
   readonly now: () => number;
   readonly makeTraceId: () => string;
@@ -31,10 +31,13 @@ export function registerTournamentResultRoutes(app: FastifyInstance, deps: Tourn
       if (token === undefined) throw new RoomDomainError("AUTH_REQUIRED");
       if (token.length > 1024) throw new RoomDomainError("AUTH_FAILED");
       const result = await deps.repository.read(params.data.tournamentId, deps.now(), (roomId, members) =>
-        members.some((member) => member.kind === "HUMAN" && member.tokenDigest !== null && member.tokenKeyId !== null &&
-          playerTokenDigestsEqual(computePlayerTokenDigest({
-            roomId, playerId: member.playerId, token, keyId: member.tokenKeyId, secret: deps.tokenSecret,
-          }), member.tokenDigest)),
+        members.some((member) => {
+          if (member.kind !== "HUMAN" || member.tokenDigest === null || member.tokenKeyId === null) return false;
+          const secret = deps.tokenSecretForKeyId(member.tokenKeyId);
+          return secret !== undefined && playerTokenDigestsEqual(computePlayerTokenDigest({
+            roomId, playerId: member.playerId, token, keyId: member.tokenKeyId, secret,
+          }), member.tokenDigest);
+        }),
       );
       switch (result.kind) {
         case "not-found": throw new RoomDomainError("TOURNAMENT_NOT_FOUND");

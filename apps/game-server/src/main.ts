@@ -1,5 +1,5 @@
 import { buildApp } from "./app";
-import { parseAppConfig } from "./config";
+import { parseAppConfig, resolveTokenSecret } from "./config";
 import {
   createDatabase,
   parseDatabaseConfig,
@@ -151,6 +151,7 @@ roomManager = createRoomManager({
   ids,
   tokenSecret: config.token.secret,
   tokenKeyId: config.token.keyId,
+  tokenSecretForKeyId: (keyId) => resolveTokenSecret(config, keyId),
   isConnectionCurrent: connectionEpochs.isCurrent,
   isPersistenceAvailable,
   onStartCommitted: registerRuntime.register,

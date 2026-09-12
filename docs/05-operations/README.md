@@ -17,4 +17,4 @@ wire v3 的客户端与 game-server 必须同时发布或同时回滚；旧主�
 
 ## TEX-54 赛果读取运行边界
 
-部署 game-server 与共享协议HTTP增量即可启用 result GET；无数据库迁移、无额外环境变量或清理job，既有wire版本不变。读路径可从已提交数据独立提供服务；503 INCOMPLETE 表示终局完整性校验失败，应在服务端受控排查版本/水位/结果来源，不能回放私密状态给客户端；500 INTERNAL_ERROR 按既有HTTP故障指标排查。无需且不得因一次读取失败修改Runtime/Writer。所有响应no-store，到180天既有retention_expires_at即404（即使清理延迟）；请求不续期。具体限制见 [验收记录](../03-engineering/TEX-54-acceptance.md)。
+部署 game-server 与共享协议HTTP增量即可启用 result GET；无数据库迁移或清理job，既有wire版本不变。轮换 `TOKEN_HMAC_SECRET` / `TOKEN_HMAC_KEY_ID` 时，必须先把仍有未关闭 Room 的旧 key 写入 `TOKEN_HMAC_RETAINED_KEYS`，确认旧 Room 全部关闭后才能删除；当前 key 不得同时出现在旧 key JSON 中。读路径可从已提交数据独立提供服务；503 INCOMPLETE 表示终局完整性校验失败，应在服务端受控排查版本/水位/结果来源，不能回放私密状态给客户端；500 INTERNAL_ERROR 按既有HTTP故障指标排查。无需且不得因一次读取失败修改Runtime/Writer。所有响应no-store，到180天既有retention_expires_at即404（即使清理延迟）；请求不续期。具体限制见 [验收记录](../03-engineering/TEX-54-acceptance.md)。

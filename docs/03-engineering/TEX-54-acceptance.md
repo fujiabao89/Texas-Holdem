@@ -8,7 +8,8 @@
 - PostgreSQL REPEATABLE READ / READ ONLY 事务内授权所属未关闭 Room 的 ACTIVE HUMAN 成员，允许同 Room 非参赛成员读取公开赛果。失效/错误 Room/已离开/关闭/撤销凭证均拒绝，Token 不从 URL 取值。
 - 仅持久化 FINISHED 且终局 Snapshot/事件标记/Participant/冠军/最终筹码/排名相互一致返回；并列范围来自 `finalStandings`，唯一 rank 仅作展示序一致性校验。真实正常终局、同手并列、手内主动退出与无冠军终局均经过 Executor → 未改造的生产 Commit Bundle → 真实 PostgreSQL → HTTP 验证。
 - 新建 HTTP app 使用空 RoomManager 且不提供 TournamentManager；关闭重建 app 后仍读得相同公开结果，同 Room 下一场 IN_GAME 不覆盖前场赛果。Drizzle 对生产 JSON 文本快照的解码对象与 checksum 通过真实链路验证。
-- 全部返回 no-store，含全局限流提前拒绝；到 `retention_expires_at` 即404，清理延迟不会延长访问，读取不会续期。无新增数据库迁移、环境变量或清理任务。
+- 全部返回 no-store，含全局限流提前拒绝；到 `retention_expires_at` 即404，清理延迟不会延长访问，读取不会续期。无新增数据库迁移或清理任务。审查修正新增可选 `TOKEN_HMAC_RETAINED_KEYS`：按持久化 keyId 验证旧 Room token，当前 key 仍只负责签发。
+- 公开排名只覆盖非 WITHDRAWN 玩家，名次占位必须连续覆盖 `1..N`；并列范围可占多个连续名次，退出玩家不能掩盖中间空洞。
 - 白名单响应排除 Deck/Burn/底牌/内部参赛ID/Time Bank/Token/原始事件；私密快照哨兵与真实内部ID不出响应。失败不记录原始异常，安全500不影响健康端点；现有HTTP指标不含身份标签。
 
 ## 验证证据
@@ -43,4 +44,11 @@
 
 涉及的服务端/HTTP/投影/持久化/仓储/测试README、协议包与Schema/错误README、Web文案README均已更新；02/03/04/06权威规格、ADR/架构索引、任务执行索引、工程验收索引、安全与运维说明均已同步。
 
-已检查，无需更新：01引擎规则、05前端页面规格（本卡不改变扑克规则或页面流程）；持久化schema/migrations与Writer/Runtime README（本卡无表结构或写入职责改动，已知旧边界在本验收记录明确）；生产环境变量模板与部署配置（无新增配置）；纯规则测试与前端E2E（无规则/UI行为改动）。新增Markdown相对链接已检查有效，文档未复制并列裁决规则。无外部PR审查评论修改，因此本轮无原始评论线程闭环事项；DeepSeek Harness/Greptile未启动。
+已检查，无需更新：01引擎规则、05前端页面规格（本卡不改变扑克规则或页面流程）；持久化schema/migrations与Writer/Runtime README（本卡无表结构或写入职责改动，已知旧边界在本验收记录明确）；纯规则测试与前端E2E（无规则/UI行为改动）。已更新生产环境变量样例、部署轮换说明与安全说明。新增Markdown相对链接已检查有效，文档未复制并列裁决规则。
+
+## PR 审查修正
+
+- Greptile：修正赛果路由错误地用当前 secret 验证所有历史 `token_key_id`；配置、RoomManager、Hand History 与赛果路由共享当前/保留密钥环语义，并增加轮换后旧 token 的真实 PostgreSQL 回归。
+- Codex：修正 WITHDRAWN 玩家存在时可接受名次空洞；协议语义校验改为按非退出人数限定范围并验证完整 `1..N` 占位，增加缺口反例。
+- CodeRabbit：本轮自动审查因仓库条件跳过，没有产生可操作意见，不主动触发下一轮审查。
+- 修正完成并推送后，只在上述原始 Greptile/Codex 评论线程回复；不主动启动 CodeRabbit、Codex、Greptile 或 DeepSeek Harness 的下一轮审查。

@@ -30,6 +30,7 @@ const FinishedStateSchema = z.object({
 const TerminalEventSchema = z.object({
   championSeat: SeatSchema.nullable(), finalStandings: z.array(StandingSchema).max(10),
 });
+type DurableStanding = z.infer<typeof StandingSchema>;
 
 function requireComplete(condition: boolean): asserts condition {
   if (!condition) throw new RoomDomainError("TOURNAMENT_RESULT_INCOMPLETE");
@@ -79,10 +80,11 @@ export function projectTournamentResult(record: TournamentResultRecord): Tournam
     const champion = state.champion === null ? null : bySeat.get(state.champion);
     requireComplete(champion !== undefined);
     requireComplete((champion?.id ?? null) === tournament.championTournamentPlayerId);
+    const publicStandings = compactPublicStandings(state.finalStandings);
     return TournamentResultResponseSchema.parse({ data: {
       tournamentId: tournament.id, status: "FINISHED", championPlayerId: champion?.playerId ?? null,
       finishedAt: tournament.finishedAt.getTime(),
-      rankings: state.finalStandings.map((standing) => ({
+      rankings: publicStandings.map((standing) => ({
         playerId: bySeat.get(standing.seatIndex)?.playerId,
         placement: { from: standing.placementRange.from, to: standing.placementRange.to },
         displayOrder: standing.displayOrder,
@@ -96,4 +98,23 @@ export function projectTournamentResult(record: TournamentResultRecord): Tournam
     // Never include a Zod issue, row, checksum, or raw exception in the response/log.
     throw new RoomDomainError("TOURNAMENT_RESULT_INCOMPLETE");
   }
+}
+
+/** 排除 WITHDRAWN 后，把持久化的原桌名次组压缩为公开连续 1..N；并列组不拆分。 */
+function compactPublicStandings(standings: readonly DurableStanding[]): readonly DurableStanding[] {
+  const groups = new Map<string, DurableStanding[]>();
+  for (const standing of standings) {
+    const key = `${standing.placementRange.from}:${standing.placementRange.to}`;
+    groups.set(key, [...(groups.get(key) ?? []), standing]);
+  }
+  const compact = new Map<number, DurableStanding>();
+  let nextRank = 1;
+  for (const group of [...groups.values()].sort((left, right) => left[0]!.placementRange.from - right[0]!.placementRange.from || left[0]!.placementRange.to - right[0]!.placementRange.to)) {
+    const ordered = [...group].sort((left, right) => left.displayOrder - right.displayOrder);
+    requireComplete(ordered.every((standing, index) => standing.displayOrder === index + 1));
+    const placementRange = { from: nextRank, to: nextRank + ordered.length - 1 };
+    ordered.forEach((standing, index) => compact.set(standing.seatIndex, { ...standing, placementRange, displayOrder: index + 1 }));
+    nextRank += ordered.length;
+  }
+  return standings.map((standing) => compact.get(standing.seatIndex)!);
 }

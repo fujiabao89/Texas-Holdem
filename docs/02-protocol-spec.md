@@ -568,6 +568,6 @@ HTTP 推荐映射：Schema 400、认证 401、权限 403、不存在 404、冲�
 
 `GET /api/v1/tournaments/{tournamentId}/result` 仅接受 UUID 路径与无查询参数请求；`Authorization: Bearer <playerToken>` 由所属未关闭 Room 的 ACTIVE HUMAN 成员凭证解析。该公开赛果读取允许同 Room 的非参赛成员，与 Hand History 的参赛者授权不同。
 
-成功使用严格 `TournamentResultResponseSchema`：`{ data: { tournamentId, status: "FINISHED", championPlayerId: string | null, rankings, players, finishedAt } }`。`rankings` 复用 PlayerView 的 `{ playerId, placement: {from,to}, displayOrder }`；`players` 为所有锁定参赛者的 `{playerId, displayName, seat, kind, pokerStatus, finalStack}`，按 seat 排序，撤回者无排名。`finishedAt` 是 epoch milliseconds；筹码是安全非负整数；冠军、排名与参赛者身份必须一致，禁止重复或不完整排名，允许既有无冠军终局。
+成功使用严格 `TournamentResultResponseSchema`：`{ data: { tournamentId, status: "FINISHED", championPlayerId: string | null, rankings, players, finishedAt } }`。`rankings` 复用 PlayerView 的 `{ playerId, placement: {from,to}, displayOrder }`；`players` 为所有锁定参赛者的 `{playerId, displayName, seat, kind, pokerStatus, finalStack}`，按 seat 排序，撤回者无排名。公开排名在排除 WITHDRAWN 后按持久化组顺序压缩为连续 `1..N`，并列组保持完整，不允许撤回者掩盖名次空洞。`finishedAt` 是 epoch milliseconds；筹码是安全非负整数；冠军、排名与参赛者身份必须一致，禁止重复或不完整排名，允许既有无冠军终局。
 
 错误均严格 ErrorEnvelope：401 `AUTH_REQUIRED`/`AUTH_FAILED`；400 `INVALID_MESSAGE`（路径/查询）；404 `TOURNAMENT_NOT_FOUND`（不存在或保留期到期）；409 `TOURNAMENT_NOT_FINISHED`（IN_GAME 或 ABANDONED_NO_HUMAN）；503 `TOURNAMENT_RESULT_INCOMPLETE`（终局资料缺失、版本/checksum/语义不一致，可重试）；500 `INTERNAL_ERROR`（读取服务故障，可重试）；429 `RATE_LIMITED`。所有响应 `Cache-Control: no-store`，不输出内部错误、事件、牌面、Token。此 HTTP 增量不改变既有 wire 版本。决策见 [ADR-0004](./adr/0004-tex-54-persisted-tournament-result.md)。

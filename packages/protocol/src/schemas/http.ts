@@ -84,13 +84,14 @@ export const TournamentResultSchema = z.strictObject({
   const invalid = () => ctx.addIssue({ code: "custom", message: "inconsistent tournament result" });
   const players = new Map(value.players.map((player) => [player.playerId, player]));
   const rankings = new Map(value.rankings.map((ranking) => [ranking.playerId, ranking]));
+  const rankedPlayerCount = value.players.filter((player) => player.pokerStatus !== "WITHDRAWN").length;
   if (players.size !== value.players.length || new Set(value.players.map((p) => p.seat)).size !== value.players.length || rankings.size !== value.rankings.length) invalid();
   const occupied = new Set<number>();
   for (const ranking of value.rankings) {
     const player = players.get(ranking.playerId);
     const { from, to } = ranking.placement;
     const rank = from + ranking.displayOrder - 1;
-    if (!player || player.pokerStatus === "WITHDRAWN" || to > value.players.length || rank > to || occupied.has(rank)) invalid();
+    if (!player || player.pokerStatus === "WITHDRAWN" || to > rankedPlayerCount || rank > to || occupied.has(rank)) invalid();
     occupied.add(rank);
     const group = value.rankings.filter((r) => r.placement.from === from && r.placement.to === to);
     if (group.length !== to - from + 1) invalid();
@@ -100,6 +101,7 @@ export const TournamentResultSchema = z.strictObject({
     if (player.pokerStatus !== "ACTIVE" && player.finalStack !== 0) invalid();
     if ((player.pokerStatus === "ACTIVE") !== (player.playerId === value.championPlayerId)) invalid();
   }
+  if (occupied.size !== rankedPlayerCount || Array.from({ length: rankedPlayerCount }, (_, index) => index + 1).some((rank) => !occupied.has(rank))) invalid();
   if (value.championPlayerId !== null) {
     const champion = rankings.get(value.championPlayerId);
     if (!players.has(value.championPlayerId) || !champion || champion.placement.from !== 1 || champion.placement.to !== 1 || champion.displayOrder !== 1) invalid();

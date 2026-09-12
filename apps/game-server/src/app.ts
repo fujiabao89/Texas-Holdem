@@ -7,7 +7,7 @@ import {
   type ProtocolError,
   type TournamentConfig,
 } from "@texas-holdem/protocol";
-import type { AppConfig } from "./config";
+import { resolveTokenSecret, type AppConfig } from "./config";
 import type { HandHistoryReadRepository } from "./infrastructure/persistence/repositories/hand-history";
 import type { TournamentResultReadRepository } from "./infrastructure/persistence/repositories/tournament-result";
 import { registerTournamentResultRoutes, TOURNAMENT_RESULT_PATH } from "./http/routes/tournament-result";
@@ -178,7 +178,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     if (options.handHistoryRepository !== undefined) {
       registerHandHistoryRoutes(app, {
         repository: options.handHistoryRepository,
-        tokenSecret: options.config.token.secret,
+        tokenSecretForKeyId: (keyId) => resolveTokenSecret(options.config, keyId),
         rateLimit: globalRateLimit,
         now: options.now ?? Date.now,
         makeTraceId: ids.uuid,
@@ -187,7 +187,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     if (options.tournamentResultRepository !== undefined) {
       registerTournamentResultRoutes(app, {
         repository: options.tournamentResultRepository,
-        tokenSecret: options.config.token.secret,
+        tokenSecretForKeyId: (keyId) => resolveTokenSecret(options.config, keyId),
         rateLimit: globalRateLimit,
         now: options.now ?? Date.now,
         makeTraceId: ids.uuid,

@@ -5,7 +5,7 @@ import { ErrorEnvelopeSchema, TournamentResultResponseSchema, type SubmitAction,
 import { createFakeClock } from "../../../../tests/support/fake-clock";
 import { describeTestDatabase } from "../../../../tests/support/test-db";
 import { buildApp } from "../../src/app";
-import { parseAppConfig } from "../../src/config";
+import { parseAppConfig, resolveTokenSecret } from "../../src/config";
 import { createNodeIdSource } from "../../src/rooms/id-source";
 import { createRoomManager } from "../../src/rooms/room-manager";
 import { fakePersistence, fakeRoomRepository } from "../../src/rooms/test-support";
@@ -29,10 +29,10 @@ describeTestDatabase("TEX-54 durable public tournament result", (context) => {
   let app: FastifyInstance;
   let now = NOW;
   const clocks: ReturnType<typeof createFakeClock>[] = [];
-  function makeApp(max = 10000) {
-    const appConfig = parseAppConfig({ TOKEN_HMAC_SECRET: SECRET });
+  function makeApp(max = 10000, token = { secret: SECRET, keyId: KEY, retained: {} as Record<string, string> }) {
+    const appConfig = parseAppConfig({ TOKEN_HMAC_SECRET: token.secret, TOKEN_HMAC_KEY_ID: token.keyId, TOKEN_HMAC_RETAINED_KEYS: JSON.stringify(token.retained) });
     // Empty RoomManager and no TournamentManager: all authorization/results are durable.
-    const manager = createRoomManager({ persistence: fakePersistence(), roomRepository: fakeRoomRepository(), ids: createNodeIdSource(), tokenSecret: SECRET, tokenKeyId: KEY });
+    const manager = createRoomManager({ persistence: fakePersistence(), roomRepository: fakeRoomRepository(), ids: createNodeIdSource(), tokenSecret: appConfig.token.secret, tokenKeyId: appConfig.token.keyId, tokenSecretForKeyId: (keyId) => resolveTokenSecret(appConfig, keyId) });
     return buildApp({ config: appConfig, roomManager: manager, tournamentResultRepository: createTournamentResultRepository(db.database), now: () => now, rateLimit: { max, timeWindow: "1 minute" } });
   }
   beforeAll(async () => { db = await setupIntegrationDatabase(context); app = makeApp(); await app.ready(); });
@@ -118,6 +118,15 @@ describeTestDatabase("TEX-54 durable public tournament result", (context) => {
     expect((await get(f.tournamentId, f.players[1].token)).json()).toEqual(body);
   });
 
+  it("密钥轮换后由持久化 keyId 解析保留密钥，旧 Room token 仍可读取结果", async () => {
+    const f = await finished();
+    await app.close();
+    app = makeApp(10000, { secret: "rotated-current-secret-0123456789abcdef", keyId: "v2", retained: { [KEY]: SECRET } });
+    await app.ready();
+    const response = await get(f.tournamentId, f.players[0].token);
+    expect(response.statusCode, response.body).toBe(200);
+  });
+
   it("same Room non-participant can read public result; old and new tournaments remain isolated", async () => {
     const r = await room(3);
     const old = await finished(2, r);
@@ -157,7 +166,7 @@ describeTestDatabase("TEX-54 durable public tournament result", (context) => {
     const result = await get(f.tournamentId, f.players[eliminated.seatIndex].token);
     expect(result.statusCode, result.body).toBe(200);
     expect(result.json().data.championPlayerId).toBeNull();
-    expect(result.json().data.rankings).toEqual(f.view().rankings);
+    expect(result.json().data.rankings).toEqual([{ playerId: f.players[eliminated.seatIndex].playerId, placement: { from: 1, to: 1 }, displayOrder: 1 }]);
     expect(result.json().data.players.filter((p: { pokerStatus: string }) => p.pokerStatus === "WITHDRAWN")).toHaveLength(2);
   });
 

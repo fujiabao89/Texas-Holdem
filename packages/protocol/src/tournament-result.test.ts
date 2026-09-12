@@ -28,6 +28,8 @@ describe("TEX-54 strict durable tournament result contract", () => {
     value.data.players[0].pokerStatus = "WITHDRAWN";
     value.data.players[0].finalStack = 0;
     value.data.rankings.shift();
+    value.data.rankings[0].placement = { from: 1, to: 2 };
+    value.data.rankings[1].placement = { from: 1, to: 2 };
     expect(TournamentResultResponseSchema.safeParse(value).success).toBe(true);
   });
   it.each(["envelope", "result", "player", "ranking", "placement"])("rejects private fields at every %s level", (level) => {
@@ -36,7 +38,7 @@ describe("TEX-54 strict durable tournament result contract", () => {
     Object.assign(objects[level as keyof typeof objects], { token: "private", deck: [] });
     expect(TournamentResultResponseSchema.safeParse(value).success).toBe(false);
   });
-  it.each(["missing-player", "duplicate-player", "duplicate-seat", "duplicate-ranking", "missing-ranking", "invalid-range", "incomplete-tie", "order", "ranked-withdrawal", "wrong-champion", "missing-champion", "chips", "unsafe-chips", "not-finished"])("rejects semantically invalid %s", (damage) => {
+  it.each(["missing-player", "duplicate-player", "duplicate-seat", "duplicate-ranking", "missing-ranking", "invalid-range", "incomplete-tie", "order", "placement-gap-with-withdrawal", "ranked-withdrawal", "wrong-champion", "missing-champion", "chips", "unsafe-chips", "not-finished"])("rejects semantically invalid %s", (damage) => {
     const value = result();
     if (damage === "missing-player") value.data.rankings[0].playerId = "unknown";
     if (damage === "duplicate-player") value.data.players[1].playerId = "alice";
@@ -46,6 +48,11 @@ describe("TEX-54 strict durable tournament result contract", () => {
     if (damage === "invalid-range") value.data.rankings[1].placement = { from: 3, to: 2 };
     if (damage === "incomplete-tie") value.data.rankings.pop();
     if (damage === "order") value.data.rankings[2].displayOrder = 1;
+    if (damage === "placement-gap-with-withdrawal") {
+      value.data.players[2].pokerStatus = "WITHDRAWN";
+      value.data.rankings.pop();
+      value.data.rankings[1].placement = { from: 3, to: 3 };
+    }
     if (damage === "ranked-withdrawal") value.data.rankings.push({ playerId: "dan", placement: { from: 4, to: 4 }, displayOrder: 1 });
     if (damage === "wrong-champion") value.data.championPlayerId = "bob";
     if (damage === "missing-champion") value.data.championPlayerId = null;
