@@ -30,7 +30,7 @@
 
 主 Agent 已将 TEX-53 与 TEX-54 合并到独立验证工作区（验证提交 `73c69ba`），仅处理文档追加冲突，生产代码自动合并。联合 `pnpm build`、`pnpm typecheck`、`pnpm lint` 通过；配置本机隔离 PostgreSQL 执行 `pnpm test`，93 个文件、864 项测试全部通过，无数据库跳过。40 份变更 Markdown 的 410 个本地链接与 diff whitespace 检查通过。TEX-53 的受影响浏览器回归为 26 通过、1 项在干净主分支同环境复现的既有失败，不作为本端点的浏览器接入验收。
 
-GitHub CLI/HTTPS Git 暂无认证，本地提交与验收已交付，但尚未推送、创建 PR 或将 Linear 标记 Done。
+本地实现与联合验收已交付。GitHub 登录已恢复，分支已推送至 `sizhehao6-glitch/Texas-Holdem`，上游 [PR #48](https://github.com/fujiabao89/Texas-Holdem/pull/48) 已创建，待审阅与合并；最新交付状态在对应 Linear 任务跟踪。
 
 ## 已知既有问题与非范围
 
