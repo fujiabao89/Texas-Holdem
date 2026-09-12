@@ -66,4 +66,10 @@ TEX_E2E_PORT=3155 CI=1 pnpm exec playwright test -c tests/e2e/playwright.config.
 
 部署配置、运维命令和数据库迁移：已检查，无需更新；本任务未更改这些运行资产，同步发布/回滚要求已记录 ADR。前端 UI 规格：已检查，无需更新；只补协议消费和夹具，座位徽标属于后续任务。受影响 Playwright 夹具已补齐 wire v4 字段；联合受影响 E2E 为 26/27 通过，其 1 项失败及干净基线对照见上文，其余跨任务联合验收由主 Agent 汇总。
 
-代码与本地验收已完成；推送、PR、Linear 状态与跨任务联合验收由主 Agent 统一闭环。本任务未收到需要回复的 PR 原始审查评论；未触发 Greptile 或 DeepSeek Harness。
+代码与本地验收已完成；推送、PR、Linear 状态由主 Agent 统一闭环。本任务未收到需要回复的 PR 原始审查评论；未触发 Greptile 或 DeepSeek Harness。
+
+## 主 Agent 联合验收
+
+TEX-53 与 TEX-54 在独立验证工作区合并（验证提交 `73c69ba`），合并时仅处理文档同位置追加冲突，生产代码自动合并。`pnpm build`、`pnpm typecheck`、`pnpm lint` 全部通过；配置本机隔离 PostgreSQL 后执行 `pnpm test`，93 个文件、864 项测试全部通过，无数据库跳过。40 份变更 Markdown 的 410 个本地链接与 `git diff --check` 通过。Lint 仅有上述既有 warning。
+
+本地实现与联合验收已交付；GitHub CLI/HTTPS Git 暂无认证，因此尚未推送、创建 PR 或将 Linear 标记 Done。浏览器 E2E 仍按上节如实记录为 26 通过、1 项同环境主分支既有失败。前后端发布需使用同一共享协议版本。
