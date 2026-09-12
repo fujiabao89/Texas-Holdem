@@ -28,6 +28,10 @@
 
 新PG套件由独立Agent再次只读执行，19/19通过；核心仓储/投影/授权与限流no-store审阅未留新增可操作缺陷。既有工具告警：Vite CommonJS配置的未来默认行为提示、pg连接初始化的未来弃用提示；不影响本轮结果。
 
+主 Agent 已将 TEX-53 与 TEX-54 合并到独立验证工作区（验证提交 `73c69ba`），仅处理文档追加冲突，生产代码自动合并。联合 `pnpm build`、`pnpm typecheck`、`pnpm lint` 通过；配置本机隔离 PostgreSQL 执行 `pnpm test`，93 个文件、864 项测试全部通过，无数据库跳过。40 份变更 Markdown 的 410 个本地链接与 diff whitespace 检查通过。TEX-53 的受影响浏览器回归为 26 通过、1 项在干净主分支同环境复现的既有失败，不作为本端点的浏览器接入验收。
+
+GitHub CLI/HTTPS Git 暂无认证，本地提交与验收已交付，但尚未推送、创建 PR 或将 Linear 标记 Done。
+
 ## 已知既有问题与非范围
 
 1. **已提交手末暂停后，手间退出触发终局未持久化。** 复现：`START → PAUSE_AFTER_HAND(true) → 两人首手FOLD → 手间一人WITHDRAW`。Engine/Runtime变FINISHED，但 `handNumber == committedThroughHand == 1`，既有 `TournamentExecutor.advance()` 不再提交该手；只产生1个不含finish的Bundle，后续 `PLAYER_WITHDRAWN` / `TOURNAMENT_FINISHED` 未落库，数据库仍IN_GAME，本端点按事实返回409 `TOURNAMENT_NOT_FINISHED`。背压暂停/关停/恢复手间窗口可能触发；需要独立设计符合append-only约束的手间终局提交，不能篡改旧手或伪造新手。本卡不声称所有终局写入场景已覆盖。
