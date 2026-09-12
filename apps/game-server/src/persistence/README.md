@@ -22,3 +22,5 @@
 - `persistence-writer.test.ts`（unit）：成功写入、重复投递幂等、退避增长、乱序完成、部分失败、watermark（items/bytes/age）、损坏隔离、flush 超时与排空。全部使用 Fake Clock + Fake `HandCommitRepository`，无真实 DB / sleep。
 - `recovery.test.ts`（unit）：正常恢复、水位 0 重初始化、checksum 损坏/事件缺口/版本不兼容/孤立快照的退回或隔离、端到端序列连续性（真实执行器 → 崩溃恢复 → 下一手不重复）。
 - 真实 PostgreSQL 恢复仓储（`tests/integration/recovery.test.ts`）：`hasCommittedEventsThrough`、`listActiveTournaments`/`listSnapshots`、`rollbackToSnapshot` 回退事务。
+
+TEX-53 扩展恢复验证：`recovery.test.ts` 比较恢复后事件与投影 D/SB/BB；`tests/integration/blind-seat-recovery.test.ts` 经生产 Bundle → PostgreSQL → RecoveryRepository → 真实恢复，验证下一手座位与水位+1。数据库 jsonb 字符串由 Drizzle 映射为对象，未修改恢复算法或存储版本。

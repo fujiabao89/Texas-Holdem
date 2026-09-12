@@ -62,3 +62,5 @@ PR #30 / TEX-36 已补齐 Hand History 投影读取，审查修正与证据见 [
 - **文档体系方案**：建议在开工下一个模块前，按 P0/P1/P2 一次性确认完整文档清单（Skill 要求大任务先出方案）。
 
 TEX-44：River & Raise 产品首页与现有前端视觉交互统一的契约见 [05 §6.1](./05-frontend-spec.md)，验证与未覆盖边界见 [验收记录](./03-engineering/TEX-44-acceptance.md)。
+
+TEX-53 的完整视图公开 D/SB/BB 契约与 wire v4 决定见 [ADR-0003](./adr/0003-tex-53-authoritative-blind-seats.md)，验证矩阵见 [验收记录](./03-engineering/TEX-53-acceptance.md)。

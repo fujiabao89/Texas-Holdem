@@ -14,7 +14,7 @@ export function tableSnapshot(playerCount = 2, overrides: Partial<GameSnapshot> 
   return {
     snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament-38", sequence: "1", handId: "hand-38",
     tournamentStatus: "RUNNING", handPhase: "PREFLOP", blindLevel: { index: 0, smallBlind: 5, bigBlind: 10, ante: 0 },
-    dealerSeat: 0, board: [], pots: [{ amount: 100, eligiblePlayerIds: ["player-1", "player-2"] }],
+    dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1, board: [], pots: [{ amount: 100, eligiblePlayerIds: ["player-1", "player-2"] }],
     currentActorPlayerId: "player-1", actionDeadline: null,
     players: Array.from({ length: playerCount }, (_, seat) => ({
       playerId: `player-${seat + 1}`, displayName: `玩家${seat + 1}`, seat, stack: 990, streetBet: 10, totalCommitted: 10,

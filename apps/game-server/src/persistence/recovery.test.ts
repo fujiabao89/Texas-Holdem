@@ -22,6 +22,7 @@ import type { ClockUpdatedPayload, GameEventMessage, TournamentConfig } from "@t
 import type { HandCommitBundle } from "../infrastructure/persistence/repositories/hand-commit";
 import { sha256Checksum } from "../infrastructure/persistence/checksum";
 import { recoverActiveTournaments, type RecoveryDeps } from "./recovery";
+import { projectPlayerView } from "../projection/state-projector";
 
 /** 记录型 Fake TournamentManager：捕获 create/createRecovered 输入。 */
 function fakeManager(): {
@@ -521,6 +522,21 @@ describe("崩溃恢复端到端序列连续性", () => {
     // 恢复运行时已被 START 驱动；推进并打第 3 手。
     expect(manager.getView("t1")).toBeDefined();
     await untilIdle();
+    const restored = manager.getView("t1")!;
+    const restoredHand = restored.engineState.hand!;
+    const restoredProjection = projectPlayerView({
+      tournamentId: "t1", handId: restored.currentHandId, sequence: restored.lastWireSequence,
+      engineState: restored.engineState, seatToPlayer: restored.seatToPlayer,
+      actionDeadline: restored.actionDeadline, currentLegalActions: restored.currentLegalActions,
+      timeBankRemainingMs: restored.timeBankRemainingMs, viewerPlayerId: players[0]!.playerId,
+    });
+    const blindSeats = { dealerSeat: restoredHand.dealerSeat, smallBlindSeat: restoredHand.sbSeat, bigBlindSeat: restoredHand.bbSeat };
+    expect(restoredProjection).toMatchObject(blindSeats);
+    expect(restoredHand.handNumber).toBe(3);
+    const restoredStart = sink.events.find((event) => Number(event.payload.sequence) > watermark && event.payload.event.type === "HAND_STARTED");
+    expect(restoredStart).toBeDefined();
+    expect(restoredStart!.payload.event.payload).toMatchObject(blindSeats);
+    expect(restoredStart!.payload.patch).toMatchObject(blindSeats);
     // 恢复后所有连接视为断开（docs/04 §13）：HUMAN 玩家 connected=false，且已启动宽限计时。
     for (const player of players) {
       const record = manager.getView("t1")!.players.get(player.playerId);

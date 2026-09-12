@@ -401,3 +401,6 @@ Performance CI 落地事实（2026-09-05，TEX-29）：`ci.yml` 的 `perf-smoke`
 《总规划》v1.0 新增、docx 未覆盖的测试相关决策（本文已吸收）：不限时模式测试项（§3.1）；超时竞争裁决四步语义可重放、可测试（§3.2）；无真人关房 `ABANDONED_NO_HUMAN`（§4.2，对应 §3.2 测试项）；P0 开局 ≥2 真人且房主不能绕过 Ready（§2.1，对应 §3.2 Ready/开局锁定测试）。
 
 规划书是产品意图、非实现事实：本文所有实现类陈述在代码落地前一律视为设计意图（见文首标记）。
+
+
+TEX-53 增加公开 D/SB/BB 契约回归：协议必填/nullable/范围与 v3 拒绝；2/3/6/10 人、非连续座位、撤回、真实全下淘汰/观战、三手庄位移动与每事件 apply 不变量；INITIAL/RECONNECT/RESYNC/FAST_FORWARD 无历史快照恢复；真实 HTTP/WS 重连、GAP 请求与开手事件对照；生产 Bundle→PostgreSQL→恢复→下一手盲注与 wire 水位+1。覆盖文件、命令与结果见 [TEX-53 验收记录](./03-engineering/TEX-53-acceptance.md)。

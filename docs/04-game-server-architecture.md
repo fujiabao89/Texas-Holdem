@@ -456,6 +456,7 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 - 投影必须**从服务端源头删除**未授权信息，严禁"先发送再用 CSS 隐藏"（《总规划》附录 B 红线 2）。
 - 验收：字段级测试——任何非授权 Payload 不含其他底牌、Deck、Burn Card 或服务端私密字段（[06](./06-testing-strategy.md) §7；《总规划》§9.1；《区块6-10 v0.2》§9.13）。
 - 投影器是只读组件：从 GameState 读、产出投递对象，不做状态变更（§4 原则）。
+- TEX-53：D/SB/BB 从当前手读取，SB/BB 无手为 null；逐事件覆盖的 hand 同时决定庄位，避免 Tournament 已推进时把下一手庄位写入上一手 patch。Snapshot reason 与恢复都复用同一投影，契约见 02 §9.2。
 
 ## 12. 持久化编排
 
@@ -464,6 +465,7 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 - 唯一写者：只有 game-server 连接 Postgres（[03](./03-data-model.md) §9）。
 - Tournament 执行器只在内存原子提交之后，把不可变持久化任务追加给 Persistence Writer；Action 热路径不等待 DB。每桌写入顺序与 event `sequence` 一致（[03](./03-data-model.md) §7.1）。
 - P0 以整手为原子提交单元：手末把 `hands` 行、该手全部 `hand_events`、结果更新与 `game_snapshots` 组成不可变 Commit Bundle，在单个 DB 事务中提交；Snapshot.sequence 必须等于该手最后一个事件。元数据状态转换使用独立的幂等写任务（[03](./03-data-model.md) §4.2/§7）。
+- TEX-53 真实恢复核对：生产 Bundle 的 `snapshot.state` 是 canonical JSON 字符串，jsonb 可保留字符串值；Drizzle jsonb 映射会解析字符串值，RecoveryRepository 返回状态对象；恢复编排对该对象校验版本、结构、Time Bank、checksum 与序列。TEX-53 真实 PostgreSQL 回归覆盖 SQL 原形、仓储对象与恢复后下一手投影，保持现有读取、Writer 与持久化 schemaVersion。
 - 每个写任务有稳定幂等键（至少包含 `tournamentId + handNumber/transition + targetSequence`）；超时或连接中断后允许安全重试，不得插入重复 Hand/Event 或倒序覆盖较新状态。
 - 无真人关房时持久化 Hand History 与断开原因（§6.5；《总规划》§4.2）。
 

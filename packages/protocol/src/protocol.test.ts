@@ -18,6 +18,8 @@ import {
   projectPlayerView,
   ProtocolErrorSchema,
   PlayerViewSchema,
+  PlayerViewPatchSchema,
+  BotViewSchema,
   PROTOCOL_VERSION,
   RoomSnapshotSchema,
   ServerMessageSchema,
@@ -44,7 +46,7 @@ const source = {
   tournamentStatus: "RUNNING" as const,
   handPhase: "PREFLOP" as const,
   blindLevel: { index: 0, smallBlind: 5, bigBlind: 10, ante: 0 },
-  dealerSeat: 0,
+  dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1,
   board: [],
   pots: [{ amount: 15, eligiblePlayerIds: ["alice", "bob"] }],
   currentActorPlayerId: "alice",
@@ -58,6 +60,40 @@ const source = {
 };
 
 describe("protocol wire contracts", () => {
+  it.each([1, 2, 3, 5])("rejects wire version %i in both directions", (protocolVersion) => {
+    expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion, requestId, payload: { roomId: "room_1", playerToken: "x".repeat(43) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
+    expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion, serverTime: 1, payload: { snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "1", ...projectPlayerView(source) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
+  });
+
+  it("requires public blind seats on player/bot/snapshot views and validates optional nullable patches", () => {
+    const player = projectPlayerView(source);
+    const bot = projectBotView({ ...source, viewer: { ...source.viewer, role: "BOT" } });
+    const spectator = projectPlayerView({ ...source, viewer: { ...source.viewer, role: "ELIMINATED_SPECTATOR" } });
+    for (const view of [player, bot, spectator]) expect(view).toMatchObject({ dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1 });
+    expect(spectator.viewer).toMatchObject({ holeCards: [], legalActions: null });
+    for (const [schema, view] of [[PlayerViewSchema, player], [BotViewSchema, bot]] as const) {
+      for (const field of ["smallBlindSeat", "bigBlindSeat"] as const) {
+        const missing = { ...view } as Record<string, unknown>;
+        delete missing[field];
+        expect(schema.safeParse(missing).success).toBe(false);
+        for (const value of [-1, 10, 0.5, "0", undefined]) {
+          expect(schema.safeParse({ ...view, [field]: value }).success).toBe(false);
+          if (value !== undefined) expect(PlayerViewPatchSchema.safeParse({ [field]: value }).success).toBe(false);
+        }
+        expect(schema.safeParse({ ...view, [field]: null }).success).toBe(true);
+        expect(schema.safeParse({ ...view, [field]: 9 }).success).toBe(true);
+      }
+    }
+    expect(applyPlayerViewPatch(player, {})).toEqual(player);
+    expect(applyPlayerViewPatch(player, { smallBlindSeat: null, bigBlindSeat: null })).toMatchObject({ smallBlindSeat: null, bigBlindSeat: null });
+    for (const reason of ["INITIAL", "RECONNECT", "RESYNC", "FAST_FORWARD", "STALE_ACTION"] as const) {
+      const snapshot = { snapshotVersion: 1, reason, tournamentId: "tournament_1", sequence: "9007199254740993", ...player };
+      expect(GameSnapshotSchema.parse(snapshot)).toMatchObject({ smallBlindSeat: 0, bigBlindSeat: 1, sequence: "9007199254740993" });
+      expect(GameSnapshotSchema.safeParse({ ...snapshot, smallBlindSeat: undefined }).success).toBe(false);
+      expect(GameSnapshotSchema.safeParse({ ...snapshot, bigBlindSeat: undefined }).success).toBe(false);
+    }
+  });
+
   it("rejects unsupported versions, unknown fields, and malformed command identifiers", () => {
     expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion: 2, requestId, payload: { roomId: "room_1", playerToken: "x" } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
     expect(validateClientCommand({ type: "SET_READY", requestId, payload: { ready: true, actor: "alice" } })).toEqual({ success: false, errorCode: "INVALID_MESSAGE" });

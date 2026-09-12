@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { GameEventMessageSchema } from "../events";
-import { CardSchema, DisplayNameSchema, LegalActionsSchema, OpaqueIdSchema, SafeIntegerSchema } from "./common";
+import { CardSchema, DisplayNameSchema, LegalActionsSchema, OpaqueIdSchema, SafeIntegerSchema, SeatSchema } from "./common";
 import { BotViewSchema, PlayerViewPatchSchema, PlayerViewSchema } from "./views";
 
 /**
@@ -32,7 +32,9 @@ export const ProjectableGameSourceSchema = z.strictObject({
   tournamentStatus: z.enum(["RUNNING", "FINISHED"]),
   handPhase: z.enum(["PREFLOP", "FLOP", "TURN", "RIVER", "HAND_END"]).nullable(),
   blindLevel: z.strictObject({ index: z.number().int().min(0), smallBlind: SafeIntegerSchema, bigBlind: SafeIntegerSchema, ante: SafeIntegerSchema }),
-  dealerSeat: z.number().int().min(0).max(9).nullable(),
+  dealerSeat: SeatSchema.nullable(),
+  smallBlindSeat: SeatSchema.nullable(),
+  bigBlindSeat: SeatSchema.nullable(),
   board: z.array(CardSchema).max(5),
   pots: z.array(z.strictObject({ amount: SafeIntegerSchema, eligiblePlayerIds: z.array(OpaqueIdSchema).min(1).max(10) })).max(10),
   currentActorPlayerId: OpaqueIdSchema.nullable(),
@@ -53,6 +55,8 @@ export function projectPlayerView(sourceInput: z.infer<typeof ProjectableGameSou
     handPhase: source.handPhase,
     blindLevel: source.blindLevel,
     dealerSeat: source.dealerSeat,
+    smallBlindSeat: source.smallBlindSeat,
+    bigBlindSeat: source.bigBlindSeat,
     board: source.board,
     pots: source.pots,
     currentActorPlayerId: source.currentActorPlayerId,

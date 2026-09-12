@@ -177,6 +177,27 @@ function authenticate(socket: FakeSocket, roomId: string, playerToken: string, r
 }
 
 describe("LobbyGateway", () => {
+  it("keeps authoritative D/SB/BB through INITIAL, GAP resync and a new authenticated connection", async () => {
+    const { host, handler, executor } = await setupTournamentGateway();
+    const hand = executor.getView().engineState.hand!;
+    const expected = { dealerSeat: hand.dealerSeat, smallBlindSeat: hand.sbSeat, bigBlindSeat: hand.bbSeat };
+    const first = new FakeSocket();
+    handler(first);
+    authenticate(first, host.roomId, host.playerToken);
+    await flush();
+    expect(first.sent).toContainEqual(expect.objectContaining({ type: "RECONNECT_RESULT", payload: expect.objectContaining({ gameSnapshot: expect.objectContaining({ reason: "INITIAL", ...expected }) }) }));
+    first.receive({ type: "REQUEST_SNAPSHOT", requestId: "00000000-0000-4000-8000-000000000030", payload: { tournamentId: "t1", lastSequence: "0", reason: "GAP" } });
+    await flush();
+    expect(first.sent).toContainEqual(expect.objectContaining({ type: "GAME_SNAPSHOT", payload: expect.objectContaining({ reason: "RESYNC", sequence: String(executor.getView().lastWireSequence), ...expected }) }));
+    first.close();
+    await flush();
+    const second = new FakeSocket();
+    handler(second);
+    authenticate(second, host.roomId, host.playerToken);
+    await flush();
+    expect(second.sent).toContainEqual(expect.objectContaining({ type: "RECONNECT_RESULT", payload: expect.objectContaining({ gameSnapshot: expect.objectContaining({ reason: "RECONNECT", ...expected }) }) }));
+  });
+
   it("rejects a Lobby mutation queued by an old socket after a takeover", async () => {
     const clock = createFakeClock();
     const ids = fakeIds(clock);
@@ -589,7 +610,7 @@ describe("LobbyGateway", () => {
 
     const incompatible = new FakeSocket();
     handler(incompatible);
-    incompatible.receive({ type: "AUTHENTICATE", protocolVersion: 2, requestId: "00000000-0000-4000-8000-000000000010", payload: { roomId: session.roomId, playerToken: session.playerToken } });
+    incompatible.receive({ type: "AUTHENTICATE", protocolVersion: 3, requestId: "00000000-0000-4000-8000-000000000010", payload: { roomId: session.roomId, playerToken: session.playerToken } });
     await flush();
     expect(incompatible.sent).toContainEqual(expect.objectContaining({ type: "ERROR", payload: expect.objectContaining({ code: "UNSUPPORTED_PROTOCOL_VERSION" }) }));
     expect(incompatible.closeCodes).toContain(4000);

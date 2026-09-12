@@ -110,6 +110,24 @@ describe("server harness smoke", () => {
     if (bobGameSnapshot === null) throw new Error("bob reconnect after start must carry a gameSnapshot");
     expect(bobGameSnapshot.viewer.playerId).toBe(bob.playerId);
 
+    // TEX-53：真实 wire 的重连与缺序快照足以恢复 D/SB/BB；两视角公开相同，私有牌不相同。
+    const blindSeats = { dealerSeat: gameSnapshot.dealerSeat, smallBlindSeat: gameSnapshot.smallBlindSeat, bigBlindSeat: gameSnapshot.bigBlindSeat };
+    expect(gameSnapshot.smallBlindSeat).toBe(gameSnapshot.dealerSeat);
+    expect(gameSnapshot.bigBlindSeat).not.toBe(gameSnapshot.smallBlindSeat);
+    expect(gameSnapshot.smallBlindSeat).not.toBeNull();
+    expect(bobGameSnapshot).toMatchObject(blindSeats);
+    expect(bobGameSnapshot.viewer.holeCards).not.toEqual(gameSnapshot.viewer.holeCards);
+    aliceGame.send({ type: "REQUEST_SNAPSHOT", requestId: crypto.randomUUID(), payload: { tournamentId, lastSequence: "0", reason: "GAP" } });
+    const resync = await aliceGame.waitFor((m) => aliceGame.isGameSnapshot(m) && m.payload.reason === "RESYNC", 5_000, "blind-seat RESYNC");
+    if (!aliceGame.isGameSnapshot(resync)) throw new Error("game snapshot expected");
+    expect(resync.payload).toMatchObject({ ...blindSeats, sequence: gameSnapshot.sequence });
+
+    const starts = aliceLobby.messages.filter((m) => m.type === "GAME_EVENT").map((m) => m.payload as unknown as { event: { type: string; payload: object }; patch: object });
+    const handStarted = starts.find((m) => m.event.type === "HAND_STARTED");
+    expect(handStarted).toBeDefined();
+    expect(handStarted!.event.payload).toMatchObject(blindSeats);
+    expect(handStarted!.patch).toMatchObject(blindSeats);
+
     // 重连接管旧连接：旧 socket 以 4001 关闭（SESSION_REPLACED 语义）。
     const aliceLobbyClose = await aliceLobby.closed;
     expect(aliceLobbyClose.code).toBe(4001);

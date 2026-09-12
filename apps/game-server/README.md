@@ -61,3 +61,5 @@ pnpm --filter @texas-holdem/game-server db:migrate   # 对 DATABASE_SCHEMA 执�
 | `DATABASE_SCHEMA` | 否 | 持久化目标 schema（默认 `game` 私有 schema，不暴露给 PostgREST/GraphQL） |
 | `DATABASE_POOL_MAX` / `DATABASE_POOL_IDLE_TIMEOUT_MS` / `DATABASE_POOL_CONNECTION_TIMEOUT_MS` | 否 | 连接池参数覆盖 |
 | `TEX_TEST_DATABASE_URL` | 集成测试 | 测试库连接串；缺省时数据库集成测试受控跳过（TEX-12 约定） |
+
+TEX-53 将权威 D/SB/BB 同步到完整 Snapshot 与逐事件 patch，wire v4 要求前后端同步发布，版本边界见 [ADR-0003](../../docs/adr/0003-tex-53-authoritative-blind-seats.md)。持久化格式与引擎规则不变。
