@@ -40,7 +40,9 @@ function validateRoomConfig(config: TournamentConfig): TournamentConfig {
 }
 
 /** @fastify/rate-limit 超额时抛出的标记对象（{ statusCode: 429, envelope: ProtocolError }）。 */
-function isRateLimitEnvelope(error: unknown): error is { statusCode: number; envelope: ProtocolError } {
+function isRateLimitEnvelope(
+  error: unknown,
+): error is { statusCode: number; envelope: ProtocolError } {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -81,6 +83,19 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 65_536 });
   const ids = options.ids ?? createNodeIdSource();
   const idempotency = options.idempotency ?? new IdempotencyStore();
+  idempotency.bindRoomResidency((roomId) => {
+    const room = options.roomManager.findRoom(roomId);
+    return room !== undefined && room.current.status !== "CLOSED";
+  });
+  const unsubscribeRoomCleanup = options.roomManager.subscribe((snapshot) => {
+    if (snapshot.status === "CLOSED") idempotency.releaseRoom(snapshot.roomId);
+  });
+  app.addHook("onClose", async () => {
+    unsubscribeRoomCleanup();
+    idempotency.clear();
+    // 外部注入 store 可能比 app 更长寿，关停时也解除对 RoomManager 的闭包引用。
+    idempotency.bindRoomResidency(() => false);
+  });
   const metrics = options.metrics ?? createServerMetrics();
   // HTTP 观测（TEX-29）：请求计数/耗时、5xx。标签仅含方法（有界），不含路径（路径含 roomId）。
   const httpStart = new WeakMap<object, bigint>();

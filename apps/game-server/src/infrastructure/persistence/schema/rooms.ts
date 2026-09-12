@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   index,
   jsonb,
@@ -30,12 +31,20 @@ export const rooms = pgTable(
     status: roomStatusEnum("status").notNull(),
     configJson: jsonb("config_json").$type<unknown>().notNull(),
     hostPlayerId: uuid("host_player_id"),
+    /** TEX-51 / ADR-0003：当前已预留 revision 号段上界；恢复原子预留下一个 2^32 号段。 */
+    roomRevisionCeiling: bigint("room_revision_ceiling", { mode: "bigint" })
+      .notNull()
+      .default(sql`4294967295`),
     closedReason: text("closed_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     retentionExpiresAt: timestamp("retention_expires_at", { withTimezone: true }),
   },
   (t) => [
+    check(
+      "rooms_room_revision_ceiling_check",
+      sql`"room_revision_ceiling" BETWEEN 4294967295 AND 9007199254740991`,
+    ),
     // 邀请码：当前有效 MULTIPLAYER 房间内唯一（CLOSED 后失效可复用）；
     // 字符集排除 0/O/1/I/L 等易混淆字符，长度恰为 6（§5.1）。
     // MULTIPLAYER 分支必须显式拒绝 NULL：`NULL ~ 正则` 结果为 NULL，
@@ -46,14 +55,8 @@ export const rooms = pgTable(
       sql`("mode" = 'MULTIPLAYER' AND "invite_code" IS NOT NULL AND "invite_code" ~ '^[A-HJKMNPQRSTUVWXYZ2-9]{6}$') OR ("mode" = 'SINGLE_PLAYER' AND "invite_code" IS NULL)`,
     ),
     // CLOSED 状态与终止时间/原因码/保留期必须一致出现（§5.1/§5.9）。
-    check(
-      "rooms_closed_at_check",
-      sql`("status" = 'CLOSED') = ("closed_at" IS NOT NULL)`,
-    ),
-    check(
-      "rooms_closed_reason_check",
-      sql`"status" <> 'CLOSED' OR "closed_reason" IS NOT NULL`,
-    ),
+    check("rooms_closed_at_check", sql`("status" = 'CLOSED') = ("closed_at" IS NOT NULL)`),
+    check("rooms_closed_reason_check", sql`"status" <> 'CLOSED' OR "closed_reason" IS NOT NULL`),
     check(
       "rooms_retention_check",
       sql`(("status" = 'CLOSED') = ("retention_expires_at" IS NOT NULL)) AND ("retention_expires_at" IS NULL OR "closed_at" IS NULL OR "retention_expires_at" >= "closed_at")`,

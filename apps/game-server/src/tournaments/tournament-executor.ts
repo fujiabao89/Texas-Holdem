@@ -71,8 +71,17 @@ export interface TournamentOutputSink {
 
 export interface TournamentExecutorDeps {
   readonly output: TournamentOutputSink;
+  /** 终局输出全部完成且队列释放执行权后只通知一次（§13.2）；由 Manager 管理保留期。 */
+  readonly onTerminal?: (context: {
+    readonly tournamentId: string;
+    readonly roomId: string;
+    readonly status: "FINISHED" | "ABANDONED_NO_HUMAN";
+  }) => void;
   /** TEX-29 观测：Engine Critical Error（不变量违反冻结）上报，由组合根接指标计数。 */
-  readonly onCriticalEngineError?: (error: unknown, context: { readonly tournamentId: string }) => void;
+  readonly onCriticalEngineError?: (
+    error: unknown,
+    context: { readonly tournamentId: string },
+  ) => void;
   /** Optional transport authority check. Internal timers and tests do not need it. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
   /**
@@ -94,6 +103,10 @@ export class TournamentExecutor {
   private readonly deps: TournamentExecutorDeps;
   private queue: QueueItem[] = [];
   private processing = false;
+  private terminalNotified = false;
+  private disposeRequested = false;
+  private disposal: Promise<void> | null = null;
+  private resolveDisposal: (() => void) | null = null;
 
   constructor(state: TournamentRuntimeState, deps: TournamentExecutorDeps) {
     this.state = state;
@@ -115,10 +128,35 @@ export class TournamentExecutor {
    * 命令在队列内同步处理；入队后若队列空闲则同一微任务内 drain。
    */
   submit(command: TournamentCommand): Promise<CommandResultPayload | null> {
+    if (this.disposeRequested) {
+      return Promise.reject(new TournamentDomainError("TOURNAMENT_NOT_ACTIVE"));
+    }
     return new Promise((resolve, reject) => {
       this.queue.push({ command, resolve, reject });
       this.kick();
     });
+  }
+
+  /**
+   * 关闭入口并等待当前内存转移结束；不制造部分手提交，也不触碰 Writer 已接管的 Bundle。
+   * queued 命令会被拒绝；重入调用复用同一个 Promise，完成后可安全移除 Manager 的引用。
+   */
+  dispose(): Promise<void> {
+    if (this.disposal !== null) return this.disposal;
+    this.disposeRequested = true;
+    this.disposal = new Promise((resolve) => {
+      this.resolveDisposal = resolve;
+    });
+    if (!this.processing) this.finishDisposal();
+    return this.disposal;
+  }
+
+  private finishDisposal(): void {
+    if (!this.disposeRequested || this.processing) return;
+    this.cancelAllTimers();
+    this.state.idempotency.clear();
+    this.resolveDisposal?.();
+    this.resolveDisposal = null;
   }
 
   private kick(): void {
@@ -140,6 +178,19 @@ export class TournamentExecutor {
       }
     } finally {
       this.processing = false;
+      try {
+        const status = this.state.status;
+        if (!this.terminalNotified && (status === "FINISHED" || status === "ABANDONED_NO_HUMAN")) {
+          this.terminalNotified = true;
+          this.deps.onTerminal?.({
+            tournamentId: this.state.tournamentId,
+            roomId: this.state.roomId,
+            status,
+          });
+        }
+      } finally {
+        this.finishDisposal();
+      }
     }
   }
 
@@ -162,6 +213,7 @@ export class TournamentExecutor {
   }
 
   private process(command: TournamentCommand): CommandResultPayload | null {
+    if (this.disposeRequested) throw new TournamentDomainError("TOURNAMENT_NOT_ACTIVE");
     // Engine Critical Error 冻结后：拒绝业务命令，停止该桌后续执行（04 §7.4/§15）。
     if (this.state.status === "FROZEN") {
       if (command.type === "SUBMIT_ACTION") {
@@ -171,6 +223,14 @@ export class TournamentExecutor {
         return this.rejected("GAME_UNAVAILABLE", command.requestId);
       }
       return null; // 内部/计时回调直接丢弃
+    }
+    // 保留期只读：Action/Time Bank 仍先重放幂等结果，其他命令与迟到计时回调均不再改状态。
+    if (
+      this.state.status !== "RUNNING" &&
+      command.type !== "SUBMIT_ACTION" &&
+      command.type !== "USE_TIME_BANK"
+    ) {
+      return null;
     }
     switch (command.type) {
       case "START":
@@ -228,7 +288,10 @@ export class TournamentExecutor {
       if (this.checkNoHuman()) return;
       const engineState = this.state.engine.getState();
       if (engineState.phase === "finished") {
-        if (!engineState.handInProgress && engineState.handNumber > this.state.committedThroughHand) {
+        if (
+          !engineState.handInProgress &&
+          engineState.handNumber > this.state.committedThroughHand
+        ) {
           this.commitCurrentHand(engineState, this.buildFinishUpdate("FINISHED"));
         }
         this.finalizeTournament();
@@ -289,11 +352,24 @@ export class TournamentExecutor {
       action: command.action,
     });
     const requestKey = `${command.playerId}:request:${command.requestId}`;
-    const viaRequest = this.idempotencyLookup(requestKey, requestPayloadHash, command.requestId, command.actionId);
+    const viaRequest = this.idempotencyLookup(
+      requestKey,
+      requestPayloadHash,
+      command.requestId,
+      command.actionId,
+    );
     if (viaRequest !== "continue") return viaRequest;
     const actionKey = `${command.playerId}:action:${command.actionId}`;
-    const viaAction = this.idempotencyLookup(actionKey, actionPayloadHash, command.requestId, command.actionId);
+    const viaAction = this.idempotencyLookup(
+      actionKey,
+      actionPayloadHash,
+      command.requestId,
+      command.actionId,
+    );
     if (viaAction !== "continue") return viaAction;
+    if (this.state.status !== "RUNNING") {
+      return this.rejected("TOURNAMENT_NOT_ACTIVE", command.requestId, command.actionId);
+    }
 
     const expected = BigInt(command.expectedSequence);
     const current = BigInt(this.state.lastWireSequence);
@@ -360,9 +436,15 @@ export class TournamentExecutor {
     }
     // requestId 幂等（02 §7.3）：同 requestId 同 Payload 复用原结果，不同 Payload 拒绝。
     const requestKey = `${command.playerId}:request:${requestId}`;
-    const payloadHash = stableStringify({ type: "USE_TIME_BANK", expectedSequence: command.expectedSequence });
+    const payloadHash = stableStringify({
+      type: "USE_TIME_BANK",
+      expectedSequence: command.expectedSequence,
+    });
     const viaRequest = this.idempotencyLookup(requestKey, payloadHash, requestId);
     if (viaRequest !== "continue") return viaRequest;
+    if (this.state.status !== "RUNNING") {
+      return this.rejected("TOURNAMENT_NOT_ACTIVE", requestId);
+    }
     if (this.state.config.actionTime === "UNLIMITED") {
       return this.rejected("TIME_BANK_DISABLED", requestId);
     }
@@ -437,9 +519,7 @@ export class TournamentExecutor {
     this.afterEngineTransition();
   }
 
-  private processGraceTimer(
-    command: Extract<TournamentCommand, { type: "GRACE_TIMER" }>,
-  ): void {
+  private processGraceTimer(command: Extract<TournamentCommand, { type: "GRACE_TIMER" }>): void {
     const record = this.state.players.get(command.playerId);
     if (record === undefined) return;
     if (record.connected) return; // 已重连 → no-op
@@ -455,9 +535,7 @@ export class TournamentExecutor {
 
   // ---- 撤回 / 连接 / 升盲 ----
 
-  private processWithdraw(
-    command: Extract<TournamentCommand, { type: "WITHDRAW_PLAYER" }>,
-  ): void {
+  private processWithdraw(command: Extract<TournamentCommand, { type: "WITHDRAW_PLAYER" }>): void {
     if (
       command.connectionEpoch !== undefined &&
       this.deps.isConnectionCurrent !== undefined &&
@@ -544,7 +622,11 @@ export class TournamentExecutor {
         this.commitCurrentHand(engineState, this.buildFinishUpdate("ABANDONED_NO_HUMAN"));
       }
       this.cancelAllTimers();
-      this.deps.output.submitRoomCommand(this.state.roomId, { type: "CLOSE_ROOM", reason: "ABANDONED_NO_HUMAN" });
+      this.deps.output.submitRoomCommand(this.state.roomId, {
+        type: "CLOSE_ROOM",
+        reason: "ABANDONED_NO_HUMAN",
+        tournamentId: this.state.tournamentId,
+      });
       return true;
     }
     return false;
@@ -627,19 +709,27 @@ export class TournamentExecutor {
     if (this.state.actionTimerHandle !== null) {
       this.state.scheduler.clearTimeout(this.state.actionTimerHandle);
       this.state.actionTimerHandle = null;
-      this.state.actionTimerGeneration += 1;
     }
+    this.state.actionTimerGeneration += 1;
   }
 
   /** time 模式定时升盲：按当前盲注等级时长周期上报累计秒数（只在 Hand 间生效，§6.3/§8.1）。 */
   private scheduleBlindTimer(): void {
+    if (this.disposeRequested) return;
     if (this.state.config.blindMode !== "time") return;
     if (this.state.status !== "RUNNING") return;
     if (this.state.blindTimerHandle !== null) return; // 已调度；到期后自动续排
     const level = this.state.config.blindStructure[this.state.engine.getState().blindLevel];
     const seconds = level?.durationSeconds ?? 60;
     this.state.blindTimerGeneration += 1;
+    const generation = this.state.blindTimerGeneration;
     this.state.blindTimerHandle = this.state.scheduler.setTimeout(() => {
+      if (
+        this.disposeRequested ||
+        this.state.status !== "RUNNING" ||
+        this.state.blindTimerGeneration !== generation
+      )
+        return;
       this.state.blindTimerHandle = null;
       this.submitInternal({ type: "RECORD_ELAPSED_TIME", seconds });
       this.scheduleBlindTimer();
@@ -648,17 +738,19 @@ export class TournamentExecutor {
 
   private cancelAllTimers(): void {
     this.clearActionTimer();
+    this.state.actionDeadline = null;
+    this.state.currentLegalActions = null;
     if (this.state.blindTimerHandle !== null) {
       this.state.scheduler.clearTimeout(this.state.blindTimerHandle);
       this.state.blindTimerHandle = null;
-      this.state.blindTimerGeneration += 1;
     }
+    this.state.blindTimerGeneration += 1;
     for (const record of this.state.players.values()) {
       if (record.graceHandle !== null) {
         this.state.scheduler.clearTimeout(record.graceHandle);
         record.graceHandle = null;
-        record.graceGeneration += 1;
       }
+      record.graceGeneration += 1;
     }
   }
 
@@ -683,7 +775,9 @@ export class TournamentExecutor {
       const board = perEventState?.communityCards ?? [];
       const wireSeq = event.sequence + 1;
       if (wireSeq !== this.state.lastWireSequence + 1) {
-        throw new TournamentDomainError("INTERNAL_ERROR", { message: "Engine 事件 sequence 不连续" });
+        throw new TournamentDomainError("INTERNAL_ERROR", {
+          message: "Engine 事件 sequence 不连续",
+        });
       }
       this.state.lastWireSequence = wireSeq;
       for (const viewerPlayerId of this.state.players.keys()) {
@@ -711,7 +805,10 @@ export class TournamentExecutor {
     this.deps.output.emitEvents(messages);
   }
 
-  private projectionInputFor(viewerPlayerId: string, perEventHandState?: GameState | null): ProjectionInput {
+  private projectionInputFor(
+    viewerPlayerId: string,
+    perEventHandState?: GameState | null,
+  ): ProjectionInput {
     const timeBankRemainingMs = new Map<string, number>();
     for (const [playerId, record] of this.state.players) {
       timeBankRemainingMs.set(playerId, record.timeBank.secondsRemaining * 1000);
@@ -773,7 +870,9 @@ export class TournamentExecutor {
       championSeat !== null ? (this.state.seatToPlayer.get(championSeat) ?? null) : null;
     // championTournamentPlayerId 引用 tournament_players.id（非 room 级 playerId），否则终局落库违反 FK。
     const championTournamentPlayerId =
-      championPlayerId !== null ? (this.state.players.get(championPlayerId)?.tournamentPlayerId ?? null) : null;
+      championPlayerId !== null
+        ? (this.state.players.get(championPlayerId)?.tournamentPlayerId ?? null)
+        : null;
     if (status === "FINISHED") {
       return {
         status,

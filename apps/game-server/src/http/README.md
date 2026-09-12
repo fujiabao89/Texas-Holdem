@@ -4,7 +4,7 @@
 
 - **只使用 `packages/protocol` 导出 Schema**：`routes/rooms.ts` 全部外部输入先经 `CreateRoomRequestSchema` 等运行时 Schema 校验；成功 `{ data }`、失败 `ErrorEnvelope`（`errors.ts` 映射稳定 ErrorCode + 推荐 HTTP 状态码）。
 - **鉴权**（`middleware/auth.ts`）：`Authorization: Bearer <playerToken>` → `RoomManager.authenticate` 由 token 摘要反查 `playerId`；Room、Hand History 与赛果读取都按凭证 `token_key_id` 使用同一当前/保留密钥环验证。
-- **幂等**（`middleware/idempotency.ts`）：所有状态变更 `POST/PATCH` 强制 `Idempotency-Key`；作用域 = 身份/源 IP + endpoint + key；同 Payload 复用原结果，同 Key 不同 Payload 返回 `IDEMPOTENCY_KEY_REUSE`。
+- **幂等**（`middleware/idempotency.ts`）：所有状态变更 `POST/PATCH` 强制 `Idempotency-Key`；作用域 = 身份/源 IP + endpoint + key；同 Payload 复用原结果，同 Key 不同 Payload 返回 `IDEMPOTENCY_KEY_REUSE`。TEX-52 将账本归属到 Room（创建/加入的 token 响应也在执行后标记归属），整个驻留期不做 TTL/LRU；关闭时仅回收对应 Room，其他 Room/同房间下一场仍保留原键。关闭或 app 关停期间已在执行的请求保留并发门闩，完成后不得重新填充旧缓存；app 关闭会取消 Room 订阅并清空账本。
 - **限流**（`middleware/rate-limit.ts`）：进程内 Token Bucket；创建/Join/inviteCode/受保护变更按 docs/04 §10.3 默认额度。
 - **Body 上限与 CORS**：`app.ts` 设 64KiB body 上限；CORS 使用显式 Allowlist（不含通配来源）。
 - **比赛中离开**：生产装配注入 TournamentManager；受保护 HTTP Leave 先经 Tournament 撤回，再进入 Room 离开/Token 撤销，与 WS 语义一致。

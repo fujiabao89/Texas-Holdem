@@ -33,17 +33,43 @@ import type { TournamentStartRequest } from "./tournament-starter";
 
 export type RoomCommand =
   | { type: "JOIN"; member: RoomMemberSeed }
-  | { type: "LEAVE"; playerId: string; reason: LeaveReason; leftAt: number; afterTournamentWithdrawal?: boolean; connectionEpoch?: number }
+  | {
+      type: "LEAVE";
+      playerId: string;
+      reason: LeaveReason;
+      leftAt: number;
+      afterTournamentWithdrawal?: boolean;
+      connectionEpoch?: number;
+    }
   | { type: "SET_READY"; playerId: string; ready: boolean; connectionEpoch?: number }
-  | { type: "SET_CONNECTION_STATUS"; playerId: string; connectionStatus: "CONNECTED" | "DISCONNECTED" }
+  | {
+      type: "SET_CONNECTION_STATUS";
+      playerId: string;
+      connectionStatus: "CONNECTED" | "DISCONNECTED";
+    }
   | { type: "CHANGE_SEAT"; playerId: string; seat: number | null; expectedRevision?: number }
-  | { type: "UPDATE_CONFIG"; actorPlayerId: string; config: TournamentConfig; expectedRevision?: number }
-  | { type: "KICK_PLAYER"; actorPlayerId: string; targetPlayerId: string; expectedRevision?: number }
+  | {
+      type: "UPDATE_CONFIG";
+      actorPlayerId: string;
+      config: TournamentConfig;
+      expectedRevision?: number;
+    }
+  | {
+      type: "KICK_PLAYER";
+      actorPlayerId: string;
+      targetPlayerId: string;
+      expectedRevision?: number;
+    }
   | { type: "TRANSFER_HOST" }
-  | { type: "START_TOURNAMENT"; actorPlayerId: string; expectedRevision: number; tournamentId: string }
+  | {
+      type: "START_TOURNAMENT";
+      actorPlayerId: string;
+      expectedRevision: number;
+      tournamentId: string;
+    }
   | { type: "TOURNAMENT_FINISHED"; tournamentId: string }
   | { type: "RETURN_TO_LOBBY" }
-  | { type: "CLOSE_ROOM"; reason: string };
+  | { type: "CLOSE_ROOM"; reason: string; tournamentId?: string };
 
 export interface RoomCommandResult {
   readonly state: RoomState;
@@ -54,6 +80,8 @@ export interface RoomCommandResult {
 export interface RoomRuntimeDeps {
   readonly persistence: RoomPersistence;
   readonly ids: IdSource;
+  /** 启动时持久预留的 revision 号段；不得向其他进程的号段溢出（ADR-0003）。 */
+  readonly revisionCeiling?: number;
   /** Transport-private epoch guard, checked after this Room command obtains queue ownership. */
   readonly isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
   /**
@@ -68,6 +96,7 @@ export class RoomRuntime {
   private state: RoomState;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly deps: RoomRuntimeDeps;
+  private disposed = false;
 
   constructor(state: RoomState, deps: RoomRuntimeDeps) {
     this.state = state;
@@ -81,6 +110,7 @@ export class RoomRuntime {
 
   /** 把命令投递到本 Room 的串行队列；同 Room 任务严格顺序执行。 */
   submit(command: RoomCommand): Promise<RoomCommandResult> {
+    if (this.disposed) return Promise.reject(new RoomDomainError("ROOM_NOT_FOUND"));
     const run = this.queue.then(() => this.process(command));
     this.queue = run.then(
       () => undefined,
@@ -89,9 +119,24 @@ export class RoomRuntime {
     return run;
   }
 
+  /** 关闭入口，等已取得执行权的事务结束；尚在排队的命令不得继续 mutate。 */
+  async dispose(): Promise<void> {
+    this.disposed = true;
+    await this.queue;
+  }
+
   private async process(command: RoomCommand): Promise<RoomCommandResult> {
+    if (this.disposed) throw new RoomDomainError("ROOM_NOT_FOUND");
+    if (this.state.status === "CLOSED")
+      throw new RoomDomainError(command.type === "JOIN" ? "INVITE_EXPIRED" : "ROOM_LOCKED");
     const before = this.state;
     const { next, persisted, tournamentId } = this.apply(before, command);
+    if (
+      !Number.isSafeInteger(next.roomRevision) ||
+      next.roomRevision > (this.deps.revisionCeiling ?? Number.MAX_SAFE_INTEGER)
+    ) {
+      throw new RoomDomainError("GAME_UNAVAILABLE");
+    }
     // 开局参与者冻结请求只构建一次：控制面落库与提交后的运行时注册共享同一份
     // TournamentStartRequest，保证 tournament_player.id 与运行时 seed 一一对应。
     const startRequest =
@@ -133,16 +178,25 @@ export class RoomRuntime {
         assertConnectionCurrent(before, command, this.deps);
         return { next: setReady(before, command.playerId, command.ready), persisted: false };
       case "SET_CONNECTION_STATUS":
-        return { next: setConnectionStatus(before, command.playerId, command.connectionStatus), persisted: false };
+        return {
+          next: setConnectionStatus(before, command.playerId, command.connectionStatus),
+          persisted: false,
+        };
       case "CHANGE_SEAT":
         assertRevision(before, command.expectedRevision);
         return { next: changeSeat(before, command.playerId, command.seat), persisted: false };
       case "UPDATE_CONFIG":
         assertRevision(before, command.expectedRevision);
-        return { next: updateConfig(before, command.actorPlayerId, command.config), persisted: true };
+        return {
+          next: updateConfig(before, command.actorPlayerId, command.config),
+          persisted: true,
+        };
       case "KICK_PLAYER":
         assertRevision(before, command.expectedRevision);
-        return { next: kickPlayer(before, command.actorPlayerId, command.targetPlayerId), persisted: true };
+        return {
+          next: kickPlayer(before, command.actorPlayerId, command.targetPlayerId),
+          persisted: true,
+        };
       case "TRANSFER_HOST":
         return { next: transferHost(before), persisted: true };
       case "START_TOURNAMENT": {
@@ -175,12 +229,23 @@ export class RoomRuntime {
       case "RETURN_TO_LOBBY":
         return { next: returnToLobby(before), persisted: true };
       case "CLOSE_ROOM":
+        if (
+          command.tournamentId !== undefined &&
+          before.activeTournamentId !== command.tournamentId
+        ) {
+          throw new RoomDomainError("TOURNAMENT_NOT_ACTIVE");
+        }
         return { next: closeRoom(before, command.reason), persisted: true };
     }
   }
 
   /** 控制面先提交：持久化成功后客户端才收到成功结果；失败不提交内存状态。 */
-  private async persist(before: RoomState, next: RoomState, command: RoomCommand, startRequest?: TournamentStartRequest): Promise<void> {
+  private async persist(
+    before: RoomState,
+    next: RoomState,
+    command: RoomCommand,
+    startRequest?: TournamentStartRequest,
+  ): Promise<void> {
     const p = this.deps.persistence;
     switch (command.type) {
       case "JOIN":
@@ -209,13 +274,20 @@ export class RoomRuntime {
         await p.updateRoomConfig(before.roomId, command.config);
         return;
       case "KICK_PLAYER":
-        await p.markMemberLeft(before.roomId, command.targetPlayerId, "USER_LEFT", this.deps.ids.now());
+        await p.markMemberLeft(
+          before.roomId,
+          command.targetPlayerId,
+          "USER_LEFT",
+          this.deps.ids.now(),
+        );
         return;
       case "TRANSFER_HOST":
         await p.setRoomHost(before.roomId, next.hostPlayerId);
         return;
       case "START_TOURNAMENT": {
-        await p.startTournament(startRequest ?? buildTournamentStartRequest(before, command, this.deps.ids));
+        await p.startTournament(
+          startRequest ?? buildTournamentStartRequest(before, command, this.deps.ids),
+        );
         return;
       }
       case "TOURNAMENT_FINISHED":
@@ -251,7 +323,11 @@ function assertConnectionCurrent(
   command: Extract<RoomCommand, { type: "LEAVE" | "SET_READY" }>,
   deps: RoomRuntimeDeps,
 ): void {
-  if (command.connectionEpoch !== undefined && deps.isConnectionCurrent !== undefined && !deps.isConnectionCurrent(state.roomId, command.playerId, command.connectionEpoch)) {
+  if (
+    command.connectionEpoch !== undefined &&
+    deps.isConnectionCurrent !== undefined &&
+    !deps.isConnectionCurrent(state.roomId, command.playerId, command.connectionEpoch)
+  ) {
     throw new RoomDomainError("SESSION_REPLACED");
   }
 }

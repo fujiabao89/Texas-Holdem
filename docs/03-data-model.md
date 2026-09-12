@@ -75,6 +75,10 @@ P0 的持久化策略是"**内存运行 + 关键状态持久化**"（《区块6-
 
 ### 4.3 恢复语义
 
+**TEX-51 实施**：启动恢复读取非 CLOSED Room、ACTIVE 身份及最新 Tournament 的一致元数据，原 HMAC 摘要与 key ID 继续鉴权，LEFT 身份不复活。Lobby seat/ready 不持久化，重启清空；比赛 seat 来自锁定参赛者，PokerStatus 来自已验证检查点。恢复顺序、控制面与异步终局的协调、错误隔离及号段策略见 [ADR-0003](./adr/0003-tex-51-room-recovery-authority.md)；不改变整手恢复粒度。
+
+`rooms.room_revision_ceiling`（bigint，默认 4294967295，范围 4294967295..9007199254740991）保存已分配 revision 号段的上界；每次恢复原子预留下一个 4294967296 大小的号段。它不是最新 RoomSnapshot，不持久化 Ready/连接状态。运行时不得越过所持号段，耗尽/预留失败拒绝恢复或变更，不用时间戳近似单调性。
+
 - **运行期重连**（刷新/切网/后台恢复）：game-server 用内存最新状态投影下发（[02](./02-protocol-spec.md) §6/§10），不依赖 DB 读取。
 - **进程崩溃后**：若 `last_committed_sequence > 0`，从对应的最新“整手已完整提交”手末 Snapshot 恢复；若仍为 0（首手尚未完整提交），从已持久化的 Tournament 配置和锁定参赛者重新初始化。P0 的 Hand Events 与手末 Snapshot 以整手为一个原子提交单元，因此恢复时不回放 Snapshot 之后的未提交/进行中 Hand Events；崩溃时进行中的 Hand 无损恢复**不是 P0 硬要求**（《总规划》§7.2；[02](./02-protocol-spec.md) §15）。
 - 每手末 Snapshot 是持久化检查点的下限粒度。《总规划》§7.2 将其与刷新、切网和手机后台恢复同时提及；本文的精确分工是：进程存活时这些场景使用内存最新投影，手末 DB Snapshot 只为进程重启/崩溃恢复托底。

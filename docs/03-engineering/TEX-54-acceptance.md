@@ -52,3 +52,5 @@
 - Codex：修正 WITHDRAWN 玩家存在时可接受名次空洞；协议语义校验改为按非退出人数限定范围并验证完整 `1..N` 占位，增加缺口反例。
 - CodeRabbit：本轮自动审查因仓库条件跳过，没有产生可操作意见，不主动触发下一轮审查。
 - 修正完成并推送后，只在上述原始 Greptile/Codex 评论线程回复；不主动启动 CodeRabbit、Codex、Greptile 或 DeepSeek Harness 的下一轮审查。
+
+PR #48 的既定目标分支 `integration/TEX-51-52-runtime-base` 在审查期间前进，导致 GitHub 判定冲突。修正分支已合入该基线，并保留 TEX-51/52 的恢复、生命周期及幂等账本语义；冲突仅发生在生产装配和并列文档入口。组合验证发现 TEX-52 新增的终局历史集成夹具仍传入旧 `tokenSecret`，已改为与生产一致的 `tokenSecretForKeyId`。合并后 `pnpm typecheck`、`pnpm lint` 通过，真实 PostgreSQL 全量 `pnpm test` 为 **100 文件、966 测试全部通过**；未执行按用户明确豁免的 PR #48 `e2e-real`。

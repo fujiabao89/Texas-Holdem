@@ -482,6 +482,10 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 
 ## 13. 进程生命周期与崩溃恢复
 
+**TEX-51 完整启动屏障**：先以一致读取重建 Room/ACTIVE 成员/Host/邀请码/凭证，再验证最新 Tournament 的锁定配置、参赛者与手末根。验证成功后预留新 Room revision 号段、完成必要的水位回退/状态协调，先注册 Room 再等待 Tournament 的恢复 START 成功，全部完成才监听。未知 key ID、缺 Host/成员、配置/座位冲突或无可验证根隔离整个 Room；其他 Room 正常服务。仅输出 ID 和固定诊断码。重复屏障调用共享 Promise；已注册 Room 不被覆盖。数据库整体读取失败则拒绝监听。
+
+持久 Host 必须仍为 ACTIVE HUMAN；不猜选新 Host。全部连接恢复 DISCONNECTED/未准备；Lobby 座位归空，比赛座位/状态从锁定成员与已提交根重建。最新场由最大 tournamentNo 唯一选定，较旧 IN_GAME 场仅诊断不注册；Room FINISHED 与最新 IN_GAME 可由异步终局提交延迟造成，按验证根协调控制面状态。终局根不重开发牌。完整裁决和 migration/号段边界见 [ADR-0003](./adr/0003-tex-51-room-recovery-authority.md)。
+
 - **启动屏障**：恢复完成前不接受创建/加入/Action。按 `rooms`/`tournaments` 元数据定位活跃比赛，只选择 [03](./03-data-model.md) §4.3 定义的最新“整手已完整提交”Commit Bundle；校验版本、checksum、事件连续性与 Snapshot.sequence，孤立 Snapshot、部分事务或事件缺口一律拒绝并回退到上一个可验证检查点。
 - **进行中 Hand 崩溃**：P0 不回放 Snapshot 之后未完整提交的 Hand Events。恢复到最近手末 Snapshot 后，丢弃崩溃 Hand 的内存牌面、Action、Timer 与未提交事件，再以新的随机结果开始下一 Hand；该丢弃 Hand 不进入 Hand History。若首手尚无手末 Snapshot，则从已持久化的 Tournament 配置和锁定参与者重新初始化比赛。
 - **恢复后重建**：从 Snapshot 中恢复 Tournament 全局 sequence、盲注进度、Dealer/参与者/筹码等 Engine 状态；重新建立 Tournament 执行器与未来 Timer，不恢复旧进程 Timer 回调或 `connectionEpoch`。所有连接均视为断开，客户端重新认证并接受新的 Snapshot 屏障，清空旧动画与待发送 Action。
@@ -501,6 +505,14 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 收到第二次终止信号只缩短到当前 Flush 阶段，不绕过 DB 事务原子性。Liveness 在进程实际退出前保持成功，Readiness 从步骤 1 起保持失败。
 
 ### 13.2 终局内存卸载
+
+**TEX-52 已实施**：TournamentExecutor 的终局通知只在最后事件/Bundle 输出并退出 drain 后发一次，保留期内 Action/TimeBank 先查成功幂等结果、新命令拒绝；所有旧 timer generation 失效。Manager 按 executor identity 安排 10 分钟保留，旧回调不能删除新赛，`activeTournamentIds` 仅 RUNNING，注册/终局保留/冻结分别观测。Gateway 允许同 Room 的保留期最终 Snapshot 与原动作重放（不要求其仍是 activeTournamentId），跨房间或已撤销身份仍拒绝。
+
+Room 快照广播隔离每个观察者的异常，必须继续其他连接的同步撤销并完成本地清理；诊断只包含 Room ID。已提交的控制面状态不因发送/观察者故障回滚。
+
+CLOSED 先广播最后 RoomSnapshot 并同步撤销邀请码/epoch/订阅/心跳；该连接在途 Lobby 命令写完回执才关闭 Socket。Room 队列拒绝后续任务，完成已在执行的事务后卸载本地对象；下游释放失败仍报告错误，不让本地已关闭 Room 无限驻留。墓碑只保存三字段，由独立作用域 timer 到期删除，迟到请求使用既有 `ROOM_NOT_FOUND`。HTTP/WS requestId 缓存归属 Room，在关闭时释放；in-flight 请求共享原执行结果，不能因清缓存再执行或回填已关闭 Room。没有提前 TTL/LRU。
+
+Writer 在 enqueue 边界复制 Bundle（保留 Buffer/Date/BigInt），Runtime 卸载只标记其队列退休，pending/in-flight/隔离项仍保留，成功排空才回收。关停 latch 不因背压回落而重开入口；手间等待结束后先停止入口和 Runtime，再执行最后 flush，最后停 Writer 调度。历史继续走数据库侧 ACTIVE Room 凭证与投影校验，Runtime 卸载不延长身份有效期，也不删除数据库历史。
 
 - Tournament 进入 `FINISHED`/`ABANDONED_NO_HUMAN` 后立即取消 Timer/AI、拒绝新动作，并把最终状态复制进不可变持久化任务。旧 Tournament Runtime 转只读保留 10 分钟，供已连接客户端完成最终 Snapshot/事件同步；之后即使 DB 重试仍在进行也可卸载，因为 Writer 持有独立 Bundle。
 - Room `FINISHED → LOBBY` 后可立即创建新 Tournament；旧 Runtime 的只读保留不能占据“活跃 Tournament”名额，也不能接收新 Room 的命令。

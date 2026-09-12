@@ -4,6 +4,10 @@
 
 ## 模块
 
+TEX-52 生命周期装配：Room CLOSED → Gateway/幂等账本撤销 → Room 队列排空 → Tournament.disposeRoom → Writer.releaseTournament；独立 Bundle 可继续重试。终局只读保留及对象计数通过 managers API 提供，进程关停先冻结这些生产者再最终 flush。
+
+TEX-51 启动链路：`main.ts` → `persistence/room-recovery.ts` → 一致元数据/检查点验证 → Room 身份注册 → 等待 Tournament START → 监听。未知/损坏记录逐房隔离，不开放半恢复 Room。
+
 | 目录 | 职责 | 权威规格 |
 | --- | --- | --- |
 | `http/` | HTTP 入口与安全（routes/middleware/errors） | docs/04 §10；docs/02 §4/§8/§11 |
