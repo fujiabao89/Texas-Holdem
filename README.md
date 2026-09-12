@@ -2,7 +2,7 @@
 
 极简、白色主体、响应式的 No-Limit Texas Hold'em Web 游戏。产品与规则以《德州扑克项目总规划》为权威；工程规格入口见 [docs/README.md](./docs/README.md)。
 
-当前处于 P0 阶段：TEX-11 已建立 pnpm monorepo 骨架，TEX-12 已建立分层测试地基（unit / rules / integration / ws / e2e / simulator 入口，可复现 seed、Fake Clock、Fixture Builder 与测试数据库隔离工具）；扑克规则、协议或业务逻辑尚未实现。
+当前处于 P0 的稳定性、复玩体验与发布验收阶段。扑克规则引擎、服务端权威运行时、持久化、实时重连、Web 大厅与牌桌等基础能力已经落地；当前 `origin/main` 基线为 `ebdbce16`。River & Raise 首页及牌桌视觉任务 TEX-44/TEX-45 尚在评审中，不应视为已合并或已发布。接下来优先闭合服务重启恢复、终局对象清理、盲注位置投影、可恢复赛果、“再来一局”以及真实移动设备验收，详见 [项目现状与后续改进路线图](./docs/00-project/current-status-and-follow-up-roadmap.md)。
 
 ## 仓库结构
 
@@ -10,7 +10,7 @@
 | --- | --- |
 | `apps/web` | Next.js 16 + React 19 + Tailwind CSS 4 玩家客户端 |
 | `apps/game-server` | Node.js + Fastify + `@fastify/websocket` 实时游戏服务 |
-| `packages/` | 跨应用共享包（`poker-engine`、`protocol` 等按后续任务落地） |
+| `packages/` | 跨应用共享包，包括纯规则 `poker-engine` 与通信契约 `protocol` |
 | `tests/` | 跨应用测试：分层入口、可复用测试工具、E2E、Simulator（见 [tests/README.md](./tests/README.md)） |
 | `docs/` | 工程规格与 P0 任务卡 |
 

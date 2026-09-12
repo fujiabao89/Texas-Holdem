@@ -2,7 +2,9 @@
 
 项目范围、术语与计划。实现细节应引用而非复制架构文档。
 
-## P0 执行文档
+## 当前规划与 P0 执行文档
+
+- [项目现状与后续改进路线图](./current-status-and-follow-up-roadmap.md)：截至 2026-09-12 的能力基线、验证边界、Linear 里程碑、TEX-34 至 TEX-56 后续任务及依赖顺序。
 
 - [TEX-38 全面优化前端动画与音效体验](https://linear.app/texas-holdem/issue/TEX-38)：在 TEX-26 已交付基础上完善牌桌反馈、声音控制与降级；实现由用户委派 Codex，独立于 TEX-29 压测。规格见 [05 §9.7/§10.3](../05-frontend-spec.md)，交付核对见 [验收记录](../03-engineering/TEX-38-acceptance.md)。
 
@@ -11,4 +13,4 @@
 - [P0 任务卡：协议、数据与游戏服务端](./p0-server-and-data-tasks.md)：TEX-17 至 TEX-22。
 - [P0 任务卡：Web 前端、验证、部署与发布](./p0-web-and-release-tasks.md)：TEX-23 至 TEX-30，以及 TEX-39 至 TEX-43。
 
-任务的实时状态、评论和依赖以 [Linear 项目](https://linear.app/texas-holdem/project/texas-holdem-70cb976c03d2) 为准；本目录提供稳定的中文任务说明。
+任务的实时状态、评论、标签和依赖以 [Linear 项目](https://linear.app/texas-holdem/project/texas-holdem-70cb976c03d2) 为准；本目录提供稳定的中文任务说明与阶段性快照。

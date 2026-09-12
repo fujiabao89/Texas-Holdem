@@ -6,6 +6,7 @@
 
 ## 索引
 
+- [TEX-50-acceptance.md](./TEX-50-acceptance.md)：项目现状校准、Linear 后续任务与里程碑、文档同步和 Git 交付证据。
 - [TEX-38-acceptance.md](./TEX-38-acceptance.md)：前端动画/音效优化的需求核对、验证证据与日常浏览器/实机发布边界。
 - [TEX-38-findings-ledger.md](./TEX-38-findings-ledger.md)：PR #40 的 Copilot、Codex、CodeRabbit 与 Greptile 审查意见逐项核验、定级和处置记录。
 

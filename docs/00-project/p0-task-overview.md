@@ -1,7 +1,7 @@
 # P0 任务总览与执行顺序
 
-> 状态：实现进行中——多数 P0 任务（TEX-11 至 TEX-29）已交付；正式负载/Soak/Headroom、监控送达验证与真实设备人工验收待 Release 阶段在隔离环境完成（见 docs/06 §10–§12）。
-> 更新：2026-09-05
+> 状态：实现进行中——工程主体已交付，当前聚焦稳定性恢复、连续复玩体验与真实设备发布验收；详情见 [项目现状与后续改进路线图](./current-status-and-follow-up-roadmap.md)。
+> 更新：2026-09-12
 > Linear 项目：[Texas Hold'em](https://linear.app/texas-holdem/project/texas-holdem-70cb976c03d2)
 
 本文件是 P0 的中文阅读入口。它不重新定义扑克规则、协议或实现细节；这些内容始终以 `docs/01` 至 `docs/06` 和根目录《德州扑克项目总规划》为权威来源。
@@ -87,12 +87,24 @@ flowchart TD
 | 部署 | [TEX-39](https://linear.app/texas-holdem/issue/TEX-39/tex-39-p0-部署拓扑与预发布基线) | Codex + 用户 | 部署拓扑集成、外部决策与证据交接 | [前端与发布](./p0-web-and-release-tasks.md#tex-39部署拓扑与预发布基线) |
 | 发布 | [TEX-30](https://linear.app/texas-holdem/issue/TEX-30/tex-30-p0-发布证据包与最终验收) | Codex + 用户 | 发布证据包与最终决定 | [前端与发布](./p0-web-and-release-tasks.md#tex-30发布证据包与最终验收) |
 
-## 5. 所有任务都必须遵守的交付门槛
+## 5. 当前后续闭环
+
+旧的 TEX-11 至 TEX-43 任务卡继续作为历史范围和稳定规格入口；2026-09-12 起的实际开工顺序，以 [项目现状与后续改进路线图](./current-status-and-follow-up-roadmap.md) 和 Linear 实时依赖为准：
+
+| 里程碑 | 目标 | 主要任务 |
+| --- | --- | --- |
+| P0 稳定性与恢复闭环 | 让身份、房间、比赛结果和运行时生命周期可恢复、可清理 | TEX-34、TEX-51～TEX-54 |
+| P0 复玩体验闭环 | 让玩家无需找页面即可行动、看懂结算并在同一房间继续下一轮 | TEX-35、TEX-44～TEX-49、TEX-55 |
+| P0 发布与实机验收 | 在真实多人、真实移动设备和部署环境中验证完整旅程 | TEX-28～TEX-30、TEX-39～TEX-43、TEX-56 |
+
+关键依赖包括：TEX-53 → TEX-47、TEX-48 → TEX-49、TEX-54 → TEX-55；前三项体验依赖闭合后再执行 TEX-56。服务重启后旧玩家无法重新认证属于信任链路缺口，TEX-51 应优先于一般体验优化核验。
+
+## 6. 所有任务都必须遵守的交付门槛
 
 1. 从 Linear 任务开始，并先阅读本任务引用的权威规格和目标目录 `README.md`。
 2. 只修改任务范围内的文件；发现范围外问题，单独记录，不捎带重构。
 3. 协议、持久化和公开接口变化必须同步更新权威规格。
-4. 提交前先由 DeepSeek Harness 本地审查 Agent 取得 `PASS`；随后填写完整 PR 模板并通过仓库 CI。
+4. 填写完整 PR 模板并通过仓库 CI；DeepSeek Harness 仅由用户手动启动，不是提交、推送或创建 PR 的前置门禁。
 5. 完成时报告改动范围、验证结果、剩余风险和需要 Codex/用户裁决的项目。
 
 详见 [AGENTS.md](../../AGENTS.md)、[CLAUDE.md](../../CLAUDE.md)、[TRAE.md](../../TRAE.md) 与 [CONTRIBUTING.md](../../CONTRIBUTING.md)。

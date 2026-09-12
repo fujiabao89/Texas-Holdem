@@ -1,7 +1,9 @@
 # 工程文档总索引
 
-> 状态：草稿
-> 更新：2026-09-05
+> 状态：持续维护
+> 更新：2026-09-12
+
+> **2026-09-12 现状校准（TEX-50）**：P0 已进入稳定性、复玩体验与发布验收阶段。当前能力、已知限制、验证边界，以及 TEX-34 至 TEX-56 的三阶段 Linear 路线图统一见 [项目现状与后续改进路线图](./00-project/current-status-and-follow-up-roadmap.md)。River & Raise 首页与牌桌视觉任务 TEX-44/TEX-45 仍在评审中，不能作为 `main` 已交付事实。
 
 > **2026-09-05 增量核对（TEX-29）**：服务端观测与真实链路压测落地——`apps/game-server` 暴露 Prometheus `GET /metrics`（Action→Event 延迟、WS 打开/关闭分类与消息写出、重连恢复、Action Rejection、持久化 watermark/DEGRADED、Engine Critical、Active Rooms/Tournaments、进程内存/CPU），监控配置与本地演练栈见 [infra/monitoring/README.md](../infra/monitoring/README.md)；真实链路压测工具（HTTP+WS+真实 game-server+PostgreSQL；smoke/burst/reconnect/soak/headroom + SLO 门禁 + 脱敏产物）见 [tests/performance/README.md](../tests/performance/README.md) 与 [06](./06-testing-strategy.md) §10/§11；运维演练见 [05-operations/README.md](./05-operations/README.md)。正式 Load/Soak/Headroom 数字仅在隔离测试环境运行并回填 Release 证据，PR/Nightly 只跑 smoke/reconnect。
 
@@ -26,13 +28,13 @@ PR #30 / TEX-36 已补齐 Hand History 投影读取，审查修正与证据见 [
 | 编号 | 路径 | 一句话目的 | 权威范围 | 状态 |
 | --- | --- | --- | --- | --- |
 | 01 | [01-engine-spec.md](./01-engine-spec.md) | Poker Engine 纯规则规格 | 牌堆与发牌、下注与最小加注、Pot/Side Pot/Split、Hand 状态机、Hand Evaluator、Tournament 淘汰与排名、Game Events、RNG 与 Engine Invariants | 草稿（cards/ · TEX-13；下注 / Pot / 状态机 · TEX-14；Tournament / Game Events / timer · TEX-15 已实现） |
-| 02 | [02-protocol-spec.md](./02-protocol-spec.md) | 联机协议规格（`packages/protocol`） | HTTP/WS 通道分工、身份与凭证、消息信封与 Snapshot + Event Stream、sequence 与幂等（actionId/expectedSequence/receivedAt）、超时竞争裁决、消息目录、PlayerView/BotView 投影契约、ErrorCode 码表 | Schema / 投影契约已实现（TEX-17）；运行时接入仍为设计意图 |
-| 03 | [03-data-model.md](./03-data-model.md) | 数据模型与持久化规格（`apps/game-server` / Supabase Postgres） | 内存 vs 持久化边界、核心表（rooms/tournaments/tournament_players/hands/hand_events/game_snapshots/ai_requests）字段与约束、写入节奏与失败语义、敏感数据存放与暴露规则 | 草稿（表结构/迁移/仓储已实现 · TEX-18；运行时写入编排与恢复仍为设计意图） |
-| 04 | [04-game-server-architecture.md](./04-game-server-architecture.md) | Game Server 运行时工程设计（`apps/game-server`） | Room/Tournament 运行时、单桌串行执行器与超时裁决、Scheduler/Timer、连接管理与接管、投影执行、持久化编排、崩溃恢复、无真人关房、P1 AI 接入点 | 草稿（§4/§5/§10 已实现 · TEX-19；其余设计意图） |
-| 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | 草稿（TEX-23 基础、TEX-24 Lobby、TEX-25 牌桌、TEX-26 动画/音效/重连、TEX-27 赛果/设置/历史已实现；归档历史服务端读取仍待补齐） |
-| 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 草稿（Simulator 长跑 · TEX-16 已实现；其余设计意图） |
-| 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 提交前本地审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略、输出契约与提交/推送门禁 | 治理基线 |
-| 项目执行 | [00-project/README.md](./00-project/README.md) | P0 中文任务卡与执行顺序 | TEX-11 至 TEX-30、TEX-39 至 TEX-43 的负责人、前置依赖、范围、验收与权威规格引用 | 已规划，未实现 |
+| 02 | [02-protocol-spec.md](./02-protocol-spec.md) | 联机协议规格（`packages/protocol`） | HTTP/WS 通道分工、身份与凭证、消息信封与 Snapshot + Event Stream、sequence 与幂等（actionId/expectedSequence/receivedAt）、超时竞争裁决、消息目录、PlayerView/BotView 投影契约、ErrorCode 码表 | Schema、投影与运行时认证/同步已实现；Dealer/SB/BB 重连投影待 TEX-53 |
+| 03 | [03-data-model.md](./03-data-model.md) | 数据模型与持久化规格（`apps/game-server` / Supabase Postgres） | 内存 vs 持久化边界、核心表（rooms/tournaments/tournament_players/hands/hand_events/game_snapshots/ai_requests）字段与约束、写入节奏与失败语义、敏感数据存放与暴露规则 | 表结构、仓储、Writer、比赛恢复与历史读取已实现；Room/成员/身份恢复待 TEX-51 |
+| 04 | [04-game-server-architecture.md](./04-game-server-architecture.md) | Game Server 运行时工程设计（`apps/game-server`） | Room/Tournament 运行时、单桌串行执行器与超时裁决、Scheduler/Timer、连接管理与接管、投影执行、持久化编排、崩溃恢复、无真人关房、P1 AI 接入点 | Room/Tournament 运行时、Timer、WS、Writer 与比赛恢复主体已实现；身份恢复与终局卸载待 TEX-51/TEX-52 |
+| 05 | [05-frontend-spec.md](./05-frontend-spec.md) | Web 前端工程设计（`apps/web`） | 页面与路由、客户端状态与投影消费、横向 Seat 牌桌与响应式、下注交互（快捷下注/Slider/±/精确输入/All-in 两步/Time Bank）、AnimationQueue 与事件动画、音效、计时与重连 UX、错误码展示、Lobby 流程、观战/赛果/Hand History UI、可访问性与验收标准 | P0 Web 流程已实现；当前体验闭环由 TEX-35、TEX-44～TEX-49 与 TEX-55 跟踪 |
+| 06 | [06-testing-strategy.md](./06-testing-strategy.md) | 测试方案与发布门槛（`tests/`） | 测试分层与归属、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级与发布门槛 | 分层测试、Simulator、E2E 与性能工具已建立；真实多人移动设备复玩验收待 TEX-56 |
+| 07 | [../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md](../DEEPSEEKHARNESS_REVIEW_AGENT_PROMPT.md) | DeepSeek Harness 用户手动审查 Agent 创建提示词 | 只读审查范围、严重性、验证策略与输出契约；不作为提交、推送或 PR 前置门禁 | 治理基线 |
+| 项目执行 | [00-project/README.md](./00-project/README.md) · [当前路线图](./00-project/current-status-and-follow-up-roadmap.md) | P0 中文任务卡、当前能力与后续执行顺序 | TEX-11 至 TEX-56 的稳定任务卡、实时 Linear 状态、三阶段里程碑与关键依赖 | 实现进行中；当前聚焦恢复、复玩与真实设备验收 |
 | 工程 | [03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md) | pnpm monorepo、Turbo、质量命令、共享配置与环境变量 | TEX-11 工程地基 | 已实现 |
 | 工程 | [03-engineering/pull-request-and-linear-naming.md](./03-engineering/pull-request-and-linear-naming.md) | Linear、分支与 GitHub PR 的命名关联 | 开发流程与 PR 校验 | 已实现 |
 
