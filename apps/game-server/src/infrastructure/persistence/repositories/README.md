@@ -10,9 +10,14 @@
 | `createTournamentRepository(database)` | `createTournamentWithPlayers`：Tournament（`last_committed_sequence=0`）+ 全部 locked players 单事务写入 | §5.3/§5.4/§7.2 |
 | `createHandCommitRepository(database)` | `commitHandBundle`：手末 Commit Bundle 单事务原子提交（FOR UPDATE 锁 Tournament 行 → 幂等/部分冲突检查 → 序列完整性验证 → hands + hand_events + game_snapshots + tournament_players 结果更新 + last_committed_sequence + 可选终局更新；`roomStatus=CLOSED` 时以 `roomClosure` 同事务写齐关房元数据） | §5.1/§7.3/§7.4 |
 | `createRecoveryRepository(database)`（TEX-22） | 崩溃恢复读取/回退：`listActiveTournaments`（活跃比赛 + 锁定参赛者）、`listSnapshots`（按 sequence 降序）、`hasCommittedEventsThrough`（事件连续性）、`listWithdrawnForfeited`、`rollbackToSnapshot`（向前退回单事务：删事件/手/快照、复位水位、按快照参与者重置 tournament_players） | §4.3/§7.5 |
+| `createRoomRecoveryRepository(database)`（TEX-51） | `listRecoverableRooms`：同一 `REPEATABLE READ, READ ONLY` 事务读取非 CLOSED Room、仅 ACTIVE 的成员身份与 HMAC 摘要、历史最大 `tournament_no`、最新一场和所有 IN_GAME 场次及其锁定参赛者。配置保留 unknown，由启动编排逐房校验和隔离；不读取牌面/快照、不重新签发 token、不推断 Lobby seat/ready/连接态 | §4.3/§5/§7.5 |
 | `createHandHistoryRepository(database)`（TEX-36） | Hand History 只读投影：`findTournamentRoom`/`listRoomMemberCredentials`（同一查询限定未关闭 Room + ACTIVE 成员）/`listParticipants`/`listHands`（`handNumber` 倒序 cursor 分页）/`findHand`（联查提交 Snapshot 的 `endSequence`，缺 Snapshot 为 null，由路由判损坏）/`listHandEvents`（sequence 升序）。原始行含隐藏信息（Burn 牌面、未公开底牌），对外必须经 `http/routes/hand-history.ts` 的接收者视角投影 | §5.5/§5.6/§6 |
 
 `commitHandBundle` 返回 `"committed"`（首次提交）或 `"already-committed"`（相同 checksum 的安全重试）；同 ID 不同 `commit_checksum` 抛 `CommitChecksumMismatchError`，部分提交抛 `PartialCommitConflictError`，序列缺口/不对齐抛 `SequenceIntegrityError`/`HandSequenceIntegrityError`，`playerUpdates` 目标行不存在或不属于本 Tournament 抛 `TournamentPlayerUpdateTargetError`（均定义在 [errors.ts](./errors.ts)，见 §7.4 —— 不得静默 `ON CONFLICT DO NOTHING`）。
+
+## Room 恢复 revision 号段（TEX-51）
+
+`createRoomRecoveryRepository(database).reserveRoomRevision(roomId)` 在单事务原子 UPDATE 中为非 CLOSED Room 预留下一个 `2^32` 号段，返回 `{initial, ceiling}`（安全整数）。新 Room 使用默认上界 `2^32-1`，恢复舍弃全部旧号段；Room 不存在、已关闭或号段上界会超出 `Number.MAX_SAFE_INTEGER` 时抛固定 `ROOM_REVISION_RESERVATION_FAILED`，不得注册运行时。正常 Room 命令在内存检查号段上界，不逐次写 DB；权威裁决见 [ADR-0003](../../../../../../docs/adr/0003-tex-51-room-recovery-authority.md)。
 
 ## 输入契约
 

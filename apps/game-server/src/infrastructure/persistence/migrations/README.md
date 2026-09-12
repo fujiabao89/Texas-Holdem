@@ -9,8 +9,11 @@
 | `0000_init.sql` | 全部表、枚举、CHECK、复合 FK、唯一/部分索引 | `drizzle-kit generate`（生成后人工审查修正） |
 | `0001_deferrable_composite_fks.sql` | `rooms.host_player_id` 与 `tournaments.champion_tournament_player_id` 的 DEFERRABLE 复合外键（循环依赖，Drizzle 无法表达） | 手写 |
 | `0002_least_privilege.sql` | 最小权限：REVOKE `anon`/`authenticated`/PUBLIC；GRANT `game_server` | 手写 |
+| `0003_room_revision_reservation.sql`（TEX-51） | `rooms.room_revision_ceiling`：默认 `2^32-1`，以 CHECK 限制到 JavaScript 安全整数；重启时原子预留下一个号段，避免旧客户端 revision 与重置状态碰撞（[ADR-0003](../../../../../../docs/adr/0003-tex-51-room-recovery-authority.md)） | 手写、同步 Drizzle schema / snapshot |
 
-`meta/_journal.json` 登记以上三者；`meta/0000_snapshot.json` 仅反映 Drizzle 表达的子集（两个 DEFERRABLE FK 与权限不在 snapshot 中）。
+`meta/_journal.json` 登记以上四者；`meta/0000_snapshot.json` 与 `meta/0003_snapshot.json` 仅反映 Drizzle 表达的子集（两个 DEFERRABLE FK 与权限不在 snapshot 中）。
+
+TEX-51 发布前须先执行迁移 `0003`。该字段为现存 Room 自动回填首个号段上界；应用回滚可保留字段，但旧应用不遵守 revision 上界，不能据此保证随后再次升级时的严格单调，部署边界见 ADR-0003。迁移只增加列与约束，不读取或变更成员凭证、手牌或历史数据。
 
 ## 命令
 
