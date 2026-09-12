@@ -2,6 +2,8 @@
 
 TEX-52：CLOSED 提交后同步失效邀请码/鉴权、发布最后 RoomSnapshot；停止队列入口并等待在途控制事务、关联 Tournament 清理后删除重型 Runtime。保留期仅保留 `{roomId, closedReason, closedAt}` 三字段 tombstone 10 分钟，timer 使用独立 closure，不能保留原成员/凭证。迟到请求沿用 `ROOM_NOT_FOUND`（不新增 wire 错误码）。`runtimeCounts()` 区分 registered / active / closedTombstones；`dispose()` 只卸载内存，不把关停误持久化成 CLOSED。来源 Tournament 的 CLOSE 命令在 Room 队列执行点验证 activeTournamentId，旧赛不能关闭新赛。
 
+进程关停会先拒绝尚未准入的 `createRoom`，但等待已进入持久化事务的创建完成运行时注册与凭证返回，再统一卸载运行时；不得在 DB 已提交后因 `disposed` 丢弃响应而制造无人持有 Token 的持久化 Room。
+
 `runtime-lifecycle.test.ts` 使用真实 managers/Writer/epochs 与 Fake Clock，24 房间 / 72 场 / 多批次验证每轮终局保留、关房墓碑及清理后对象数回到零，记录 heap/RSS 但不依赖 GC；另覆盖卸载后待提交 Bundle 保留并继续完成提交与迟到 timer。失败重试回收另由 `tournaments/tournament-lifecycle.test.ts` 覆盖。
 
 `room-lifecycle-races.test.ts` 覆盖终局动作重放/快照、延迟清理时 LEAVE 回执、下游释放失败和订阅者异常。广播逐观察者隔离异常，继续执行全部权限撤销与清理；生产通过安全 Room ID 诊断，观察者错误不回滚已提交状态。
@@ -14,6 +16,7 @@ TEX-51：`registerRecovered` 仅供启动屏障使用，注册已验证的成员
 - **串行执行**：`room-executor.ts` 每个 Room 一个串行队列；HTTP/WS 只能经 `RoomManager.submitCommand` 投递命令，不得直接 mutate。控制面先提交（先持久化成功再确认），避免半提交与检查后写入竞态；WS 的 Ready/普通离开命令在取得队列执行权时复核连接 epoch，已由 Tournament 确认的撤回只做后续成员清理。
 - **比赛中离开**：Tournament 先权威确认 `WITHDRAW_PLAYER`，再由 Room 串行移除成员、撤销 Token/转移 Host；HTTP 与 WS 走同一顺序。
 - **状态机**：`LOBBY → IN_GAME → FINISHED → LOBBY`，任意态可转 `CLOSED`；`roomRevision` 单调递增、只增不回退。「再来一局」由 `START_TOURNAMENT` 在单命令内原子完成 FINISHED→LOBBY→IN_GAME：`expectedRevision` 校验提交前状态，中间 `LOBBY` 不暴露、不落库。
+- **恢复后的再来一局**：终局恢复保持当前真人的 `ready=true`，与未重启的 FINISHED 运行时一致，使 Host 仍可直接提交下一场；LOBBY/IN_GAME 恢复不伪造 Ready。
 - **开局**：`TournamentStarter` port（`tournament-starter.ts`）由 TEX-20 注入运行时；默认实现仅单事务落库 Tournament + locked players + Room→IN_GAME，不实现 Hand 循环、不伪造 Engine 结果。
 - **凭证**：`playerToken` 256-bit 熵、仅创建/加入响应返回；HMAC 摘要落库（`infrastructure/persistence/player-token.ts`）；鉴权由 token 摘要反查 `playerId`。
 - **邀请码**：31 字符字母表、无偏 rejection sampling、最多 10 次冲突重试（`invite-code.ts`）。

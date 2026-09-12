@@ -103,6 +103,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
   const tombstones = new Map<string, ClosedRoomTombstone>();
   const tombstoneTimers = new Map<string, TimerHandle>();
   const closing = new Map<string, Promise<void>>();
+  const admittedCreates = new Set<Promise<PlayerSession>>();
   const scheduler = deps.scheduler ?? createNodeTimerScheduler();
   const clock = deps.clock ?? deps.ids.now;
   let disposed = false;
@@ -224,51 +225,60 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       if (deps.isPersistenceAvailable !== undefined && !deps.isPersistenceAvailable()) {
         throw new RoomDomainError("GAME_UNAVAILABLE");
       }
-      const roomId = deps.ids.uuid();
-      const playerId = deps.ids.uuid();
-      const inviteCode = generateUniqueInviteCode(deps.ids.randomBytes, (code) =>
-        inviteByCode.has(code),
-      );
-      const { token, digest } = makeToken(roomId, playerId);
-      await deps.roomRepository.createRoomWithHost({
-        roomId,
-        mode: "MULTIPLAYER",
-        inviteCode,
-        configJson: input.config,
-        initialStatus: "LOBBY",
-        host: {
-          playerId,
-          displayName: input.displayName,
-          tokenDigest: digest,
-          tokenKeyId: deps.tokenKeyId,
-        },
-      });
-      if (disposed) throw new RoomDomainError("GAME_UNAVAILABLE");
-      const state = createRoomState({
-        roomId,
-        inviteCode,
-        host: {
-          playerId,
-          displayName: input.displayName,
-          displayNameKey: input.displayNameKey,
-          joinedAt: deps.ids.now(),
-          tokenDigest: digest,
-          tokenKeyId: deps.tokenKeyId,
-        },
-        config: input.config,
-      });
-      const runtime = new RoomRuntime(state, {
-        persistence: deps.persistence,
-        ids: deps.ids,
-        revisionCeiling: 4_294_967_295,
-        isConnectionCurrent: deps.isConnectionCurrent,
-        onStartCommitted: deps.onStartCommitted,
-      });
-      rooms.set(roomId, runtime);
-      inviteByCode.set(inviteCode, roomId);
-      const roomSnapshot = projectRoomSnapshot(state);
-      publish(roomSnapshot);
-      return { roomId, playerId, playerToken: token, roomSnapshot };
+      // shutdown 只拒绝尚未准入的创建；一旦进入持久化事务，就必须完成运行时注册并
+      // 返回凭证。dispose 会等待这些操作后再统一卸载，避免留下无人可达的持久化 Room。
+      const operation = (async (): Promise<PlayerSession> => {
+        const roomId = deps.ids.uuid();
+        const playerId = deps.ids.uuid();
+        const inviteCode = generateUniqueInviteCode(deps.ids.randomBytes, (code) =>
+          inviteByCode.has(code),
+        );
+        const { token, digest } = makeToken(roomId, playerId);
+        await deps.roomRepository.createRoomWithHost({
+          roomId,
+          mode: "MULTIPLAYER",
+          inviteCode,
+          configJson: input.config,
+          initialStatus: "LOBBY",
+          host: {
+            playerId,
+            displayName: input.displayName,
+            tokenDigest: digest,
+            tokenKeyId: deps.tokenKeyId,
+          },
+        });
+        const state = createRoomState({
+          roomId,
+          inviteCode,
+          host: {
+            playerId,
+            displayName: input.displayName,
+            displayNameKey: input.displayNameKey,
+            joinedAt: deps.ids.now(),
+            tokenDigest: digest,
+            tokenKeyId: deps.tokenKeyId,
+          },
+          config: input.config,
+        });
+        const runtime = new RoomRuntime(state, {
+          persistence: deps.persistence,
+          ids: deps.ids,
+          revisionCeiling: 4_294_967_295,
+          isConnectionCurrent: deps.isConnectionCurrent,
+          onStartCommitted: deps.onStartCommitted,
+        });
+        rooms.set(roomId, runtime);
+        inviteByCode.set(inviteCode, roomId);
+        const roomSnapshot = projectRoomSnapshot(state);
+        publish(roomSnapshot);
+        return { roomId, playerId, playerToken: token, roomSnapshot };
+      })();
+      admittedCreates.add(operation);
+      try {
+        return await operation;
+      } finally {
+        admittedCreates.delete(operation);
+      }
     },
 
     async joinRoom(input) {
@@ -357,6 +367,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       disposed = true;
       for (const timer of tombstoneTimers.values()) scheduler.clearTimeout(timer);
       tombstoneTimers.clear();
+      await Promise.allSettled([...admittedCreates]);
       await Promise.all([...rooms.values()].map((runtime) => runtime.dispose()));
       await Promise.all([...closing.values()]);
       rooms.clear();

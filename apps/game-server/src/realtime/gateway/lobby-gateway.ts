@@ -487,10 +487,11 @@ export function registerLobbyGateway(
       if (room === undefined || room.status === "CLOSED" || runtime?.roomId !== roomId)
         return false;
       if (!room.players.some((player) => player.playerId === playerId)) return false;
+      if (room.activeTournamentId === tournamentId) return true;
       return (
-        room.activeTournamentId === tournamentId ||
-        runtime.status === "FINISHED" ||
-        runtime.status === "ABANDONED_NO_HUMAN"
+        typeof playerId === "string" &&
+        (runtime.status === "FINISHED" || runtime.status === "ABANDONED_NO_HUMAN") &&
+        runtime.players.has(playerId)
       );
     }
 

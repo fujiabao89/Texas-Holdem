@@ -10,7 +10,7 @@ TEX-52：Writer 在 `enqueue` 复制 Bundle 并保留 Buffer/Date/BigInt，嵌�
 | --- | --- |
 | `persistence-writer.ts` | 唯一写者的异步编排：接收 `HandCommitBundle`，按 Tournament 严格串行、全局最多 8 路并发写 PostgreSQL；瞬态失败指数退避（`250ms × 2^attempt` ±20% jitter、最高 30s）；items/bytes/age 三维 soft/hard watermark；`PersistenceError` 数据损坏隔离；`flush` 供优雅关停。 |
 | `recovery.ts` | 崩溃恢复编排：定位活跃比赛 → 校验快照（版本/checksum/事件连续性/序列对齐）→ `TournamentEngine.restore` 重建运行时；不可验证向前退回（含 `rollbackToSnapshot`）；无可验证根则隔离并上报。 |
-| `room-recovery.ts` | TEX-51 生产启动屏障：一致 Room/身份元数据 → 配置/锁定座位/检查点/不变量校验 → revision 号段预留及必要控制面协调 → 先 Room 后 Tournament 注册；单房隔离、重复恢复不覆盖现有状态。 |
+| `room-recovery.ts` | TEX-51 生产启动屏障：一致 Room/身份元数据 → 配置/锁定座位/检查点/不变量校验 → revision 号段预留及必要控制面协调 → 先 Room 后 Tournament 注册；单房隔离、重复恢复不覆盖现有状态。FINISHED 恢复保持真人 Ready，保留直接“再来一局”的路径。 |
 
 `prepareTournamentRecovery` 先返回恢复计划，不注册也不立即回退 DB；整条 Room/身份链验证通过后才提交回退。`recoverActiveTournaments` 保留为比赛级测试/兼容入口，生产启动使用完整 Room 屏障。真实进程重启验收见 `tests/integration/room-restart.test.ts`，数据库迁移及诊断见 [恢复运行手册](../../../../docs/05-operations/room-recovery.md)。
 

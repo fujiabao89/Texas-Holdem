@@ -504,9 +504,11 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 
 收到第二次终止信号只缩短到当前 Flush 阶段，不绕过 DB 事务原子性。Liveness 在进程实际退出前保持成功，Readiness 从步骤 1 起保持失败。
 
+`createRoom` 一旦已准入并进入 Room+Host 持久化事务，关停会等待它完成运行时注册和凭证响应；只有尚未准入的创建被拒绝。随后再统一卸载运行时，避免 DB 已提交但调用方未取得 Token 的孤儿 Room。
+
 ### 13.2 终局内存卸载
 
-**TEX-52 已实施**：TournamentExecutor 的终局通知只在最后事件/Bundle 输出并退出 drain 后发一次，保留期内 Action/TimeBank 先查成功幂等结果、新命令拒绝；所有旧 timer generation 失效。Manager 按 executor identity 安排 10 分钟保留，旧回调不能删除新赛，`activeTournamentIds` 仅 RUNNING，注册/终局保留/冻结分别观测。Gateway 允许同 Room 的保留期最终 Snapshot 与原动作重放（不要求其仍是 activeTournamentId），跨房间或已撤销身份仍拒绝。
+**TEX-52 已实施**：TournamentExecutor 的终局通知只在最后事件/Bundle 输出并退出 drain 后发一次，保留期内 Action/TimeBank 先查成功幂等结果、新命令拒绝；所有旧 timer generation 失效。Manager 按 executor identity 安排 10 分钟保留，旧回调不能删除新赛，`activeTournamentIds` 仅 RUNNING，注册/终局保留/冻结分别观测。Gateway 只允许该 Tournament 的原参赛者读取保留期最终 Snapshot 与重放其原动作（不要求比赛仍是 activeTournamentId）；后来加入同 Room 的成员、跨房间身份或已撤销身份均拒绝。事件与时钟广播只跟随 Room 当前 `activeTournamentId`，不会把旧赛实时流转发给新一场成员。
 
 Room 快照广播隔离每个观察者的异常，必须继续其他连接的同步撤销并完成本地清理；诊断只包含 Room ID。已提交的控制面状态不因发送/观察者故障回滚。
 

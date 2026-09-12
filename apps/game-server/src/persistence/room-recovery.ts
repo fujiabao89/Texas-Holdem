@@ -210,6 +210,15 @@ async function recoverRooms(deps: RoomRecoveryDeps): Promise<RoomRecoverySummary
       }
       const status =
         plan === undefined ? "LOBBY" : plan.state.phase === "finished" ? "FINISHED" : "IN_GAME";
+      if (status === "FINISHED") {
+        // 正常运行时终局不会清空参赛者的 ready；恢复必须保持相同状态，才能让 Host
+        // 通过单条 START_TOURNAMENT 完成 FINISHED→LOBBY→IN_GAME 的再来一局迁移。
+        for (const member of base.members.values()) {
+          if (member.kind === "HUMAN") {
+            base.members.set(member.playerId, { ...member, ready: true });
+          }
+        }
+      }
       const lease = await recoveryIo("reserve-room-revision", () =>
         deps.roomRecoveryRepo.reserveRoomRevision(record.roomId),
       );

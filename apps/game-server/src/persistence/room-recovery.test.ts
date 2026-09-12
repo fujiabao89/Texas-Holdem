@@ -350,10 +350,20 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
     expect(result.isolated).toEqual([
       { roomId: "r1", tournamentId: "t1", reason: "superseded-tournament" },
     ]);
-    expect(h.roomManager.getSnapshot(record.roomId)).toMatchObject({
+    const recoveredRoom = h.roomManager.getSnapshot(record.roomId)!;
+    expect(recoveredRoom).toMatchObject({
       status: "FINISHED",
       activeTournamentId: null,
     });
+    expect(recoveredRoom.players.every((player) => player.ready)).toBe(true);
+    await expect(
+      h.roomManager.submitCommand(record.roomId, {
+        type: "START_TOURNAMENT",
+        actorPlayerId: record.hostPlayerId!,
+        expectedRevision: Number(recoveredRoom.roomRevision),
+        tournamentId: "t2",
+      }),
+    ).resolves.toMatchObject({ state: { status: "IN_GAME", activeTournamentId: "t2" } });
     expect(h.setRoomStatus).toHaveBeenCalledWith(record.roomId, "FINISHED");
     expect(h.createRecovered).not.toHaveBeenCalled();
     expect(h.createRecoveredFresh).not.toHaveBeenCalled();
