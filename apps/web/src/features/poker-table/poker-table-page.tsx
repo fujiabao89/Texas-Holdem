@@ -136,7 +136,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
 
   return <TableFrame reducedMotion={presentation.reducedMotion}>
     <header className="rr-table-header mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm sm:px-5">
-      <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="mt-0.5 text-sm text-slate-500">{message("table.handPhase")}：{phaseName(game.handPhase)}</p></div>
+      <div className="table-heading"><span className="table-heading-mark" aria-hidden="true">♠</span><div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="table-subtitle">{message("table.gameType")}<span aria-hidden="true"> · </span>{formatMessage("table.blinds", { small: canonicalGame.blindLevel.smallBlind, big: canonicalGame.blindLevel.bigBlind })}</p></div></div>
       <div className="flex flex-wrap items-center gap-2">
         <button className={buttonClass} onClick={() => setHistoryOpen(true)} ref={historyButtonRef} type="button">{message("history.open")}</button>
         <button className={buttonClass} aria-label={message("table.soundLabel")} aria-pressed={soundEnabled} onClick={() => { void audio.unlock(); setSoundEnabled(!soundEnabled); }} type="button">{soundEnabled ? message("table.soundOn") : message("table.soundOff")}</button>
@@ -149,24 +149,24 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         <Link className="ml-2 underline" href="/">{message("spectator.exit")}</Link>
       </p>
     )}
-    <section className="relative mx-auto w-full max-w-[1240px] pb-10 pt-[4.5rem] sm:pb-16 sm:pt-[5.5rem]" aria-label={message("table.title")}>
+    <section className="table-stage relative mx-auto w-full max-w-[1240px] pb-10 pt-[4.5rem] sm:pb-16 sm:pt-[5.5rem]" aria-label={message("table.title")}>
       <DealerDeck onElement={setDeckElement} />
       <div ref={setTableElement} data-presentation-mode={presentation.mode} className="rr-table-felt table-presentation relative mx-auto aspect-[0.56/1] w-full rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:aspect-[1.72/1] sm:border-[18px]">
-        <div aria-hidden="true" className="absolute inset-[4%] rounded-[46%] border border-emerald-300/25 bg-[radial-gradient(ellipse_at_center,rgba(20,148,111,0.28),transparent_65%)]" />
-        <p aria-hidden="true" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none whitespace-nowrap font-serif text-3xl font-semibold tracking-[0.2em] text-emerald-200/10 sm:text-6xl">TEXAS HOLD&apos;EM</p>
-        <div className="absolute left-1/2 top-[31%] z-20 flex -translate-x-1/2 items-center gap-2 text-center sm:top-[34%]">
-          <span className="rounded-full bg-emerald-100/35 px-2.5 py-1 text-[10px] font-semibold text-emerald-50 backdrop-blur sm:px-3 sm:text-xs">{phaseName(game.handPhase)}</span>
-          <span data-pot-total className="rounded-full bg-amber-300/85 px-2.5 py-1 text-[10px] font-bold text-amber-950 shadow-sm sm:px-3 sm:text-xs">{message("table.pot")}：{game.pots.reduce((total, pot) => total + pot.amount, 0)}</span>
+        <div aria-hidden="true" className="table-stitch absolute inset-[4%] rounded-[46%] border border-emerald-300/25 bg-[radial-gradient(ellipse_at_center,rgba(20,148,111,0.28),transparent_65%)]" />
+        <p aria-hidden="true" className="table-watermark absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none whitespace-nowrap font-serif text-3xl font-semibold tracking-[0.2em] text-emerald-200/10 sm:text-6xl">TEXAS HOLD&apos;EM</p>
+        <div className="table-center-info absolute left-1/2 top-[31%] z-20 flex -translate-x-1/2 items-center gap-2 text-center sm:top-[34%]">
+          <span className="table-phase rounded-full bg-emerald-100/35 px-2.5 py-1 text-[10px] font-semibold text-emerald-50 backdrop-blur sm:px-3 sm:text-xs">{phaseName(game.handPhase)}</span>
+          <span data-pot-total className="table-pot-total rounded-full bg-amber-300/85 px-2.5 py-1 text-[10px] font-bold text-amber-950 shadow-sm sm:px-3 sm:text-xs"><span className="table-pot-label">{message("table.pot")}</span><strong>{game.pots.reduce((total, pot) => total + pot.amount, 0).toLocaleString("zh-CN")}</strong></span>
         </div>
-        <div className="absolute left-1/2 top-1/2 z-20 w-[94%] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-emerald-100/10 bg-emerald-100/20 p-2.5 shadow-inner sm:w-auto sm:p-3" aria-label={message("table.board")}>
+        <div className="table-board-zone absolute left-1/2 top-1/2 z-20 w-[94%] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-emerald-100/10 bg-emerald-100/20 p-2.5 shadow-inner sm:w-auto sm:p-3" aria-label={message("table.board")}>
           <p className="sr-only">{message("table.board")}</p>
           <CommunityCards cards={game.board} overlay={presentation.overlay} deckElement={deckElement} />
         </div>
-        <div className="absolute left-1/2 top-[63%] z-20 flex w-[68%] -translate-x-1/2 flex-wrap justify-center gap-1" aria-label={message("table.pot")}>
+        <div className="table-pot-list absolute left-1/2 top-[63%] z-20 flex w-[68%] -translate-x-1/2 flex-wrap justify-center gap-1" aria-label={message("table.pot")}>
           {game.pots.map((pot, index) => <span data-pot-index={index} className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold sm:text-[11px] ${presentation.overlay?.event.type === "POT_AWARDED" && presentation.overlay.event.payload.potIndex === index ? "border-amber-200 bg-amber-100 text-amber-950" : "border-emerald-100/25 bg-emerald-950/65 text-emerald-50"}`} key={index}>{potName(index)} · {pot.amount}</span>)}
         </div>
         <div data-muck className="pointer-events-none absolute left-[23%] top-[20%] rounded-lg border border-dashed border-emerald-100/20 px-2 py-1 text-[8px] text-emerald-100/60 sm:text-[10px]" aria-label={message("table.feedback.muck")}>{message("table.feedback.muck")}</div>
-        <div className="absolute bottom-[8%] left-1/2 z-20 -translate-x-1/2 text-center text-[10px] font-medium text-emerald-100/75 sm:text-xs">
+        <div className="table-actor-caption absolute bottom-[8%] left-1/2 z-20 -translate-x-1/2 text-center text-[10px] font-medium text-emerald-100/75 sm:text-xs">
           <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{actorName(canonicalGame) ?? message("table.waiting")}</span>
         </div>
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
@@ -175,7 +175,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} tableElement={tableElement} deckElement={deckElement} key={presentation.overlay.eventKey} />}
       </div>
     </section>
-    <section className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-center shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${canonicalGame.handId}:${canonicalGame.currentActorPlayerId ?? "none"}`} /></section>
+    <section className="table-clock-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-center shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus hasActor={canonicalGame.currentActorPlayerId !== null} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${canonicalGame.handId}:${canonicalGame.currentActorPlayerId ?? "none"}`} /></section>
     {state.actionsDisabled && <p className="rounded bg-amber-50 p-3 text-sm" role="status">{message("table.syncing")}</p>}
     {presentation.notice === "SYNCED" && <p className="mx-auto w-full max-w-3xl rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm" role="status">{message("table.progressSynced")}</p>}
     {connectionState !== "CONNECTED" && <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm" role="status" aria-live="polite">{message("table.reconnectingNotice")}</p>}
@@ -210,9 +210,9 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
     }
     onAction(currentRange.kind === "BET" ? { type: "BET", betTo: submittedAmount } : { type: "RAISE", raiseTo: submittedAmount });
   };
-  return <section className="table-controls-enter relative z-20 mx-auto -mt-1 grid w-full max-w-xl gap-3 rounded-3xl border border-white/80 bg-white/95 p-3 shadow-[0_16px_35px_rgba(15,23,42,0.16)] backdrop-blur sm:p-4" aria-labelledby="actions-heading">
-    <h2 id="actions-heading" className="sr-only">{message("betting.actions")}</h2>
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+  return <section className="rr-betting-panel table-controls-enter relative z-20 mx-auto -mt-1 grid w-full max-w-xl gap-3 rounded-3xl border border-white/80 bg-white/95 p-3 shadow-[0_16px_35px_rgba(15,23,42,0.16)] backdrop-blur sm:p-4" aria-labelledby="actions-heading">
+    <div className="table-action-heading"><h2 id="actions-heading">{message("betting.actions")}</h2><span>{message("table.yourTurn")}</span></div>
+    <div className="table-primary-actions grid grid-cols-2 gap-2 sm:grid-cols-4">
       {legal.canFold && <ActionButton tone="fold" label={message("betting.fold")} onClick={() => onAction({ type: "FOLD" })} />}
       {legal.canCheck && <ActionButton tone="call" label={message("betting.check")} onClick={() => onAction({ type: "CHECK" })} />}
       {legal.canCall && <ActionButton tone="call" label={formatMessage("betting.call", { amount: legal.callAmount })} onClick={() => onAction({ type: "CALL" })} />}
@@ -221,7 +221,7 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
       {legal.canAllIn && <ActionButton tone="allIn" label={allInConfirm ? formatMessage("betting.confirmAllIn", { amount: legal.allInTo }) : formatMessage("betting.allIn", { amount: legal.allInTo })} onClick={() => allInConfirm ? onAction({ type: "ALL_IN" }) : onSetAllInConfirm(true)} />}
       {actionDeadline !== null && timeBankRemainingMs > 0 && <ActionButton tone="neutral" label={message("table.useTimeBank")} onClick={onUseTimeBank} />}
     </div>
-    {currentRange !== null && <div className="grid gap-3 rounded-2xl bg-slate-50 p-3">
+    {currentRange !== null && <div className="table-wager-editor grid gap-3 rounded-2xl bg-slate-50 p-3">
       <p className="text-sm text-slate-600">{formatMessage("betting.range", { min: currentRange.min, max: currentRange.max })}</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{quick.map((item) => <ActionButton key={item.label} tone="neutral" label={`${item.label} · ${item.amount}`} onClick={() => onChooseAmount(item.amount, currentRange.kind)} />)}</div>
       <div className="flex items-center gap-2"><ActionButton tone="neutral" label="−" ariaLabel={message("betting.decrease")} onClick={() => onChooseAmount(displayedAmount - step, currentRange.kind)} /><input className="w-full accent-emerald-700" type="range" aria-label={message("betting.amount")} min={currentRange.min} max={currentRange.max} step={step} value={displayedAmount} onChange={(event) => onChooseAmount(Number(event.target.value), currentRange.kind)} /><ActionButton tone="neutral" label="+" ariaLabel={message("betting.increase")} onClick={() => onChooseAmount(displayedAmount + step, currentRange.kind)} /></div>
@@ -246,7 +246,7 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
   const playerEvent = overlay !== null && "playerId" in overlay.event.payload && overlay.event.payload.playerId === player.playerId ? overlay : null;
   const eventText = playerEvent === null ? null : actionFeedback(playerEvent.event);
   const departing = playerEvent?.event.type === "PLAYER_ELIMINATED" || playerEvent?.event.type === "PLAYER_WITHDRAWN";
-  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} className="table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 -translate-y-1/2 text-center sm:w-36" aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
+  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} data-viewer={viewer} data-active={active} className="table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 -translate-y-1/2 text-center sm:w-36" aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
     <div data-seat-cards className={`relative z-10 mx-auto -mb-1 flex min-h-8 justify-center sm:min-h-14 ${playerEvent?.event.type === "PLAYER_FOLDED" ? "opacity-35" : ""}`}>
       {revealCards === null
         ? stagedCardCount === null
@@ -256,8 +256,8 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
     </div>
     <div data-seat-chips className={`relative rounded-xl border px-1.5 py-1.5 shadow-lg sm:rounded-2xl sm:px-3 sm:py-2 ${award !== null ? "border-amber-100 bg-[#315d37] ring-2 ring-amber-200" : active ? "border-amber-300 bg-[#315d37] ring-2 ring-amber-300/75" : "border-slate-700 bg-[#203c2e]"} ${departing ? "table-seat-departing" : ""} ${player.pokerStatus === "ELIMINATED" || player.pokerStatus === "WITHDRAWN" ? "opacity-55" : ""}`} style={playerEvent === null ? undefined : { "--feedback-duration": `${playerEvent.durationMs}ms` } as CSSProperties}>
       {player.seat === game.dealerSeat && <span aria-label={message("table.dealer")} className="absolute -left-2 -top-2 grid h-5 w-5 place-items-center rounded-full border-2 border-white bg-slate-950 text-[9px] font-bold text-white shadow">D</span>}
-      <strong className="block truncate text-[10px] font-semibold text-white sm:text-sm">{player.displayName}</strong>
-      <span className="mt-0.5 block font-mono text-[9px] font-semibold text-emerald-300 sm:text-xs">{player.stack}</span>
+      <strong className="table-player-name block truncate text-[10px] font-semibold text-white sm:text-sm" title={player.displayName}>{viewer && <span className="table-you" aria-label={message("table.you")}>● </span>}{player.displayName}</strong>
+      <span className="table-player-stack mt-0.5 block font-mono text-[9px] font-semibold text-emerald-300 sm:text-xs"><span className="table-chip" aria-hidden="true" />{player.stack.toLocaleString("zh-CN")}</span>
       {award !== null && <span key={overlay?.eventKey} className="table-seat-award absolute -right-2 -top-3 rounded-full border border-amber-100 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-950" style={{ "--feedback-duration": `${animationTimings.winner}ms` } as CSSProperties}>{formatMessage("table.feedback.winnerAmount", { amount: award })}</span>}
     </div>
     {eventText !== null && <span className={`table-action-badge absolute left-1/2 top-full z-50 mt-1 w-max max-w-36 -translate-x-1/2 rounded-full px-2 py-1 text-[9px] font-semibold shadow sm:text-xs ${playerEvent?.event.type === "PLAYER_ALL_IN" ? "bg-amber-200 text-amber-950" : "bg-white text-slate-900"}`} style={{ "--feedback-duration": `${playerEvent?.durationMs ?? 0}ms` } as CSSProperties} key={playerEvent?.eventKey}>{eventText}</span>}
@@ -273,7 +273,7 @@ function CommunityCards({ cards, overlay, deckElement }: { readonly cards: reado
     const dealingCard = dealingIndex >= 0 ? dealingBoard?.boardCards[dealingIndex] : undefined;
     return card !== undefined ? <CardFace card={card} variant="board" key={`${card.rank}-${card.suit}-${index}`} />
       : dealingCard !== undefined ? <BoardDealCard card={dealingCard} index={dealingIndex} deckElement={deckElement} key={`${dealingBoard?.eventKey}:${index}`} />
-        : <span aria-hidden="true" className="h-16 w-12 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-24 sm:w-[4.3rem]" key={`empty-${index}`} />;
+        : <span aria-hidden="true" className="table-card-slot h-16 w-12 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-24 sm:w-[4.3rem]" key={`empty-${index}`} />;
   })}</div>;
 }
 
@@ -336,7 +336,7 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
   const dimensions = cardDimensions(variant);
   const cornerText = variant === "seat" ? "text-[8px] sm:text-xs" : "text-[10px] sm:text-sm";
   const color = red ? "text-rose-600" : "text-slate-900";
-  return <span role="img" className={`relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#fffef9,#eeeee2)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
+  return <span role="img" data-card-variant={variant} className={`table-card-face relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#fffef9,#eeeee2)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
     <CardPips card={card} variant={variant} />
     <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
@@ -344,15 +344,15 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
 }
 
 function CardBack({ variant, className = "" }: { readonly variant: "board" | "seat" | "hole"; readonly className?: string }) {
-  return <span role="img" className={`relative grid ${cardDimensions(variant)} ${className} shrink-0 place-items-center overflow-hidden rounded-[0.45rem] border border-[#dce5c9]/70 bg-[#355e40] shadow-[0_3px_7px_rgba(15,23,42,0.24)]`} aria-label={message("table.hiddenCard")}>
+  return <span role="img" data-card-variant={variant} className={`table-card-back relative grid ${cardDimensions(variant)} ${className} shrink-0 place-items-center overflow-hidden rounded-[0.45rem] border border-[#dce5c9]/70 bg-[#355e40] shadow-[0_3px_7px_rgba(15,23,42,0.24)]`} aria-label={message("table.hiddenCard")}>
     <span aria-hidden="true" className="absolute inset-1 rounded-[0.28rem] border border-[#dce5c9]/60 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.13)_0_1px,transparent_1px_5px)]" />
-    <span aria-hidden="true" className="relative h-1/3 w-1/2 rounded-full border border-[#dce5c9]/70 bg-[#dce5c9]/20" />
+    <span aria-hidden="true" className="table-card-seal relative h-1/3 w-1/2 rounded-full border border-[#dce5c9]/70 bg-[#dce5c9]/20">♠</span>
   </span>;
 }
 
 function CardCorner({ rank, suit, className }: { readonly rank: Card["rank"]; readonly suit: string; readonly className: string }) {
   const compactTen = rank === "10" ? "text-[8px] tracking-[-0.08em] sm:text-xs" : "";
-  return <span aria-hidden="true" className={`absolute z-10 grid justify-items-center gap-px rounded-[0.1rem] bg-white/95 px-px leading-[0.95] ${className} ${compactTen}`}><span>{rank}</span><span>{suit}</span></span>;
+  return <span aria-hidden="true" className={`table-card-corner absolute z-10 grid justify-items-center gap-px rounded-[0.1rem] bg-white/95 px-px leading-[0.95] ${className} ${compactTen}`}><span>{rank}</span><span>{suit}</span></span>;
 }
 
 function CardPips({ card, variant }: { readonly card: Card; readonly variant: "board" | "seat" | "hole" }) {
@@ -361,7 +361,7 @@ function CardPips({ card, variant }: { readonly card: Card; readonly variant: "b
   const layout = pipLayouts[card.rank];
   if (layout !== undefined) return <>{layout.map((pip, index) => <span aria-hidden="true" className={`absolute -translate-x-1/2 -translate-y-1/2 leading-none ${pip.inverted ? "rotate-180" : ""} ${pipText}`} style={{ left: `${pip.x}%`, top: `${pip.y}%` }} key={index}>{suit}</span>)}</>;
   if (card.rank === "A") return <span aria-hidden="true" className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl"}`}>{suit}</span>;
-  return <span aria-hidden="true" className={`absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 justify-items-center rounded-md border border-current/15 bg-white/45 px-1 leading-none ${variant === "seat" ? "text-base sm:text-2xl" : "text-2xl sm:text-4xl"}`}><span>{card.rank}</span><span className={variant === "seat" ? "text-xs sm:text-base" : "text-sm sm:text-xl"}>{suit}</span></span>;
+  return <span aria-hidden="true" className={`table-card-court absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 justify-items-center rounded-md border border-current/15 bg-white/45 px-1 leading-none ${variant === "seat" ? "text-base sm:text-2xl" : "text-2xl sm:text-4xl"}`}><span>{card.rank}</span><span className={variant === "seat" ? "text-xs sm:text-base" : "text-sm sm:text-xl"}>{suit}</span></span>;
 }
 
 function cardDimensions(variant: "board" | "seat" | "hole"): string {
@@ -381,7 +381,7 @@ const pipLayouts: Readonly<Partial<Record<Card["rank"], readonly PipPosition[]>>
   "10": [{ x: 38, y: 26 }, { x: 62, y: 26 }, { x: 38, y: 38 }, { x: 62, y: 38 }, { x: 38, y: 50 }, { x: 62, y: 50, inverted: true }, { x: 38, y: 62, inverted: true }, { x: 62, y: 62, inverted: true }, { x: 38, y: 74, inverted: true }, { x: 62, y: 74, inverted: true }],
 };
 
-function ClockStatus({ actionDeadline, timeBankMs, serverTime, clockKey }: { readonly actionDeadline: number | null; readonly timeBankMs: number; readonly serverTime: number; readonly clockKey: string }) {
+function ClockStatus({ hasActor, actionDeadline, timeBankMs, serverTime, clockKey }: { readonly actionDeadline: number | null; readonly timeBankMs: number; readonly serverTime: number; readonly clockKey: string; readonly hasActor: boolean }) {
   const [countdown, setCountdown] = useState<{ readonly clockKey: string; readonly actionDeadline: number; readonly remaining: number } | null>(null);
   useEffect(() => {
     if (actionDeadline === null) return;
@@ -397,9 +397,9 @@ function ClockStatus({ actionDeadline, timeBankMs, serverTime, clockKey }: { rea
     return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisibilityChange); };
   }, [actionDeadline, clockKey, serverTime]);
   const remaining = actionDeadline === null ? null : (countdown?.remaining ?? null);
-  return <p className="text-xs text-slate-600 sm:text-sm">{remaining === null ? message("table.waiting") : `${message("table.remainingTime")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(remaining / 1000) })} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>;
+  return <p className="text-xs text-[#40563d] sm:text-sm">{remaining === null ? message(hasActor && actionDeadline === null ? "table.unlimitedTime" : "table.waiting") : `${message("table.remainingTime")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(remaining / 1000) })} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>;
 }
-function ConnectionStatus({ connectionState, syncing }: { readonly connectionState: string; readonly syncing: boolean }) { return <p role="status" aria-live="polite" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">{syncing ? message("table.syncing") : connectionState === "CONNECTED" ? message("table.connectionConnected") : connectionState === "STOPPED" ? message("table.connectionReplaced") : connectionState === "CONNECTING" || connectionState === "AUTHENTICATING" ? message("table.connectionConnecting") : message("table.connectionDisconnected")}</p>; }
+function ConnectionStatus({ connectionState, syncing }: { readonly connectionState: string; readonly syncing: boolean }) { return <p role="status" aria-live="polite" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-[#40563d]">{syncing ? message("table.syncing") : connectionState === "CONNECTED" ? message("table.connectionConnected") : connectionState === "STOPPED" ? message("table.connectionReplaced") : connectionState === "CONNECTING" || connectionState === "AUTHENTICATING" ? message("table.connectionConnecting") : message("table.connectionDisconnected")}</p>; }
 function PresentationOverlay({ overlay, boardCards, game, tableElement, deckElement }: { readonly overlay: PresentationOverlayState; readonly boardCards: readonly Card[]; readonly game: GameSnapshot; readonly tableElement: HTMLDivElement | null; readonly deckElement: HTMLDivElement | null }) {
   const geometry = useOverlayGeometry(tableElement, deckElement);
   const event = overlay.event;

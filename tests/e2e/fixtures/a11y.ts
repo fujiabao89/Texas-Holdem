@@ -20,10 +20,22 @@ export async function scanAxeViolations(
   const threshold = order.indexOf(minImpact);
   // 等文档进入稳定可观测态（加载完成且 SSR <title> 就绪）再扫描，避免 WebKit 等
   // 冷启动下页面 shell 已渲染而 <head> 元数据尚未应用造成的 document-title 竞态误报。
-  // 若页面真实缺失 <title>，此处等待超时被吞掉，axe 仍会如实报告 document-title 违规。
+  // 还需等待路由进入动画结束：页面标题已可见时，动画中的不透明度会让 Firefox
+  // 将正常文字错误计算为低对比度。若页面真实缺失 <title>，此处等待超时被吞掉，
+  // axe 仍会如实报告 document-title 违规。
   await page
     .waitForFunction(() => document.readyState === "complete" && document.title.trim().length > 0, {
       timeout: 15_000,
+    })
+    .catch(() => undefined);
+  await page
+    .locator(".rr-route-enter")
+    .evaluate(async (route) => {
+      await Promise.all(
+        route
+          .getAnimations({ subtree: false })
+          .map((animation) => animation.finished.catch(() => undefined)),
+      );
     })
     .catch(() => undefined);
   const results = await new AxeBuilder({ page }).analyze();
