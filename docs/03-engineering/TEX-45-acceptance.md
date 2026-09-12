@@ -6,7 +6,7 @@
 
 从 `origin/main`（`ebdbce16`）创建分支，再快进到 TEX-44 已提交的 `1c2e0de0`，延续 River & Raise 产品风格。创建 PR 前对齐 TEX-44 后续已提交版本 `ca032e09`（仅首页字体样式变动），与本任务文件不冲突。TEX-44 的 PR #45 尚未合并，本任务以 `feat/TEX-44-river-and-raise-design` 为目标分支创建后续 PR；未修改原工作目录的部署文档、暂存内容或其他 Agent 的未交接工作。
 
-仅修改牌桌展示、中文文案、局部 CSS 导入和对应文档。细纹深绿桌布、双层桌沿、独立底池金额、权威盲注摘要、暖白本人座位、牌角/牌背纹样，以及下注面板的信息层次得到调整。640–1000px 使用更高的椭圆，640–760px 进一步分开左右座位；手机保留纵向布局。不限时行动时不再显示与“轮到你行动”冲突的等待文案。
+仅修改牌桌展示、中文文案、局部 CSS 导入和对应文档。细纹深绿桌布、双层桌沿、独立底池金额、权威盲注摘要、暖白本人座位、牌角/牌背纹样，以及下注面板的信息层次得到调整。640–1000px 使用更高的椭圆，640–760px 进一步分开左右座位；手机保留纵向布局。不限时行动时不再显示与“轮到你行动”冲突的等待文案。CI 修复将辅助文字颜色调至 WCAG AA 对比度，并让 axe 扫描在路由进入动画完成后检查最终呈现状态；页面动效和音效实现未改变。
 
 所有新 CSS 限制于 `.rr-table-page`。没有增加示例路由、客户端规则、依赖、服务端、协议或持久化变更。
 
@@ -21,6 +21,8 @@
 
 - `pnpm --filter @texas-holdem/protocol build`：通过。
 - `pnpm --filter @texas-holdem/web lint`、`pnpm --filter @texas-holdem/web typecheck`：通过。
+- `TEX_TEST_DATABASE_URL=postgres://tex_test:tex_test_pw@127.0.0.1:55432/tex_e2e pnpm run test:e2e:real -- --grep '纯键盘主流程与关键页面 axe 扫描'`：Chromium、Firefox、WebKit 共 3 项通过。
+- `pnpm run test:e2e -- --workers=1`：44 项通过。12 worker 的额外本机全量复跑曾有 3 项既有交互竞争失败；单 worker 未复现，远端常规 `e2e` 检查也已通过。
 - `pnpm exec vitest run --project unit apps/web --maxWorkers 1`：19 文件、168 项通过。
 - `pnpm --filter @texas-holdem/web build`：生产构建、TypeScript 与全部路由生成通过。
 - 使用 3195 端口的生产构建，设置 `TEX_E2E_BASE_URL=http://127.0.0.1:3195`、`TEX_E2E_PORT=3195`，执行 `pnpm exec playwright test -c tests/e2e/playwright.config.ts betting reconnect animation-audio --workers=1`：首轮 27 项通过。后续静态布局与不限时文案调整后，以 `--grep-invert '6x CPU'` 复核 26 项交互；CPU 采样不作为视觉布局门禁反复运行。
