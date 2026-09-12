@@ -27,9 +27,17 @@ import type {
   RecoveryRepository,
 } from "../infrastructure/persistence/repositories/recovery";
 import { TournamentEngine, assertTournamentInvariants } from "@texas-holdem/poker-engine";
-import type { RandomSource, TournamentEngineOptions, TournamentState } from "@texas-holdem/poker-engine";
+import type {
+  RandomSource,
+  TournamentEngineOptions,
+  TournamentState,
+} from "@texas-holdem/poker-engine";
 import { TournamentConfigSchema, type TournamentConfig } from "@texas-holdem/protocol";
-import type { TournamentManager, TournamentRecoverFreshInput, TournamentRecoverInput } from "../tournaments/tournament-manager";
+import type {
+  TournamentManager,
+  TournamentRecoverFreshInput,
+  TournamentRecoverInput,
+} from "../tournaments/tournament-manager";
 import type { PlayerSeed } from "../tournaments/tournament-runtime";
 import { ENGINE_VERSION, SCHEMA_VERSION } from "../tournaments/tournament-persistence";
 import type { IdSource } from "../rooms/id-source";
@@ -50,8 +58,19 @@ export interface RecoveryDeps {
 
 export type RecoveryPlanDeps = Omit<RecoveryDeps, "manager">;
 export type TournamentRecoveryPlan =
-  | { kind: "reinitialized"; input: TournamentRecoverFreshInput; state: TournamentState; commit: () => Promise<void> }
-  | { kind: "recovered"; input: TournamentRecoverInput; state: TournamentState; fromSequence: bigint; commit: () => Promise<void> }
+  | {
+      kind: "reinitialized";
+      input: TournamentRecoverFreshInput;
+      state: TournamentState;
+      commit: () => Promise<void>;
+    }
+  | {
+      kind: "recovered";
+      input: TournamentRecoverInput;
+      state: TournamentState;
+      fromSequence: bigint;
+      commit: () => Promise<void>;
+    }
   | { kind: "unrecoverable"; reason: string };
 
 export interface RecoverySummary {
@@ -83,7 +102,14 @@ export async function recoverActiveTournaments(deps: RecoveryDeps): Promise<Reco
   for (const record of active) {
     let outcome: TournamentRecoveryPlan;
     try {
-      outcome = await prepareTournamentRecovery(deps, record.tournamentId, record.roomId, record.configJson, record.lastCommittedSequence, record.players);
+      outcome = await prepareTournamentRecovery(
+        deps,
+        record.tournamentId,
+        record.roomId,
+        record.configJson,
+        record.lastCommittedSequence,
+        record.players,
+      );
       if (outcome.kind !== "unrecoverable") await outcome.commit();
       if (outcome.kind === "recovered") await deps.manager.createRecovered(outcome.input);
       if (outcome.kind === "reinitialized") await deps.manager.createRecoveredFresh(outcome.input);
@@ -112,7 +138,12 @@ export async function prepareTournamentRecovery(
   players: readonly ActiveTournamentPlayers[],
 ): Promise<TournamentRecoveryPlan> {
   const parsed = TournamentConfigSchema.safeParse(configJson);
-  if (!parsed.success || !validLockedPlayers(players, parsed.data) || lastCommittedSequence < 0n || lastCommittedSequence > BigInt(Number.MAX_SAFE_INTEGER)) {
+  if (
+    !parsed.success ||
+    !validLockedPlayers(players, parsed.data) ||
+    lastCommittedSequence < 0n ||
+    lastCommittedSequence > BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
     return { kind: "unrecoverable", reason: "invalid-config-or-locked-players" };
   }
   const config = parsed.data;
@@ -126,7 +157,16 @@ export async function prepareTournamentRecovery(
       rng: deps.rngFactory(),
       engineOptions: deps.engineOptionsFactory?.(),
     };
-    const state = new TournamentEngine(config, deps.rngFactory(), players.map(p => ({ seatIndex: p.seatIndex, name: p.displayName, kind: p.kind === "BOT" ? "bot" : "human" })), input.engineOptions).getState();
+    const state = new TournamentEngine(
+      config,
+      deps.rngFactory(),
+      players.map((p) => ({
+        seatIndex: p.seatIndex,
+        name: p.displayName,
+        kind: p.kind === "BOT" ? "bot" : "human",
+      })),
+      input.engineOptions,
+    ).getState();
     return { kind: "reinitialized", input, state, commit: async () => undefined };
   }
 
@@ -139,20 +179,17 @@ export async function prepareTournamentRecovery(
   let fallback: ValidatedSnapshot | null = null;
   for (const snapshot of snapshots) {
     if (snapshot.sequence > lastCommittedSequence) continue; // 不应出现；防御性跳过
-    const validated = await tryValidate(
-      deps,
-      tournamentId,
-      snapshot,
-      players,
-      config,
-    );
+    const validated = await tryValidate(deps, tournamentId, snapshot, players, config);
     if (validated !== null) {
       fallback = validated;
       break;
     }
   }
   if (fallback === null) {
-    return { kind: "unrecoverable", reason: "no verifiable snapshot (orphan/gap/checksum/version)" };
+    return {
+      kind: "unrecoverable",
+      reason: "no verifiable snapshot (orphan/gap/checksum/version)",
+    };
   }
 
   // 向前退回：最新不可验证、回退到上一可验证 Snapshot → 重置 DB 到该水位（§4.3/§7.5）。
@@ -194,7 +231,13 @@ export async function prepareTournamentRecovery(
       timeBank: extractServerTimeBank(fallback.state),
     },
   };
-  return { kind: "recovered", input, state: fallback.state, fromSequence: fallback.snapshot.sequence, commit };
+  return {
+    kind: "recovered",
+    input,
+    state: fallback.state,
+    fromSequence: fallback.snapshot.sequence,
+    commit,
+  };
 }
 
 /** 校验快照可验证性；不可验证返回 null（调用方向前退回）。 */
@@ -213,10 +256,17 @@ async function tryValidate(
   // 结构校验：state 必须是手末边界内部 GameState。
   const state = snapshot.state;
   if (!isHandBoundaryState(state)) return null;
-  if (snapshot.tournamentId !== tournamentId || !validSnapshotParticipants(state, players, config)) return null;
+  if (snapshot.tournamentId !== tournamentId || !validSnapshotParticipants(state, players, config))
+    return null;
   // Time Bank 启用时，serverTimeBank 必须为**每个锁定参赛者**提供有限非负整数余额；
   // 缺失或部分覆盖（遗漏玩家）→ 拒绝，遗漏玩家不得恢复为满余额（P1-D）。
-  if (!hasCompleteServerTimeBank(state, players.map(p => p.playerId))) return null;
+  if (
+    !hasCompleteServerTimeBank(
+      state,
+      players.map((p) => p.playerId),
+    )
+  )
+    return null;
   // state_checksum 与 state 一致（canonical JSON 往返稳定，§5.7）。
   const recomputed = sha256Checksum(state);
   if (Buffer.compare(recomputed, snapshot.stateChecksum) !== 0) return null;
@@ -227,7 +277,8 @@ async function tryValidate(
   );
   if (!continuous) return null;
   // 序列连续性：state.nextSequence 必须等于快照水位（恢复后 wire 无缝衔接的前提）。
-  if (!Number.isSafeInteger(state.nextSequence) || BigInt(state.nextSequence) !== snapshot.sequence) return null;
+  if (!Number.isSafeInteger(state.nextSequence) || BigInt(state.nextSequence) !== snapshot.sequence)
+    return null;
   try {
     assertTournamentInvariants(state);
     TournamentEngine.restore(state, deps.rngFactory(), deps.engineOptionsFactory?.());
@@ -237,37 +288,73 @@ async function tryValidate(
   return { snapshot, state };
 }
 
-function validLockedPlayers(players: readonly ActiveTournamentPlayers[], config: TournamentConfig): boolean {
-  return players.length >= 2 && players.length <= config.maxPlayers &&
-    new Set(players.map(p => p.id)).size === players.length &&
-    new Set(players.map(p => p.playerId)).size === players.length &&
-    new Set(players.map(p => p.seatIndex)).size === players.length &&
+function validLockedPlayers(
+  players: readonly ActiveTournamentPlayers[],
+  config: TournamentConfig,
+): boolean {
+  return (
+    players.length >= 2 &&
+    players.length <= config.maxPlayers &&
+    new Set(players.map((p) => p.id)).size === players.length &&
+    new Set(players.map((p) => p.playerId)).size === players.length &&
+    new Set(players.map((p) => p.seatIndex)).size === players.length &&
     Number.isSafeInteger(config.startingStack * players.length) &&
-    players.every(p => Number.isInteger(p.seatIndex) && p.seatIndex >= 0 && p.seatIndex < config.maxPlayers &&
-      (p.kind === "HUMAN" || p.kind === "BOT") && p.startingStack === BigInt(config.startingStack));
+    players.every(
+      (p) =>
+        Number.isInteger(p.seatIndex) &&
+        p.seatIndex >= 0 &&
+        p.seatIndex < config.maxPlayers &&
+        (p.kind === "HUMAN" || p.kind === "BOT") &&
+        p.startingStack === BigInt(config.startingStack),
+    )
+  );
 }
 
-function validSnapshotParticipants(state: TournamentState, players: readonly ActiveTournamentPlayers[], config: TournamentConfig): boolean {
+function validSnapshotParticipants(
+  state: TournamentState,
+  players: readonly ActiveTournamentPlayers[],
+  config: TournamentConfig,
+): boolean {
   const parsed = TournamentConfigSchema.safeParse(state.config);
-  if (!parsed.success || stableStringify(parsed.data) !== stableStringify(config) ||
-    !["running", "finished"].includes(state.phase) || !Number.isSafeInteger(state.handNumber) || state.handNumber < 1 ||
-    !Number.isInteger(state.blindLevel) || state.blindLevel < 0 || state.blindLevel >= config.blindStructure.length ||
+  if (
+    !parsed.success ||
+    stableStringify(parsed.data) !== stableStringify(config) ||
+    !["running", "finished"].includes(state.phase) ||
+    !Number.isSafeInteger(state.handNumber) ||
+    state.handNumber < 1 ||
+    !Number.isInteger(state.blindLevel) ||
+    state.blindLevel < 0 ||
+    state.blindLevel >= config.blindStructure.length ||
     state.smallBlind !== config.blindStructure[state.blindLevel]!.smallBlind ||
     state.bigBlind !== config.blindStructure[state.blindLevel]!.bigBlind ||
-    !Number.isFinite(state.elapsedSeconds) || state.elapsedSeconds < 0 ||
-    state.participants.length !== players.length || new Set(state.participants.map(p => p?.seatIndex)).size !== players.length ||
-    state.initialTotalChips !== players.length * config.startingStack || !Number.isSafeInteger(state.forfeitedChips) || state.forfeitedChips < 0) return false;
+    !Number.isFinite(state.elapsedSeconds) ||
+    state.elapsedSeconds < 0 ||
+    state.participants.length !== players.length ||
+    new Set(state.participants.map((p) => p?.seatIndex)).size !== players.length ||
+    state.initialTotalChips !== players.length * config.startingStack ||
+    !Number.isSafeInteger(state.forfeitedChips) ||
+    state.forfeitedChips < 0
+  )
+    return false;
   let total = state.forfeitedChips;
   for (const participant of state.participants) {
-    const locked = players.find(p => p.seatIndex === participant?.seatIndex);
-    if (!locked || participant.name !== locked.displayName || participant.kind !== (locked.kind === "BOT" ? "bot" : "human") ||
-      participant.startingStack !== config.startingStack || !Number.isSafeInteger(participant.chips) || participant.chips < 0 ||
+    const locked = players.find((p) => p.seatIndex === participant?.seatIndex);
+    if (
+      !locked ||
+      participant.name !== locked.displayName ||
+      participant.kind !== (locked.kind === "BOT" ? "bot" : "human") ||
+      participant.startingStack !== config.startingStack ||
+      !Number.isSafeInteger(participant.chips) ||
+      participant.chips < 0 ||
       !["ACTIVE", "EXIT_PENDING", "WITHDRAWN", "ELIMINATED"].includes(participant.status) ||
-      ((participant.status === "WITHDRAWN" || participant.status === "ELIMINATED") && participant.chips !== 0)) return false;
+      ((participant.status === "WITHDRAWN" || participant.status === "ELIMINATED") &&
+        participant.chips !== 0)
+    )
+      return false;
     total += participant.chips;
   }
   if (state.phase === "finished") {
-    const active = state.participants.filter(participant => participant.status === "ACTIVE");
+    const active = state.participants.filter((participant) => participant.status === "ACTIVE");
     if (active.length > 1 || state.champion !== (active[0]?.seatIndex ?? null)) return false;
   }
   return Number.isSafeInteger(total) && total === state.initialTotalChips;
@@ -280,7 +367,10 @@ function isHandBoundaryState(value: unknown): value is TournamentState {
     typeof s.handInProgress === "boolean" &&
     s.handInProgress === false &&
     // 生产检查点来自完整 Hand 结算；不可用 handInProgress=false 掩盖仍在下注的手。
-    (s.hand === null || (typeof s.hand === "object" && !Array.isArray(s.hand) && (s.hand as Record<string, unknown>).phase === "hand_end")) &&
+    (s.hand === null ||
+      (typeof s.hand === "object" &&
+        !Array.isArray(s.hand) &&
+        (s.hand as Record<string, unknown>).phase === "hand_end")) &&
     typeof s.nextSequence === "number" &&
     typeof s.handNumber === "number" &&
     typeof s.phase === "string" &&
@@ -297,15 +387,16 @@ function isTimeBankEnabled(state: TournamentState): boolean {
  * Time Bank 启用时，serverTimeBank 必须为每个锁定参赛者提供有限、非负、整数余额；
  * 否则（整体缺失或部分覆盖）拒绝该快照（P1-C/P1-D），防止遗漏玩家恢复为满余额。
  */
-function hasCompleteServerTimeBank(state: TournamentState, lockedPlayerIds: readonly string[]): boolean {
+function hasCompleteServerTimeBank(
+  state: TournamentState,
+  lockedPlayerIds: readonly string[],
+): boolean {
   if (!isTimeBankEnabled(state)) return true;
   const map = extractServerTimeBank(state);
   if (map === undefined) return false;
   return lockedPlayerIds.every(
     (playerId) =>
-      typeof map[playerId] === "number" &&
-      Number.isInteger(map[playerId]) &&
-      map[playerId] >= 0,
+      typeof map[playerId] === "number" && Number.isInteger(map[playerId]) && map[playerId] >= 0,
   );
 }
 

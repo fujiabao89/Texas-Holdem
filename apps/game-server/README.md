@@ -34,6 +34,8 @@ pnpm --filter @texas-holdem/game-server db:migrate   # 对 DATABASE_SCHEMA 执�
 
 ## 结构
 
+TEX-52：终局比赛只读保留 10 分钟后卸载，关房同步失效凭证/连接并卸载重型对象，仅留 10 分钟轻量墓碑；Writer 独立持有未提交 Bundle。指标区分运行中、终局保留、冻结与墓碑，不以注册总量冒充活跃桌。关停在 final flush 前先停止 Runtime，背压恢复不会重新打开关停入口。
+
 - `src/app.ts` — `buildApp()` 构建 Fastify 实例：`/health`、显式 CORS Allowlist、64KiB body 上限、注册 Room HTTP 路由。
 - `src/main.ts` — 进程启动入口：解析配置、创建数据库与仓储、装配 RoomManager 与 TournamentManager（TEX-20）、监听 `PORT` / `HOST`。
 - `src/config.ts` — 运行时配置解析（`TOKEN_HMAC_SECRET` / `CORS_ALLOWED_ORIGINS` 等，启动校验）。

@@ -320,9 +320,30 @@ export function makeActiveTournament(
     },
     lastCommittedSequence,
     players: [
-      { id: `${tournamentId}-tp0`, playerId: `${tournamentId}-p0`, displayName: "P0", seatIndex: 0, kind: "HUMAN", startingStack: 100n },
-      { id: `${tournamentId}-tp1`, playerId: `${tournamentId}-p1`, displayName: "P1", seatIndex: 1, kind: "HUMAN", startingStack: 100n },
-      { id: `${tournamentId}-tp2`, playerId: `${tournamentId}-p2`, displayName: "P2", seatIndex: 2, kind: "HUMAN", startingStack: 100n },
+      {
+        id: `${tournamentId}-tp0`,
+        playerId: `${tournamentId}-p0`,
+        displayName: "P0",
+        seatIndex: 0,
+        kind: "HUMAN",
+        startingStack: 100n,
+      },
+      {
+        id: `${tournamentId}-tp1`,
+        playerId: `${tournamentId}-p1`,
+        displayName: "P1",
+        seatIndex: 1,
+        kind: "HUMAN",
+        startingStack: 100n,
+      },
+      {
+        id: `${tournamentId}-tp2`,
+        playerId: `${tournamentId}-p2`,
+        displayName: "P2",
+        seatIndex: 2,
+        kind: "HUMAN",
+        startingStack: 100n,
+      },
     ],
     ...over,
   };

@@ -135,12 +135,8 @@
           "name": "ai_requests_tournament_id_tournaments_id_fk",
           "tableFrom": "ai_requests",
           "tableTo": "tournaments",
-          "columnsFrom": [
-            "tournament_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tournament_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -148,14 +144,8 @@
           "name": "ai_requests_tournament_player_fk",
           "tableFrom": "ai_requests",
           "tableTo": "tournament_players",
-          "columnsFrom": [
-            "tournament_id",
-            "tournament_player_id"
-          ],
-          "columnsTo": [
-            "tournament_id",
-            "id"
-          ],
+          "columnsFrom": ["tournament_id", "tournament_player_id"],
+          "columnsTo": ["tournament_id", "id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -163,14 +153,8 @@
           "name": "ai_requests_hand_fk",
           "tableFrom": "ai_requests",
           "tableTo": "hands",
-          "columnsFrom": [
-            "hand_id",
-            "tournament_id"
-          ],
-          "columnsTo": [
-            "id",
-            "tournament_id"
-          ],
+          "columnsFrom": ["hand_id", "tournament_id"],
+          "columnsTo": ["id", "tournament_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -317,12 +301,8 @@
           "name": "game_snapshots_tournament_id_tournaments_id_fk",
           "tableFrom": "game_snapshots",
           "tableTo": "tournaments",
-          "columnsFrom": [
-            "tournament_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tournament_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -330,14 +310,8 @@
           "name": "game_snapshots_hand_fk",
           "tableFrom": "game_snapshots",
           "tableTo": "hands",
-          "columnsFrom": [
-            "hand_id",
-            "tournament_id"
-          ],
-          "columnsTo": [
-            "id",
-            "tournament_id"
-          ],
+          "columnsFrom": ["hand_id", "tournament_id"],
+          "columnsTo": ["id", "tournament_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -485,12 +459,8 @@
           "name": "hand_events_tournament_id_tournaments_id_fk",
           "tableFrom": "hand_events",
           "tableTo": "tournaments",
-          "columnsFrom": [
-            "tournament_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tournament_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -498,14 +468,8 @@
           "name": "hand_events_hand_fk",
           "tableFrom": "hand_events",
           "tableTo": "hands",
-          "columnsFrom": [
-            "hand_id",
-            "tournament_id"
-          ],
-          "columnsTo": [
-            "id",
-            "tournament_id"
-          ],
+          "columnsFrom": ["hand_id", "tournament_id"],
+          "columnsTo": ["id", "tournament_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -691,12 +655,8 @@
           "name": "hands_tournament_id_tournaments_id_fk",
           "tableFrom": "hands",
           "tableTo": "tournaments",
-          "columnsFrom": [
-            "tournament_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tournament_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1030,12 +990,8 @@
           "name": "room_players_room_id_rooms_id_fk",
           "tableFrom": "room_players",
           "tableTo": "rooms",
-          "columnsFrom": [
-            "room_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["room_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1196,12 +1152,8 @@
           "name": "tournaments_room_id_rooms_id_fk",
           "tableFrom": "tournaments",
           "tableTo": "rooms",
-          "columnsFrom": [
-            "room_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["room_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1436,14 +1388,8 @@
           "name": "tournament_players_tournament_fk",
           "tableFrom": "tournament_players",
           "tableTo": "tournaments",
-          "columnsFrom": [
-            "tournament_id",
-            "room_id"
-          ],
-          "columnsTo": [
-            "id",
-            "room_id"
-          ],
+          "columnsFrom": ["tournament_id", "room_id"],
+          "columnsTo": ["id", "room_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1451,14 +1397,8 @@
           "name": "tournament_players_player_fk",
           "tableFrom": "tournament_players",
           "tableTo": "room_players",
-          "columnsFrom": [
-            "room_id",
-            "player_id"
-          ],
-          "columnsTo": [
-            "room_id",
-            "id"
-          ],
+          "columnsFrom": ["room_id", "player_id"],
+          "columnsTo": ["room_id", "id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1466,14 +1406,8 @@
           "name": "tournament_players_eliminated_hand_fk",
           "tableFrom": "tournament_players",
           "tableTo": "hands",
-          "columnsFrom": [
-            "eliminated_hand_id",
-            "tournament_id"
-          ],
-          "columnsTo": [
-            "id",
-            "tournament_id"
-          ],
+          "columnsFrom": ["eliminated_hand_id", "tournament_id"],
+          "columnsTo": ["id", "tournament_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1510,92 +1444,52 @@
     "public.ai_fallback_reason": {
       "name": "ai_fallback_reason",
       "schema": "public",
-      "values": [
-        "TIMEOUT",
-        "HTTP_ERROR",
-        "INVALID_JSON",
-        "ILLEGAL_ACTION",
-        "PROVIDER_ERROR"
-      ]
+      "values": ["TIMEOUT", "HTTP_ERROR", "INVALID_JSON", "ILLEGAL_ACTION", "PROVIDER_ERROR"]
     },
     "public.ai_request_status": {
       "name": "ai_request_status",
       "schema": "public",
-      "values": [
-        "SUCCESS",
-        "FALLBACK"
-      ]
+      "values": ["SUCCESS", "FALLBACK"]
     },
     "public.hand_end_reason": {
       "name": "hand_end_reason",
       "schema": "public",
-      "values": [
-        "ALL_FOLDED",
-        "SHOWDOWN",
-        "ABANDONED"
-      ]
+      "values": ["ALL_FOLDED", "SHOWDOWN", "ABANDONED"]
     },
     "public.room_player_left_reason": {
       "name": "room_player_left_reason",
       "schema": "public",
-      "values": [
-        "USER_LEFT",
-        "DISCONNECT_TIMEOUT",
-        "ROOM_CLOSED"
-      ]
+      "values": ["USER_LEFT", "DISCONNECT_TIMEOUT", "ROOM_CLOSED"]
     },
     "public.player_kind": {
       "name": "player_kind",
       "schema": "public",
-      "values": [
-        "HUMAN",
-        "BOT"
-      ]
+      "values": ["HUMAN", "BOT"]
     },
     "public.poker_status": {
       "name": "poker_status",
       "schema": "public",
-      "values": [
-        "ACTIVE",
-        "ELIMINATED",
-        "WITHDRAWN"
-      ]
+      "values": ["ACTIVE", "ELIMINATED", "WITHDRAWN"]
     },
     "public.room_mode": {
       "name": "room_mode",
       "schema": "public",
-      "values": [
-        "MULTIPLAYER",
-        "SINGLE_PLAYER"
-      ]
+      "values": ["MULTIPLAYER", "SINGLE_PLAYER"]
     },
     "public.room_player_status": {
       "name": "room_player_status",
       "schema": "public",
-      "values": [
-        "ACTIVE",
-        "LEFT"
-      ]
+      "values": ["ACTIVE", "LEFT"]
     },
     "public.room_status": {
       "name": "room_status",
       "schema": "public",
-      "values": [
-        "CREATED",
-        "LOBBY",
-        "IN_GAME",
-        "FINISHED",
-        "CLOSED"
-      ]
+      "values": ["CREATED", "LOBBY", "IN_GAME", "FINISHED", "CLOSED"]
     },
     "public.tournament_status": {
       "name": "tournament_status",
       "schema": "public",
-      "values": [
-        "IN_GAME",
-        "FINISHED",
-        "ABANDONED_NO_HUMAN"
-      ]
+      "values": ["IN_GAME", "FINISHED", "ABANDONED_NO_HUMAN"]
     }
   },
   "schemas": {},

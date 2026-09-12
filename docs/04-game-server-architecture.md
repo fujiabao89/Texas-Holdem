@@ -506,6 +506,14 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 
 ### 13.2 终局内存卸载
 
+**TEX-52 已实施**：TournamentExecutor 的终局通知只在最后事件/Bundle 输出并退出 drain 后发一次，保留期内 Action/TimeBank 先查成功幂等结果、新命令拒绝；所有旧 timer generation 失效。Manager 按 executor identity 安排 10 分钟保留，旧回调不能删除新赛，`activeTournamentIds` 仅 RUNNING，注册/终局保留/冻结分别观测。Gateway 允许同 Room 的保留期最终 Snapshot 与原动作重放（不要求其仍是 activeTournamentId），跨房间或已撤销身份仍拒绝。
+
+Room 快照广播隔离每个观察者的异常，必须继续其他连接的同步撤销并完成本地清理；诊断只包含 Room ID。已提交的控制面状态不因发送/观察者故障回滚。
+
+CLOSED 先广播最后 RoomSnapshot 并同步撤销邀请码/epoch/订阅/心跳；该连接在途 Lobby 命令写完回执才关闭 Socket。Room 队列拒绝后续任务，完成已在执行的事务后卸载本地对象；下游释放失败仍报告错误，不让本地已关闭 Room 无限驻留。墓碑只保存三字段，由独立作用域 timer 到期删除，迟到请求使用既有 `ROOM_NOT_FOUND`。HTTP/WS requestId 缓存归属 Room，在关闭时释放；in-flight 请求共享原执行结果，不能因清缓存再执行或回填已关闭 Room。没有提前 TTL/LRU。
+
+Writer 在 enqueue 边界复制 Bundle（保留 Buffer/Date/BigInt），Runtime 卸载只标记其队列退休，pending/in-flight/隔离项仍保留，成功排空才回收。关停 latch 不因背压回落而重开入口；手间等待结束后先停止入口和 Runtime，再执行最后 flush，最后停 Writer 调度。历史继续走数据库侧 ACTIVE Room 凭证与投影校验，Runtime 卸载不延长身份有效期，也不删除数据库历史。
+
 - Tournament 进入 `FINISHED`/`ABANDONED_NO_HUMAN` 后立即取消 Timer/AI、拒绝新动作，并把最终状态复制进不可变持久化任务。旧 Tournament Runtime 转只读保留 10 分钟，供已连接客户端完成最终 Snapshot/事件同步；之后即使 DB 重试仍在进行也可卸载，因为 Writer 持有独立 Bundle。
 - Room `FINISHED → LOBBY` 后可立即创建新 Tournament；旧 Runtime 的只读保留不能占据“活跃 Tournament”名额，也不能接收新 Room 的命令。
 - Room 进入 `CLOSED` 后立即移除邀请码路由、使 Token 失效并关闭连接；完成正在执行的队列任务后卸载重型 Room/Tournament Runtime，同时保留轻量 `{roomId, closedReason, closedAt}` Tombstone 10 分钟，用于拒绝迟到请求，之后删除。

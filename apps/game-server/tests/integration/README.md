@@ -15,7 +15,8 @@
 | `room-recovery.test.ts`（TEX-51） | 非 CLOSED Room 与 ACTIVE 身份读取、LEFT 凭证排除、BOT 无凭证、历史最大场号与锁定座位、控制面与终局 Bundle 延迟状态、坏配置原样交给逐房隔离、并发提交下的 REPEATABLE READ / READ ONLY 一致快照；revision 号段顺序/并发预留、耗尽/关闭拒绝与迁移边界约束 |
 | `permissions.test.ts` | `anon`/`authenticated` 对所有原始表读写被拒；`game_server` 角色最小授权可用 |
 | `hand-history-read.test.ts`（TEX-36） | Hand History 投影读取端点：token 摘要数据库侧鉴权（401/403/404，含 Room CLOSED / 成员 LEFT）、倒序 cursor 分页（默认 20/上限 50/重复参数 400）、双身份投影隔离、跨 Tournament 404、事件首/中/尾缺失与双序列损坏 500；真实 TournamentExecutor → Commit Bundle → PostgreSQL → HTTP 验证手间撤回归属、有效淘汰观战者读取无冠军终局 |
-| `room-restart.test.ts`（TEX-51） | 真实生产 `main.ts` 子进程经 `SIGKILL` 重启，同一 PostgreSQL schema / HMAC 配置：Lobby 邀请码、Host 与原令牌恢复、未持久化的 seat/ready/presence 安全重置；真实双客户端首手提交 → 重启 → 原令牌重连 → 下一手提交；筹码与已提交快照对齐、后续序列连续、私牌隔离；无有效 Host 房间隔离与跨房凭证拒绝 |
+| `room-restart.test.ts`（TEX-51） | 真实生产 `main.ts` 子进程经 `SIGKILL` 重启，同一 PostgreSQL schema / HMAC 配置：Lobby 邀请码、Host 与原令牌恢复、未持久化的 seat/ready/presence 安全重置；跨重启 roomRevision 增长且旧 HTTP revision 拒绝；真实双客户端首手提交 → 重启 → 原令牌重连 → 下一手提交；筹码与已提交快照对齐、后续序列连续、私牌隔离；无有效 Host 房间隔离与跨房凭证拒绝 |
+| `terminal-history.test.ts`（TEX-52） | 真实 Room/Tournament/Writer → PostgreSQL → HTTP：正常终局后 Fake Clock 推进 10 分钟卸载 Runtime，两个原 token 仍可读取已提交列表/详情；未摊牌的对手底牌与 Burn 牌面保持隔离；LEFT 成员及 CLOSED 房间的旧 token 对两个历史端点均失效 |
 
 公共基建设施见 [helpers.ts](./helpers.ts)：`setupIntegrationDatabase`（CREATE SCHEMA → 在隔离 schema 执行版本化迁移 → 交给仓储层 → 结束 DROP SCHEMA CASCADE）。
 

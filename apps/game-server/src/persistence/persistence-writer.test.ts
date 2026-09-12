@@ -5,7 +5,12 @@ import {
   makeBundle,
   type FakeCommitRepository,
 } from "../../tests/fixtures/persistence";
-import { createPersistenceWriter, type PersistenceWriter, type PersistenceWriterDeps, type BackpressureLevel } from "./persistence-writer";
+import {
+  createPersistenceWriter,
+  type PersistenceWriter,
+  type PersistenceWriterDeps,
+  type BackpressureLevel,
+} from "./persistence-writer";
 
 /** 让异步 processHead 链完成到某条件成立（确定性，无 sleep）。 */
 async function until(cond: () => boolean, maxYields = 100): Promise<void> {
@@ -158,9 +163,16 @@ describe("PersistenceWriter", () => {
 
   it("items watermark：soft 与 hard 逐级触发 onBackpressureChange", async () => {
     const { writer, commit, levels } = setup({
-      softItems: 1, softBytes: Number.MAX_SAFE_INTEGER, softAgeMs: Number.MAX_SAFE_INTEGER,
-      hardItems: 2, hardBytes: Number.MAX_SAFE_INTEGER, hardAgeMs: Number.MAX_SAFE_INTEGER,
-      maxConcurrent: 1, backoffBaseMs: 250, backoffMaxMs: 30_000, backoffJitter: 0.2,
+      softItems: 1,
+      softBytes: Number.MAX_SAFE_INTEGER,
+      softAgeMs: Number.MAX_SAFE_INTEGER,
+      hardItems: 2,
+      hardBytes: Number.MAX_SAFE_INTEGER,
+      hardAgeMs: Number.MAX_SAFE_INTEGER,
+      maxConcurrent: 1,
+      backoffBaseMs: 250,
+      backoffMaxMs: 30_000,
+      backoffJitter: 0.2,
     });
     commit.alwaysFail = true; // 保持 bundle 在队列以观测 watermark
     writer.enqueue([makeBundle("t1", 1, 1n, 1)]);
@@ -172,9 +184,16 @@ describe("PersistenceWriter", () => {
 
   it("挂起的提交也触发年龄 watermark（age timer，soft/hard）", async () => {
     const { writer, commit, clock, levels } = setup({
-      softItems: 500, softBytes: Number.MAX_SAFE_INTEGER, softAgeMs: 1_000,
-      hardItems: 2_000, hardBytes: Number.MAX_SAFE_INTEGER, hardAgeMs: 2_000,
-      maxConcurrent: 1, backoffBaseMs: 250, backoffMaxMs: 30_000, backoffJitter: 0.2,
+      softItems: 500,
+      softBytes: Number.MAX_SAFE_INTEGER,
+      softAgeMs: 1_000,
+      hardItems: 2_000,
+      hardBytes: Number.MAX_SAFE_INTEGER,
+      hardAgeMs: 2_000,
+      maxConcurrent: 1,
+      backoffBaseMs: 250,
+      backoffMaxMs: 30_000,
+      backoffJitter: 0.2,
     });
     commit.hangForever = true; // commitHandBundle 永不 resolve → 无失败重试可驱动 watermark
     writer.enqueue([makeBundle("t1", 1, 1n, 3)]);
@@ -189,9 +208,16 @@ describe("PersistenceWriter", () => {
 
   it("age watermark：最旧任务年龄达到阈值升级", async () => {
     const { writer, commit, clock, levels } = setup({
-      softItems: 500, softBytes: Number.MAX_SAFE_INTEGER, softAgeMs: 1_000,
-      hardItems: 2_000, hardBytes: Number.MAX_SAFE_INTEGER, hardAgeMs: 2_000,
-      maxConcurrent: 1, backoffBaseMs: 250, backoffMaxMs: 30_000, backoffJitter: 0.2,
+      softItems: 500,
+      softBytes: Number.MAX_SAFE_INTEGER,
+      softAgeMs: 1_000,
+      hardItems: 2_000,
+      hardBytes: Number.MAX_SAFE_INTEGER,
+      hardAgeMs: 2_000,
+      maxConcurrent: 1,
+      backoffBaseMs: 250,
+      backoffMaxMs: 30_000,
+      backoffJitter: 0.2,
     });
     commit.alwaysFail = true;
     writer.enqueue([makeBundle("t1", 1, 1n, 1)]);
@@ -205,9 +231,16 @@ describe("PersistenceWriter", () => {
 
   it("bytes watermark：估算字节达到 soft 即降级", async () => {
     const { writer, commit, levels } = setup({
-      softItems: 500, softBytes: 100, softAgeMs: Number.MAX_SAFE_INTEGER,
-      hardItems: 2_000, hardBytes: 5_000, hardAgeMs: Number.MAX_SAFE_INTEGER,
-      maxConcurrent: 1, backoffBaseMs: 250, backoffMaxMs: 30_000, backoffJitter: 0.2,
+      softItems: 500,
+      softBytes: 100,
+      softAgeMs: Number.MAX_SAFE_INTEGER,
+      hardItems: 2_000,
+      hardBytes: 5_000,
+      hardAgeMs: Number.MAX_SAFE_INTEGER,
+      maxConcurrent: 1,
+      backoffBaseMs: 250,
+      backoffMaxMs: 30_000,
+      backoffJitter: 0.2,
     });
     commit.alwaysFail = true;
     writer.enqueue([makeBundle("t1", 1, 1n, 1)]);
@@ -218,9 +251,12 @@ describe("PersistenceWriter", () => {
     const { writer, commit, integrityErrors, clock } = setup();
     // 模拟 Drizzle/pg 透传的唯一键冲突（23505）：永久性数据不一致。
     commit.alwaysFail = true;
-    commit.transientError = Object.assign(new Error("duplicate key value violates unique constraint"), {
-      code: "23505",
-    });
+    commit.transientError = Object.assign(
+      new Error("duplicate key value violates unique constraint"),
+      {
+        code: "23505",
+      },
+    );
     writer.enqueue([makeBundle("t1", 1, 1n, 3)]);
     await until(() => integrityErrors.length === 1);
     expect(writer.getMetrics().quarantined).toEqual(["t1"]);
@@ -281,5 +317,146 @@ describe("PersistenceWriter", () => {
     expect(writer.lastCommittedSequence("t1")).toBe(5n);
     expect(writer.lastCommittedSequence("t2")).toBe(7n);
     expect(writer.lastCommittedSequence("t3")).toBeNull();
+  });
+});
+
+describe("PersistenceWriter Runtime 卸载与资源释放（TEX-52，§13.2）", () => {
+  it("卸载后的故障重试持有独立 Bundle，调用方修改嵌套状态/日期/checksum 不污染提交", async () => {
+    const { writer, commit, clock } = setup();
+    commit.failTransient = 1;
+    const bundle = makeBundle("retired", 1, 1n, 3);
+    const checksum = Buffer.from(bundle.snapshot.commitChecksum);
+    const stateChecksum = Buffer.from(bundle.snapshot.stateChecksum);
+    const startedAt = bundle.hand.startedAt.getTime();
+    writer.enqueue([bundle]);
+    writer.releaseTournament("retired");
+    await until(() => writer.getMetrics().consecutiveFailures === 1);
+    expect(writer.queueCount()).toBe(1);
+    expect(writer.pendingCount()).toBe(1);
+
+    (bundle.events[0]!.payload as { seatIndex: number }).seatIndex = 99;
+    (bundle.hand.communityCards as unknown[]).push({ hidden: "changed" });
+    (bundle.hand.summary as { showdown: boolean }).showdown = true;
+    bundle.hand.startedAt.setTime(0);
+    bundle.snapshot.commitChecksum.fill(0);
+    bundle.snapshot.stateChecksum.fill(0);
+    clock.advance(250);
+    await until(() => writer.queueCount() === 0);
+    expect(writer.pendingCount()).toBe(0);
+    const saved = commit.committed[0]!;
+    expect(saved).not.toBe(bundle);
+    expect(saved.events[0]!.payload).toMatchObject({ seatIndex: 0 });
+    expect(saved.hand.communityCards).toEqual([]);
+    expect(saved.hand.summary).toMatchObject({ showdown: false });
+    expect(saved.hand.startedAt).toBeInstanceOf(Date);
+    expect(saved.hand.startedAt.getTime()).toBe(startedAt);
+    expect(saved.snapshot.sequence).toBe(3n);
+    expect(Buffer.isBuffer(saved.snapshot.commitChecksum)).toBe(true);
+    expect(saved.snapshot.commitChecksum).toEqual(checksum);
+    expect(saved.snapshot.stateChecksum).toEqual(stateChecksum);
+    expect(Object.isFrozen(saved.events[0]!.payload)).toBe(true);
+    expect(Object.isFrozen(saved.hand)).toBe(true);
+    expect(writer.lastCommittedSequence("retired")).toBeNull();
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("多轮已完成队列释放后数量回落；重复释放或未知 id 不留下墓碑记录", async () => {
+    const { writer, clock } = setup();
+    for (let i = 0; i < 200; i++) {
+      const id = `retired-${i}`;
+      writer.enqueue([makeBundle(id, 1, 1n, 1)]);
+      await writer.flush();
+      writer.releaseTournament(id);
+      writer.releaseTournament(id);
+      writer.releaseTournament(`never-created-${i}`);
+    }
+    expect(writer.queueCount()).toBe(0);
+    expect(writer.getMetrics().queueCount).toBe(0);
+    expect(writer.getMetrics().lastCommittedSequence.size).toBe(0);
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("Runtime 释放不能丢弃正在提交的 Bundle，事务成功后才释放队列", async () => {
+    const clock = createFakeClock();
+    let complete!: (outcome: "committed") => void;
+    const writer = createPersistenceWriter({
+      clock: clock.now,
+      scheduler: clock,
+      commit: {
+        commitHandBundle: () =>
+          new Promise<"committed">((resolve) => {
+            complete = resolve;
+          }),
+      },
+    });
+    writer.enqueue([makeBundle("inflight", 1, 1n, 1)]);
+    writer.releaseTournament("inflight");
+    expect(writer.queueCount()).toBe(1);
+    expect(writer.pendingCount()).toBe(1);
+    complete("committed");
+    await until(() => writer.queueCount() === 0);
+    expect(writer.pendingCount()).toBe(0);
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("Runtime 释放保留隔离 Bundle 与诊断，不重试也不假装成功清理", async () => {
+    const { writer, commit, clock, integrityErrors } = setup();
+    commit.failIntegrityOnce = true;
+    writer.enqueue([makeBundle("quarantined", 1, 1n, 1)]);
+    await until(() => integrityErrors.length === 1);
+    writer.releaseTournament("quarantined");
+    writer.releaseTournament("quarantined");
+    clock.advance(20 * 60_000);
+    expect(writer.queueCount()).toBe(1);
+    expect(writer.pendingCount()).toBe(1);
+    expect(writer.getMetrics().quarantined).toEqual(["quarantined"]);
+    expect(commit.committed).toHaveLength(0);
+  });
+
+  it("dispose 清除 retry/age timers 且幂等，保留未提交任务并拒绝新写入", async () => {
+    const { writer, commit, clock } = setup();
+    commit.alwaysFail = true;
+    writer.enqueue([makeBundle("stopped", 1, 1n, 1)]);
+    await until(() => writer.getMetrics().consecutiveFailures === 1);
+    expect(clock.pendingTimers()).toBeGreaterThan(0);
+    writer.dispose();
+    writer.dispose();
+    expect(clock.pendingTimers()).toBe(0);
+    expect(() => writer.enqueue([makeBundle("new", 1, 1n, 1)])).toThrow("disposed");
+    clock.advance(60 * 60_000);
+    await writer.flush();
+    expect(writer.pendingCount()).toBe(1);
+    expect(writer.queueCount()).toBe(1);
+    expect(commit.committed).toHaveLength(0);
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("dispose 解除挂起 flush 并取消 deadline，迟到 DB 失败不会重新创建 timer", async () => {
+    const clock = createFakeClock();
+    let rejectCommit!: (error: Error) => void;
+    let attempts = 0;
+    const writer = createPersistenceWriter({
+      clock: clock.now,
+      scheduler: clock,
+      commit: {
+        commitHandBundle: () => {
+          attempts++;
+          return new Promise<"committed">((_resolve, reject) => {
+            rejectCommit = reject;
+          });
+        },
+      },
+    });
+    writer.enqueue([makeBundle("inflight", 1, 1n, 1)]);
+    const flushing = writer.flush(30_000);
+    expect(clock.pendingTimers()).toBe(2);
+    writer.dispose();
+    await flushing;
+    rejectCommit(new Error("late database failure"));
+    await until(() => writer.getMetrics().consecutiveFailures === 1);
+    clock.advance(60 * 60_000);
+    expect(clock.pendingTimers()).toBe(0);
+    expect(attempts).toBe(1);
+    expect(writer.pendingCount()).toBe(1);
   });
 });

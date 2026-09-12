@@ -23,8 +23,16 @@ import {
   type TournamentRuntimeView,
   type TournamentRuntimeState,
 } from "./tournament-runtime";
-import type { RandomSource, TournamentEngine, TournamentEngineOptions } from "@texas-holdem/poker-engine";
+import type {
+  RandomSource,
+  TournamentEngine,
+  TournamentEngineOptions,
+} from "@texas-holdem/poker-engine";
 import type { TournamentConfig } from "@texas-holdem/protocol";
+import type { TimerHandle } from "../scheduler/timer-scheduler";
+
+/** 终局 Runtime 只读保留 10 分钟（docs/04 §13.2）；区别于 DB 历史保留期。 */
+export const TOURNAMENT_RETENTION_MS = 10 * 60_000;
 
 export interface TournamentCreateInput {
   readonly tournamentId: string;
@@ -38,6 +46,17 @@ export interface TournamentCreateInput {
 export interface TournamentManagerDeps extends TournamentRuntimeDeps {
   readonly output: TournamentOutputSink;
   readonly executorDeps: Omit<TournamentExecutorDeps, "output">;
+  /** 测试可注入；生产默认使用 §13.2 的 10 分钟。 */
+  readonly terminalRetentionMs?: number;
+  /** 执行器已 idle 并从 Manager 卸载后通知 Writer 释放其所有权（未提交 Bundle 仍由 Writer 持有）。 */
+  readonly onUnloaded?: (tournamentId: string) => void;
+}
+
+export interface TournamentRuntimeCounts {
+  readonly registered: number;
+  readonly running: number;
+  readonly finishedRetained: number;
+  readonly frozen: number;
 }
 
 /** 崩溃恢复注册输入：由 `TournamentEngine.restore` 重建的权威引擎 + 恢复时点 wire 水位。 */
@@ -80,34 +99,95 @@ export interface TournamentManager {
   pauseAll(paused: boolean): Promise<unknown>;
   /** 活跃 Tournament id 列表（优雅关停轮询当前手是否结束，§13.1）。 */
   activeTournamentIds(): readonly string[];
+  runtimeCounts(): TournamentRuntimeCounts;
+  /** CLOSED Room：立即关停该房间全部比赛，等待各自当前内存转移结束后卸载。 */
+  disposeRoom(roomId: string): Promise<void>;
+  /** 服务关停：拒绝新比赛，取消保留期 timer，并等待全部执行器安全卸载。 */
+  dispose(): Promise<void>;
 }
 
 export function createTournamentManager(deps: TournamentManagerDeps): TournamentManager {
   const runtimes = new Map<string, TournamentExecutor>();
+  const retention = new Map<string, { executor: TournamentExecutor; timer: TimerHandle }>();
+  const unloading = new Map<TournamentExecutor, Promise<void>>();
+  const retentionMs = deps.terminalRetentionMs ?? TOURNAMENT_RETENTION_MS;
+  if (!Number.isSafeInteger(retentionMs) || retentionMs < 0 || retentionMs > 2_147_483_647) {
+    throw new Error("terminalRetentionMs must be a non-negative timer duration");
+  }
+  let disposed = false;
+  let disposal: Promise<void> | null = null;
 
   function assertUnregistered(tournamentId: string): void {
+    if (disposed) throw new TournamentDomainError("GAME_UNAVAILABLE");
     if (runtimes.has(tournamentId)) throw new TournamentDomainError("TOURNAMENT_NOT_ACTIVE");
   }
 
-  async function startRecovered(runtime: TournamentRuntimeState, executor: TournamentExecutor): Promise<void> {
+  function unload(tournamentId: string, executor: TournamentExecutor): Promise<void> {
+    const pending = unloading.get(executor);
+    if (pending !== undefined) return pending;
+    if (runtimes.get(tournamentId) !== executor) return Promise.resolve();
+    const retained = retention.get(tournamentId);
+    if (retained?.executor === executor) {
+      deps.scheduler.clearTimeout(retained.timer);
+      retention.delete(tournamentId);
+    }
+    const completed = executor
+      .dispose()
+      .then(() => {
+        // timer、Room 关闭与 shutdown 可以交错；只有仍持有该实例的 owner 才能删除/通知。
+        if (runtimes.get(tournamentId) !== executor) return;
+        runtimes.delete(tournamentId);
+        deps.onUnloaded?.(tournamentId);
+      })
+      .finally(() => {
+        unloading.delete(executor);
+      });
+    unloading.set(executor, completed);
+    return completed;
+  }
+
+  function makeExecutor(runtime: TournamentRuntimeState): TournamentExecutor {
+    const executor = new TournamentExecutor(runtime, {
+      ...deps.executorDeps,
+      output: deps.output,
+      onTerminal(context) {
+        if (
+          !disposed &&
+          runtimes.get(runtime.tournamentId) === executor &&
+          !unloading.has(executor)
+        ) {
+          const timer = deps.scheduler.setTimeout(() => {
+            if (retention.get(runtime.tournamentId)?.executor !== executor) return;
+            void unload(runtime.tournamentId, executor);
+          }, retentionMs);
+          retention.set(runtime.tournamentId, { executor, timer });
+        }
+        deps.executorDeps.onTerminal?.(context);
+      },
+    });
+    return executor;
+  }
+
+  async function startRecovered(
+    runtime: TournamentRuntimeState,
+    executor: TournamentExecutor,
+  ): Promise<void> {
     runtimes.set(runtime.tournamentId, executor);
     try {
       for (const player of runtime.players.values()) {
-        if (player.kind === "HUMAN") await executor.submit({ type: "CONNECTION_CHANGED", playerId: player.playerId, connected: false });
+        if (player.kind === "HUMAN")
+          await executor.submit({
+            type: "CONNECTION_CHANGED",
+            playerId: player.playerId,
+            connected: false,
+          });
       }
       await executor.submit({ type: "START" });
-      if (executor.getView().status === "FROZEN") throw new TournamentDomainError("GAME_UNAVAILABLE");
+      if (executor.getView().status === "FROZEN")
+        throw new TournamentDomainError("GAME_UNAVAILABLE");
     } catch (error) {
       // 尚在启动屏障：不留半注册执行器/计时器，失败向上传递给 Room 恢复编排。
-      if (runtime.actionTimerHandle !== null) deps.scheduler.clearTimeout(runtime.actionTimerHandle);
-      if (runtime.blindTimerHandle !== null) deps.scheduler.clearTimeout(runtime.blindTimerHandle);
-      runtime.actionTimerGeneration += 1;
-      runtime.blindTimerGeneration += 1;
-      for (const player of runtime.players.values()) {
-        if (player.graceHandle !== null) deps.scheduler.clearTimeout(player.graceHandle);
-        player.graceGeneration += 1;
-      }
-      if (runtimes.get(runtime.tournamentId) === executor) runtimes.delete(runtime.tournamentId);
+      await unload(runtime.tournamentId, executor);
       throw error;
     }
   }
@@ -126,14 +206,11 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         },
         deps,
       );
-      const executor = new TournamentExecutor(runtime, {
-        ...deps.executorDeps,
-        output: deps.output,
-      });
+      const executor = makeExecutor(runtime);
       runtimes.set(input.tournamentId, executor);
       // 驱动首手为 fire-and-forget（Room 队列不等待）；Engine Critical Error 由提交方捕获。
       void executor.submit({ type: "START" }).catch(() => {
-        runtimes.delete(input.tournamentId);
+        return unload(input.tournamentId, executor);
       });
     },
 
@@ -149,10 +226,7 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         },
         deps,
       );
-      const executor = new TournamentExecutor(runtime, {
-        ...deps.executorDeps,
-        output: deps.output,
-      });
+      const executor = makeExecutor(runtime);
       await startRecovered(runtime, executor);
     },
 
@@ -170,10 +244,7 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         },
         deps,
       );
-      const executor = new TournamentExecutor(runtime, {
-        ...deps.executorDeps,
-        output: deps.output,
-      });
+      const executor = makeExecutor(runtime);
       await startRecovered(runtime, executor);
     },
 
@@ -201,6 +272,7 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
     pauseAll(paused) {
       const submissions: Promise<unknown>[] = [];
       for (const executor of runtimes.values()) {
+        if (executor.getView().status !== "RUNNING") continue;
         submissions.push(
           executor.submit({ type: "PAUSE_AFTER_HAND", paused }).catch(() => undefined),
         );
@@ -209,7 +281,37 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
     },
 
     activeTournamentIds() {
-      return [...runtimes.keys()];
+      return [...runtimes]
+        .filter(([, executor]) => executor.getView().status === "RUNNING")
+        .map(([id]) => id);
+    },
+
+    runtimeCounts() {
+      const counts = { registered: runtimes.size, running: 0, finishedRetained: 0, frozen: 0 };
+      for (const executor of runtimes.values()) {
+        const status = executor.getView().status;
+        if (status === "RUNNING") counts.running++;
+        else if (status === "FROZEN") counts.frozen++;
+        else counts.finishedRetained++;
+      }
+      return counts;
+    },
+
+    async disposeRoom(roomId) {
+      await Promise.all(
+        [...runtimes]
+          .filter(([, executor]) => executor.getView().roomId === roomId)
+          .map(([id, executor]) => unload(id, executor)),
+      );
+    },
+
+    dispose() {
+      if (disposal !== null) return disposal;
+      disposed = true;
+      disposal = Promise.all([...runtimes].map(([id, executor]) => unload(id, executor))).then(
+        () => undefined,
+      );
+      return disposal;
     },
   };
 }

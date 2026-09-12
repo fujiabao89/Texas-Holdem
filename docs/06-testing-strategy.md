@@ -1,5 +1,9 @@
 # 06 · 测试方案与发布门槛（`tests/`）
 
+TEX-52 生命周期专项：`tournament-lifecycle.test.ts` 的 100 轮终局/卸载/失败重试，`rooms/runtime-lifecycle.test.ts` 的 24 房间 × 3 轮（72 场）验证重型对象、Writer 队列、连接 epoch、timer 与 10 分钟墓碑全部回到基线；使用 Fake Clock，记录 heap/RSS，不依赖真实 sleep 或偶然 GC。此 bounded soak 不替代 §10 的正式长时容量/发布 Soak。终局保留期间验证旧成功动作可重放、新动作拒绝、最终 Snapshot 可取，卸载后 Hand History 仍经数据库侧授权读取，CLOSED 不再授权。
+
+生命周期指标口径：`texas_active_tournaments` 仅 RUNNING；`texas_registered_tournaments` / `texas_finished_retained_tournaments` / `texas_frozen_tournaments` 分离总注册/终局保留/冻结。Room 使用 `texas_active_rooms`、`texas_registered_rooms`、`texas_closed_room_tombstones`；Writer 驻留队列用 `texas_persistence_registered_queues`，均无高基数标签。
+
 TEX-51 恢复专项：`src/persistence/room-recovery.test.ts` 验证身份/配置/检查点交叉一致性、缺房/损坏隔离、重复屏障及失败撤销；真实 PostgreSQL `tests/integration/room-recovery.test.ts` 验证一致读取和 revision 号段；`room-restart.test.ts` 使用生产入口子进程与两个真实 WS 客户端，整手提交后 SIGKILL、原库重启、原 token 认证并再完成一手，核对 Host、邀请码、筹码、Game sequence 与私有投影。缺测试数据库按现有约定跳过，跳过不得作为 TEX-51 完成证据。
 
 > 状态：草稿（实施基线 v0.5；测试基础设施已按 TEX-12 落地，持久化 Integration 已按 TEX-18 落地，Headless Simulator 长跑已按 TEX-16 落地，其余业务测试随对应任务回填）
