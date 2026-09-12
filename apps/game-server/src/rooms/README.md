@@ -2,7 +2,7 @@
 
 TEX-52：CLOSED 提交后同步失效邀请码/鉴权、发布最后 RoomSnapshot；停止队列入口并等待在途控制事务、关联 Tournament 清理后删除重型 Runtime。保留期仅保留 `{roomId, closedReason, closedAt}` 三字段 tombstone 10 分钟，timer 使用独立 closure，不能保留原成员/凭证。迟到请求沿用 `ROOM_NOT_FOUND`（不新增 wire 错误码）。`runtimeCounts()` 区分 registered / active / closedTombstones；`dispose()` 只卸载内存，不把关停误持久化成 CLOSED。来源 Tournament 的 CLOSE 命令在 Room 队列执行点验证 activeTournamentId，旧赛不能关闭新赛。
 
-`runtime-lifecycle.test.ts` 使用真实 managers/Writer/epochs 与 Fake Clock，24 房间 / 72 场 / 多批次验证每轮终局保留、关房墓碑及清理后对象数回到零，记录 heap/RSS 但不依赖 GC；另覆盖卸载后待提交 Bundle 重试与迟到 timer。
+`runtime-lifecycle.test.ts` 使用真实 managers/Writer/epochs 与 Fake Clock，24 房间 / 72 场 / 多批次验证每轮终局保留、关房墓碑及清理后对象数回到零，记录 heap/RSS 但不依赖 GC；另覆盖卸载后待提交 Bundle 保留并继续完成提交与迟到 timer。失败重试回收另由 `tournaments/tournament-lifecycle.test.ts` 覆盖。
 
 `room-lifecycle-races.test.ts` 覆盖终局动作重放/快照、延迟清理时 LEAVE 回执、下游释放失败和订阅者异常。广播逐观察者隔离异常，继续执行全部权限撤销与清理；生产通过安全 Room ID 诊断，观察者错误不回滚已提交状态。
 
