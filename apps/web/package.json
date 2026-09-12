@@ -13,10 +13,10 @@
   "dependencies": {
     "@texas-holdem/protocol": "workspace:*",
     "jotai": "^2.20.3",
-    "next": "^16.3.3",
+    "next": "^16.3.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "zod": "^4.3.6"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
