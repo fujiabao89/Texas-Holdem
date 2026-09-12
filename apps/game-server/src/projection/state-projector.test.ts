@@ -273,6 +273,8 @@ function applyPatch(
     handPhase: patch.handPhase !== undefined ? patch.handPhase : previous.handPhase,
     blindLevel: patch.blindLevel ?? previous.blindLevel,
     dealerSeat: patch.dealerSeat !== undefined ? patch.dealerSeat : previous.dealerSeat,
+    smallBlindSeat: patch.smallBlindSeat !== undefined ? patch.smallBlindSeat : previous.smallBlindSeat,
+    bigBlindSeat: patch.bigBlindSeat !== undefined ? patch.bigBlindSeat : previous.bigBlindSeat,
     board: patch.board ?? previous.board,
     pots: patch.pots ?? previous.pots,
     currentActorPlayerId: patch.currentActorPlayerId !== undefined ? patch.currentActorPlayerId : previous.currentActorPlayerId,

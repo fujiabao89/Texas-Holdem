@@ -11,3 +11,5 @@
 TEX-36：`TOURNAMENT_FINISHED` 将 Engine 的 `championSeat: null` 明确投影为 `winnerPlayerId: null`，包括空排名的终局，遵循共享 wire v3 契约；不使用空 ID 或虚构冠军。定向验证：`pnpm exec vitest run --project unit apps/game-server/src/projection/state-projector.test.ts`。
 
 逐接收者投影由执行器按 `viewerPlayerId` 组装；`DEAL_HOLE_CARD` 对非目标接收者删除 `card` 字段但保留公开的座位/发牌事实，事件 `type/tournamentId/sequence/handId` 一致（02 §9.4）。
+
+TEX-53：完整视图与逐事件 patch 的 D/SB/BB 读取当前 hand，SB/BB 无手为 null，保留手末座位直至下一手。执行器在替换 `handId` 前发完旧手尾部事件，下一手 `HAND_STARTED` 才携带新的 handId 与 D/SB/BB，避免撤回结算时提前推进客户端牌桌。`blind-seats.test.ts` 覆盖 2/3/6/10 人、空位、撤回、真实全下淘汰、跨手与恢复；规则与 nullable 语义仅在 [协议规格](../../../../docs/02-protocol-spec.md) §9.2 维护。

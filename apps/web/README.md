@@ -34,3 +34,7 @@ pnpm --filter @texas-holdem/web typecheck  # tsc --noEmit
 见 [.env.example](./.env.example)。仅 `NEXT_PUBLIC_*` 前缀变量暴露到浏览器，只放非敏感公开配置；敏感值只由部署平台注入。HTTP API 和 WebSocket base URL 可以使用该公开配置；`playerToken` 绝不能写入 URL、环境变量或日志。
 
 TEX-44 接入 River & Raise 产品首页，并统一暖白、深绿、陶橙视觉、表单分组、按钮和路由反馈。`SiteChrome` 位于既有 Provider 内但在页面外，入场动画不重置根 Provider；连接仍由既有房间 hook 按路由管理。系统/设备减少动态效果覆盖新展示层。运行与验收见 [TEX-44 记录](../../docs/03-engineering/TEX-44-acceptance.md)。
+
+TEX-53 随共享 wire v4 补齐 Snapshot 夹具并验证投影存储在重连、重同步、Fast Forward 和跨手事件中保留权威 D/SB/BB；本任务未增加牌桌座位标识 UI。
+
+PR 审查回归同时把牌桌座位筹码文字调整为满足深色桌面上的 WCAG AA 对比度，真实 WebKit axe 检查不得再以临界色值失败。

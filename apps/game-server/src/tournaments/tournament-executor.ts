@@ -227,6 +227,10 @@ export class TournamentExecutor {
       }
       if (this.checkNoHuman()) return;
       const engineState = this.state.engine.getState();
+      if (!engineState.handInProgress) {
+        this.state.actionDeadline = null;
+        this.state.currentLegalActions = null;
+      }
       if (engineState.phase === "finished") {
         if (!engineState.handInProgress && engineState.handNumber > this.state.committedThroughHand) {
           this.commitCurrentHand(engineState, this.buildFinishUpdate("FINISHED"));
@@ -252,6 +256,9 @@ export class TournamentExecutor {
       ) {
         return;
       }
+      // 先用旧 handId 发完刚结束一手的尾部事件；否则 startNextHand 后投影会把旧事件
+      // 与下一手盲注座位组合到同一个 patch，破坏事件/handId 的权威边界。
+      this.emitNewEvents();
       this.state.currentHandId = this.state.ids.uuid();
       this.state.currentHandStartedAt = this.state.clock();
       try {

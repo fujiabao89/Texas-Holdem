@@ -25,3 +25,5 @@ TEX_TEST_DATABASE_URL=postgres://postgres:tex18test@localhost:55432/postgres pnp
 ```
 
 需要超级用户或等价权限（迁移创建 `anon`/`authenticated`/`game_server` 角色并做 GRANT/REVOKE）。CI 中未配置测试库时本层受控跳过（TEX-12 基线）。
+
+TEX-53 `blind-seat-recovery.test.ts` 经生产 TournamentExecutor → Commit Bundle → PostgreSQL → RecoveryRepository → recoverActiveTournaments，验证存储原形/ORM 对象形态、下一手 D/SB/BB、四种 Snapshot 原因与 wire 水位连续性。

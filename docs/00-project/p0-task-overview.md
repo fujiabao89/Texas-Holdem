@@ -96,3 +96,5 @@ flowchart TD
 5. 完成时报告改动范围、验证结果、剩余风险和需要 Codex/用户裁决的项目。
 
 详见 [AGENTS.md](../../AGENTS.md)、[CLAUDE.md](../../CLAUDE.md)、[TRAE.md](../../TRAE.md) 与 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
+
+TEX-53 补齐服务端权威庄位/盲注座位快照契约，作为前端座位标识的协议基础；验收与同步发布边界见 [验收记录](../03-engineering/TEX-53-acceptance.md)。

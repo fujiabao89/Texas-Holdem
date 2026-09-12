@@ -17,3 +17,5 @@ TEX-28 多客户端联调与安全测试基础设施（Multiplayer/WS 层）。
 - 等待条件只挂接在真实到达的消息上（可观察状态），禁止任意 sleep；时序由 `FakeClock` 驱动（docs/06 §2.1）。
 - 洗牌随机由 `SeededRandomSource` 按 seed 派生，失败可 100% 重放（docs/06 §6）。
 - 故障注入测试必须记录故障脚本和 seed，明确区分真实链路与协议模拟（docs/06 §6）。
+
+TEX-53 扩展 `server-harness.test.ts`：真实 HTTP/WS 的 HAND_STARTED 与重连/GAP→RESYNC Snapshot 具有相同 D/SB/BB；两名玩家共享公开座位，私有底牌继续隔离。

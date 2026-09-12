@@ -27,3 +27,5 @@ CPU 采样只报告当前机器和浏览器条件下的帧间隔，不将 CDP 6x
 TEX-44 新增全站动态偏好容器后，CPU 回归的降级断言精确定位 `main[data-reduced-motion]`，继续测量牌桌自己的自动性能降级，而不是外层设备偏好。
 
 CPU 用例先用 MutationObserver 记录飞牌或自动降级，避免跨进程轮询漏掉瞬态。90 个真实帧采样与 trace/video 共享的整条用例时限为 60 秒；没有放宽下注序列或终帧断言。验证记录见 [TEX-44](../../../docs/03-engineering/TEX-44-acceptance.md)。
+
+TEX-53 的 wire v4 夹具补齐 smallBlindSeat/bigBlindSeat，沿用既有动画与音效断言。

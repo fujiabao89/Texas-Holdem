@@ -65,7 +65,7 @@
 
 ### 4.1 Wire 基础约定【规范性决定】
 
-- P0 协议版本为 `3`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 3`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。
+- P0 协议版本为 `4`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 4`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）；v4 在完整视图中必填公开盲注座位（[ADR-0003](./adr/0003-tex-53-authoritative-blind-seats.md)）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。wire `snapshotVersion: 1` 与持久化快照版本独立，本次无存储迁移。
 - 传输格式为 UTF-8 JSON；字段名使用 `lowerCamelCase`，`type`/`code` 等枚举值使用 `UPPER_SNAKE_CASE`。
 - ID 是不透明字符串；客户端不得从 ID 格式推断业务含义。客户端生成的 `requestId`/`actionId` 必须是 UUID v4 或具备等价碰撞强度的值。
 - `sequence` 是无符号 64 位整数，但在 JSON 中编码为十进制字符串（如 `"42"`），避免 JavaScript `number` 精度损失。客户端应用时使用 `BigInt` 或十进制整数库比较。
@@ -102,7 +102,7 @@ TEX-36 读取约束：重复的 `limit` / `cursor` 返回 `400 INVALID_MESSAGE`�
    ```json
    {
      "type": "AUTHENTICATE",
-     "protocolVersion": 3,
+     "protocolVersion": 4,
      "requestId": "uuid",
      "payload": { "roomId": "opaque-id", "playerToken": "secret" }
    }
@@ -158,7 +158,7 @@ type ClientCommand<TType extends string, TPayload> = {
 ```ts
 type ServerMessage<TType extends string, TPayload> = {
   type: TType;
-  protocolVersion: 3;
+  protocolVersion: 4;
   serverTime: number;
   payload: TPayload;
 };
@@ -350,6 +350,8 @@ type GameSnapshot = {
   handPhase: HandPhase | null;
   blindLevel: { index: number; smallBlind: number; bigBlind: number; ante: number };
   dealerSeat: number | null;
+  smallBlindSeat: number | null;
+  bigBlindSeat: number | null;
   board: Card[];
   pots: Array<{ amount: number; eligiblePlayerIds: string[] }>;
   currentActorPlayerId: string | null;
@@ -367,6 +369,8 @@ type GameSnapshot = {
 ```
 
 `PlayerPublicView` 至少包含 `playerId/displayName/seat/stack/streetBet/totalCommitted/pokerStatus/hasHoleCards/revealedCards`；连接状态的实时权威是最新 `RoomSnapshot.players[].connectionStatus`，不得在两个 Snapshot 中维护两份可独立演进的值。`revealedCards` 仅在规则已公开时出现，否则为空数组。`viewer.holeCards` 只包含该接收者当前合法可见的本人底牌；未发牌、已结束且不可再看等情形为空数组。`legalActions` 仅在 viewer 是当前 actor 时非空，且直接采用 Engine 输出。所有 `*RemainingMs` 字段均为非负整数毫秒。
+
+`smallBlindSeat` / `bigBlindSeat` 必填且为 0–9 或 `null`，直接读取 Engine 当前手 `sbSeat/bbSeat`，无手时为 `null`。已结算但仍保留该手时，保留本手盲注座位；`dealerSeat` 有手时读取该手庄位，无手时保留 Tournament 庄位语义。Heads-Up 的 D=SB，不按客户端玩家顺序、当前筹码或存活状态重算。三个座位在 `HAND_STARTED` 的 patch 随新手一起更新，INITIAL / RECONNECT / RESYNC / FAST_FORWARD / STALE_ACTION 与持久化恢复均经同一投影得到相同值。三者为公开信息，PlayerView、BotView 与淘汰观战视角一致。
 
 `CLOCK_UPDATED.timeBankRemainingMs` 指当前 actor 使用后的余额；客户端只有在消息的 `tournamentId + handId + currentActorPlayerId` 与当前视图一致时才应用。它不得改变筹码、行动权、牌面或 `legalActions`。
 
