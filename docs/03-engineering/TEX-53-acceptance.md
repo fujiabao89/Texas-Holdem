@@ -66,7 +66,15 @@ TEX_E2E_PORT=3155 CI=1 pnpm exec playwright test -c tests/e2e/playwright.config.
 
 部署配置、运维命令和数据库迁移：已检查，无需更新；本任务未更改这些运行资产，同步发布/回滚要求已记录 ADR。前端 UI 规格：已检查，无需更新；只补协议消费和夹具，座位徽标属于后续任务。受影响 Playwright 夹具已补齐 wire v4 字段；联合受影响 E2E 为 26/27 通过，其 1 项失败及干净基线对照见上文，其余跨任务联合验收由主 Agent 汇总。
 
-代码与本地验收已完成；推送、PR、Linear 状态由主 Agent 统一闭环。本任务未收到需要回复的 PR 原始审查评论；未触发 Greptile 或 DeepSeek Harness。
+PR #47 的 Codex 与 Greptile 审查分别指出同一跨手顺序问题：撤回结束旧手后，执行器先建立下一手再发旧手尾部事件，导致旧事件使用新 `handId` / 盲注座位。修正后，执行器在替换 handId 前发完旧手事件，`HAND_STARTED` 才发布下一手字段，并补定向回归。CodeRabbit 本轮因额度限制没有产出可操作 finding，不存在可伪造的修正项。未主动开启下一轮审查。
+
+GitHub `e2e-real` 的 WebKit axe 另发现座位筹码文字在实际桌面背景上对比度为 4.42:1（门槛 4.5:1）；按用户要求在本 PR 同步把文字提亮，并通过 `reducedMotion` 固定 axe 扫描时的动画终态。为保持真实键盘流程跨 macOS/WebKit 稳定，文本全选改用 Playwright 的 `ControlOrMeta`，创建与加入仍以键盘聚焦目标按钮后回车，不依赖浏览器不同的内部 Tab stop 数量。复跑命令与结果：
+
+```bash
+TEX_TEST_DATABASE_URL=postgres://tex51@127.0.0.1:5432/postgres TEX_E2E_REAL_SERVER_PORT=3251 TEX_E2E_REAL_WEB_PORT=3252 CI=1 pnpm exec playwright test -c tests/e2e/playwright.real.config.ts tests/e2e/real/accessibility.spec.ts --project=webkit --grep '纯键盘主流程与关键页面 axe 扫描'
+```
+
+结果：**WebKit 1 项通过**，覆盖真实 HTTP/WS/PostgreSQL、纯键盘建房/加入/开局和关键页面 axe 扫描；退出时测试 schema 正常删除。Vercel 失败是团队授权门禁，不是构建失败，需负责人在部署平台授权。
 
 ## 主 Agent 联合验收
 

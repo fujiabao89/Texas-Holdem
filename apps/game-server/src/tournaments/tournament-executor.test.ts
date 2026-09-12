@@ -360,6 +360,34 @@ describe("断线 / 离开 / 宽限 / 无真人关房", () => {
     const participant = harness.executor.getEngineState().participants.find((p) => p.seatIndex === seat)!;
     expect(participant.status).toBe("WITHDRAWN");
   });
+
+  it("撤回结束本手时先以旧 handId 发完尾部事件，再发布下一手盲注座位", async () => {
+    const harness = makeHarness({ seats: 3 });
+    await start(harness);
+    const oldHandId = harness.executor.getView().currentHandId;
+    await submitAction(harness, { playerId: currentActor(harness)!, action: fold() });
+    const withdrawTarget = currentActor(harness)!;
+    const before = harness.output.events.length;
+
+    await harness.executor.submit({
+      type: "WITHDRAW_PLAYER",
+      playerId: withdrawTarget,
+      reason: "USER_LEFT",
+    });
+
+    const messages = harness.output.events.slice(before);
+    const withdrawn = messages.find((message) => message.payload.event.type === "PLAYER_WITHDRAWN")!;
+    const nextHand = messages.find((message) => message.payload.event.type === "HAND_STARTED")!;
+    expect(withdrawn.payload.handId).toBe(oldHandId);
+    expect(withdrawn.payload.patch.handId).toBe(oldHandId);
+    expect(nextHand.payload.handId).not.toBe(oldHandId);
+    if (nextHand.payload.event.type !== "HAND_STARTED") throw new Error("expected HAND_STARTED");
+    expect(nextHand.payload.patch).toMatchObject({
+      handId: nextHand.payload.handId,
+      smallBlindSeat: nextHand.payload.event.payload.smallBlindSeat,
+      bigBlindSeat: nextHand.payload.event.payload.bigBlindSeat,
+    });
+  });
 });
 
 describe("重复 / 非法 / 过期命令不污染权威状态", () => {
