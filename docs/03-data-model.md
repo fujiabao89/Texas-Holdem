@@ -419,3 +419,9 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 9. 保留期清理在隔离数据集上验证：终态 7 天只清理中间 Snapshot，180 天按 §5.9/§5.10 顺序清理业务历史，主库删除后的备份不超过 30 天；全程不删除活跃 Tournament 恢复根、不留孤立外键记录。
 10. P1 单人模式集成测试证明 `mode=SINGLE_PLAYER`、`invite_code=NULL`、`gameId=rooms.id`，一名 HUMAN Host 与 BOT 通过同一 `room_players`/`tournament_players`/Commit Bundle/Snapshot/AI Requests 链路运行，加入接口无法枚举或加入该 Room。
 11. [02](./02-protocol-spec.md) 的 sequence/单人恢复语义、[04](./04-game-server-architecture.md) 的持久化队列/恢复流程与 [06](./06-testing-strategy.md) 的测试项已同步本文已裁决契约，不再保留“Snapshot 后回放未提交 Events”或“sequence 作用域未定”的旧表述。
+
+## TEX-54：持久化赛果读取一致性
+
+赛果仓储在单个 REPEATABLE READ / READ ONLY 事务读取 Tournament、所属 Room 的 ACTIVE HUMAN 凭证、锁定 Participant、与 `last_committed_sequence` 对齐的终局 Snapshot 及终局事件标记。只接受 FINISHED，校验终局时间、保留期、Snapshot 版本/checksum/终局阶段/序列，交叉核对完整参赛者、最终筹码、状态、冠军与排名。并列范围来自 Snapshot `finalStandings`；`tournament_players.rank = placementRange.from + displayOrder - 1` 仅作一致性校验，不能逆推并列。WITHDRAWN 无排名而保留公开最终筹码。
+
+读取不依赖 Runtime/RoomManager，不回放事件或修改数据。截止 `retention_expires_at` 即不再开放赛果；180 天既有保留期不因请求续期，清理任务仍属后续范围。私有 Snapshot 只进入服务端白名单投影，底牌、Deck、Burn、serverTimeBank、内部 ID、凭证摘要与原始事件永不出 wire。无新增表、迁移或复制的赛果事实。接口见 02 的 TEX-54 契约。

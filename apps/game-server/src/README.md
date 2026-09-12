@@ -15,3 +15,5 @@
 | `infrastructure/persistence/` | Supabase PostgreSQL 持久化（Schema/迁移/连接/仓储，TEX-18；恢复读取/回退仓储，TEX-22） | docs/03 |
 | `persistence/` | 持久化运行时编排（TEX-22）：异步 Writer（队列/退避/watermark/flush）与崩溃恢复（校验/重建/向前退回） | docs/04 §12/§13 |
 | `app.ts` / `main.ts` / `config.ts` | Fastify 装配、进程入口（含启动恢复屏障、优雅关停与 backpressure 门控，TEX-22）、运行时配置 | docs/04 §4.1/§13 |
+
+TEX-54：`http/routes/tournament-result.ts` 经持久化只读仓储和 `projection/tournament-result.ts` 提供赛果，生产 `main.ts` 装配；不依赖内存 Runtime。契约见 [02](../../../docs/02-protocol-spec.md) 的 TEX-54 小节。

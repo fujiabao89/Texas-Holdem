@@ -4,3 +4,4 @@ export * from "./tournaments";
 export * from "./hand-commit";
 export * from "./recovery";
 export * from "./hand-history";
+export * from "./tournament-result";

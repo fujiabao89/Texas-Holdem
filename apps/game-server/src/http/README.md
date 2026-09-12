@@ -11,3 +11,5 @@
 - **Hand History 投影读取**（`routes/hand-history.ts`，TEX-36）：`GET /api/v1/tournaments/:tournamentId/hands`（列表，`handNumber` 倒序 cursor 分页）与 `GET /api/v1/tournaments/:tournamentId/hands/:handId`（详情）。鉴权走 `room_players.token_digest` 数据库侧 HMAC 反查，只接受未关闭 Room 的 ACTIVE 成员（失效凭证返回 401 `AUTH_FAILED`，不依赖内存 RoomManager）；重复分页参数返回 400。详情校验手内/全局序列连续性及提交 Snapshot 末序列，手间前导事件保留序列并标 `handId: null`；事件经 `state-projector` 接收者视角投影（Burn 牌面/他人底牌/内部 ID 永不出 wire），投影/Schema/连续性失败均返回 500 `INTERNAL_ERROR`。无冠军终局遵循共享 v3 契约，见 [ADR-0002](../../../../docs/adr/0002-tex-36-championless-history.md)。
 
 错误映射原则：稳定 `error.code` 分支；不泄露堆栈、SQL、Token 或内部房间状态。
+
+- **持久化赛果**（`routes/tournament-result.ts`，TEX-54）：共享 UUID/无查询参数 Schema、Room 有效 HUMAN 成员 HMAC 授权、只读一致性事务、严格公开终局响应。`app.ts` 在限流前设置 no-store，覆盖早期失败；失败只影响该请求且不记录异常本体。完整契约、错误与保留期见 [02](../../../../docs/02-protocol-spec.md) 的 TEX-54 小节，真实 PG 回归见 `tests/integration/tournament-result-read.test.ts`。

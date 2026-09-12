@@ -4,3 +4,5 @@
 
 - [ADR-0001：TEX-24 Lobby 需要完整的 HTTP 响应 Schema 与可用 WS 运行时](./0001-tex-24-lobby-transport-contract-prerequisite.md)（已实施，TEX-24）
 - [ADR-0002：Hand History 的无冠军终局表示](./0002-tex-36-championless-history.md)（TEX-36 / PR #30，wire v3）
+
+- [ADR-0004：TEX-54 持久化赛果读取](./0004-tex-54-persisted-tournament-result.md)（已实施，HTTP增量；既有wire不变）

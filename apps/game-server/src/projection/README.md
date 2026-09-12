@@ -11,3 +11,5 @@
 TEX-36：`TOURNAMENT_FINISHED` 将 Engine 的 `championSeat: null` 明确投影为 `winnerPlayerId: null`，包括空排名的终局，遵循共享 wire v3 契约；不使用空 ID 或虚构冠军。定向验证：`pnpm exec vitest run --project unit apps/game-server/src/projection/state-projector.test.ts`。
 
 逐接收者投影由执行器按 `viewerPlayerId` 组装；`DEAL_HOLE_CARD` 对非目标接收者删除 `card` 字段但保留公开的座位/发牌事实，事件 `type/tournamentId/sequence/handId` 一致（02 §9.4）。
+
+TEX-54：`tournament-result.ts` 校验已提交终局的版本/checksum/序列、Participant 与 finalStandings、冠军与筹码守恒，然后按共享 HTTP Schema 白名单输出公开赛果。此路径不恢复引擎，也不输出 Snapshot 的 Deck/Burn/底牌/Time Bank/内部 ID。具体来源与错误规则见 [03](../../../../docs/03-data-model.md) / [02](../../../../docs/02-protocol-spec.md) 的 TEX-54 小节。

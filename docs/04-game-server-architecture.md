@@ -644,3 +644,9 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 《总规划》v1.0 新增、docx 未覆盖的决策（本文已吸收）：Action 与超时竞争的四步裁决（§3.2）；`ABANDONED_NO_HUMAN`、`CLOSED` 后邀请码立即失效、停 AI 与计时（§4.2）；断线满 10 分钟 `EXIT_PENDING`（§4.1）；不限时强制禁用 Time Bank（§3.1）；P0 开局 ≥2 真人、房主不能绕过 Ready 强制开始（§2.1）；房主转移规则（§4.2）。
 
 规划书是产品意图、非实现事实：本文所有实现类陈述在代码落地前一律视为设计意图（见文首标记）。
+
+## TEX-54：持久化赛果入口
+
+生产 app 装配独立 `TournamentResultReadRepository` 与 result GET 路由。路由解析 Bearer 并通过数据库 Room 成员 HMAC 凭证授权；仓储以只读一致性事务读取终局来源，白名单投影校验后经共享 HTTP Schema 返回。Runtime 卸载、进程重启、同 Room 启动后续比赛均不影响旧场赛果，前提是身份与保留期仍有效。读取故障映射安全 ErrorEnvelope，无运行时命令、Writer 回退或控制面写入。
+
+no-store 在请求 hook 中设置，覆盖限流和验证失败；全局 per-IP 限流与现有 HTTP 指标适用。服务端不记录请求、响应或异常本体，访问代理也必须剔除 Authorization 与 query。具体授权、错误与数据完整性以 02/03 的 TEX-54 契约为准。

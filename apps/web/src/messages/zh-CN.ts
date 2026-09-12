@@ -365,6 +365,9 @@ export const zhCN = {
     TIME_BANK_EMPTY: "延时时间已用完。",
     TIME_BANK_NOT_AVAILABLE: "当前不能使用延时。",
     GAME_UNAVAILABLE: "牌桌正在恢复，请稍后重试。",
+    TOURNAMENT_NOT_FOUND: "未找到该场比赛，或赛果已过保留期。",
+    TOURNAMENT_NOT_FINISHED: "本场比赛尚无已完成的赛果。",
+    TOURNAMENT_RESULT_INCOMPLETE: "赛果正在同步，请稍后重试。",
     INTERNAL_ERROR: "服务暂时异常，请稍后重试。",
   },
 } as const;

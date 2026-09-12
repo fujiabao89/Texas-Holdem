@@ -27,3 +27,7 @@
 
 - ID 全部由调用方预生成（`hand_id`/`snapshot_id`/事件序列确定性），幂等重试的前提（§7.4）。
 - 只提供写入与验证能力；异步队列、重试调度属后续任务；恢复编排见 `recovery.ts`（TEX-22），投影读取见 `hand-history.ts`（TEX-36）。
+
+## TEX-54 只读赛果
+
+`createTournamentResultRepository(database).read(tournamentId, now, authorize)` 在 REPEATABLE READ / READ ONLY 事务内进行 Room ACTIVE HUMAN 凭证授权，检查状态与保留期，再读取完整终局来源。返回内部记录必须经过 `projection/tournament-result.ts`，禁止透传。已有 `rank` 只校验组内展示序，并列范围取 Snapshot；无写入或 Runtime 依赖。字段与一致性契约见 [03](../../../../../../docs/03-data-model.md) 的 TEX-54 小节。

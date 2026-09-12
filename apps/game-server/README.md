@@ -61,3 +61,7 @@ pnpm --filter @texas-holdem/game-server db:migrate   # 对 DATABASE_SCHEMA 执�
 | `DATABASE_SCHEMA` | 否 | 持久化目标 schema（默认 `game` 私有 schema，不暴露给 PostgREST/GraphQL） |
 | `DATABASE_POOL_MAX` / `DATABASE_POOL_IDLE_TIMEOUT_MS` / `DATABASE_POOL_CONNECTION_TIMEOUT_MS` | 否 | 连接池参数覆盖 |
 | `TEX_TEST_DATABASE_URL` | 集成测试 | 测试库连接串；缺省时数据库集成测试受控跳过（TEX-12 约定） |
+
+## TEX-54 持久化赛果
+
+`GET /api/v1/tournaments/{tournamentId}/result` 由生产装配的 `createTournamentResultRepository` 提供，同 Room 有效 HUMAN 成员凭证授权，Runtime 卸载后仍可读。共享严格 Schema、错误/保留期/no-store 规则见 [02](../../docs/02-protocol-spec.md) 的 TEX-54 契约。内部终局来源使用直接依赖 `zod` 防御校验，公开 DTO 仍仅在协议包定义；无数据库迁移。真实链路与既有写入边界见 [验收记录](../../docs/03-engineering/TEX-54-acceptance.md)。

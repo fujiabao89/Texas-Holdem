@@ -14,3 +14,7 @@ wire v3 的客户端与 game-server 必须同时发布或同时回滚；旧主�
 - **红线**：任何含 Token、完整 Deck、未公开底牌或 AI 隐藏 Reasoning 的数据禁止进入指标/日志/告警存储。禁止携带私密牌面。
 - **告警关联机制（docs/06 §10.2）**：聚合告警经 `environment`/`version` 标签定位版本与环境；`roomId`/`tournamentId` 的关联**禁止**进入指标标签（per-room 高基数违反 `labelNames` 有限集合红线），改由**结构化应用日志字段** `roomId`/`tournamentId`（与 `version`/`environment` 同条日志）提供可执行关联查询，例如按告警窗口查询 `{app="game-server",level=~"warn|error"} |= roomId=<id>` 的日志行。告警注解只承载脱敏汇总与上述查询指引。
 - **演练（monitoring drill，docs/06 §10.2）**：发布前经故障注入触发一次 Game Error/Invariant Violation、重连率、Action Rejection Rate 告警；校验告警内容含版本、环境、room/tournament 关联且不含私密信息；P0 告警需推送/电话即时渠道 + 邮件兜底，P1 发送同一即时渠道。本地演练可用 `infra/monitoring/docker-compose.yml`（Prometheus + Alertmanager + Grafana + webhook-sink）证明「代码产生 → 采集 → Dashboard → 告警」链路；真实即时渠道与 P0 邮件兜底（SMTP/收件人）需授权后配置并重跑演练，未验证送达前不得宣称「监控已完成」。
+
+## TEX-54 赛果读取运行边界
+
+部署 game-server 与共享协议HTTP增量即可启用 result GET；无数据库迁移、无额外环境变量或清理job，既有wire版本不变。读路径可从已提交数据独立提供服务；503 INCOMPLETE 表示终局完整性校验失败，应在服务端受控排查版本/水位/结果来源，不能回放私密状态给客户端；500 INTERNAL_ERROR 按既有HTTP故障指标排查。无需且不得因一次读取失败修改Runtime/Writer。所有响应no-store，到180天既有retention_expires_at即404（即使清理延迟）；请求不续期。具体限制见 [验收记录](../03-engineering/TEX-54-acceptance.md)。

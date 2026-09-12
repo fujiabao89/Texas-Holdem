@@ -7,6 +7,7 @@ import {
 import {
   createHandCommitRepository,
   createHandHistoryRepository,
+  createTournamentResultRepository,
   createRecoveryRepository,
   createRoomRepository,
 } from "./infrastructure/persistence/repositories";
@@ -167,6 +168,7 @@ const app = buildApp({
   // Hand History 投影读取（TEX-36）：归档历史经 token 摘要数据库侧鉴权，
   // 不依赖内存 RoomManager（进程重启/房间关闭后仍可读）。
   handHistoryRepository: createHandHistoryRepository(database),
+  tournamentResultRepository: createTournamentResultRepository(database),
 });
 
 // ---- TEX-29 进程采样器：Active Room/Tournament、持久化队列/水位、内存/CPU/事件循环滞后 ----
