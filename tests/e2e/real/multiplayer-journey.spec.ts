@@ -178,7 +178,9 @@ test.describe("真实链路多人主流程", () => {
     }
     // 结果页排名表：三行名次，筹码守恒（3 × 20 = 60）；冠军独占全部筹码。
     await alice.getByRole("link", { name: "查看比赛结果" }).click();
-    await expect(alice.getByRole("heading", { name: "比赛结果" })).toBeVisible();
+    // 与「进入牌桌」一致：结果页是客户端路由跳转，CI 冷启动下 dev 端编译该路由
+    // 可能超过默认 15s，这里沿用文件内其他导航等待的 30s 预算。
+    await expect(alice.getByRole("heading", { name: "比赛结果" })).toBeVisible({ timeout: 30_000 });
     await expect(alice.getByRole("table").locator("tbody tr")).toHaveCount(3);
     expect(await sumFinalChips(alice)).toBe(60);
 
