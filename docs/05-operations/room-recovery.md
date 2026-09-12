@@ -13,6 +13,8 @@
 
 缺失 Host/成员、未知 key ID、配置冲突、检查点 checksum/版本/事件缺口不得人工猜补。先保留数据库证据，按 ID 在受控数据库会话核查权威表；不要将摘要/牌面写入工单或日志。`superseded-tournament` 表示更高编号已取代旧场，旧场不会恢复发牌。Room FINISHED / 最新 Tournament IN_GAME 的合法写入延迟按可验证根协调。
 
+恢复任一仓储读写发生意外数据库连接、SQL、权限或迁移错误时，以固定 `ROOM_RECOVERY_INFRASTRUCTURE_FAILED:<operation>` 错误中止启动，不将暂时不可用的房间误记为校验隔离；修复基础设施后重新启动。已离开成员在最近检查点仍为 ACTIVE 时保守隔离，待人工处置，这种正常提交时间差不等同于数据损坏。
+
 `ROOM_REVISION_RESERVATION_FAILED` 或运行期号段耗尽时，不得归零 revision。检查迁移、Room 状态和数据库可用性；运行期号段耗尽可受控重启预留下一个号段。达到安全整数总上界时需新的已审查协议/数据决策，不能继续递增。
 
 ## 回滚与验证

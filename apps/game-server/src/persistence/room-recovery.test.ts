@@ -9,6 +9,7 @@ import {
 } from "../../tests/fixtures/persistence";
 import { sha256Checksum } from "../infrastructure/persistence/checksum";
 import { computePlayerTokenDigest } from "../infrastructure/persistence/player-token";
+import { PersistenceError } from "../infrastructure/persistence/repositories/errors";
 import type {
   RoomRecoveryRecord,
   RoomRecoveryRepository,
@@ -416,7 +417,7 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
   it("rejects a Room whose revision reservation fails without registering its Tournament", async () => {
     const record = fixture();
     const h = harness([record]);
-    h.reserveRoomRevision.mockRejectedValueOnce(new Error("revision space exhausted"));
+    h.reserveRoomRevision.mockRejectedValueOnce(new PersistenceError("ROOM_REVISION_RESERVATION_FAILED"));
     const result = await recoverRoomsOnStartup(h.deps);
     expect(result.isolated).toHaveLength(1);
     expect(h.roomManager.findRoom(record.roomId)).toBeUndefined();
@@ -475,8 +476,70 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
   it("propagates an unavailable recovery database so the caller cannot open its listener", async () => {
     const h = harness([fixture()]);
     h.listRecoverableRooms.mockRejectedValueOnce(new Error("database unavailable"));
-    await expect(recoverRoomsOnStartup(h.deps)).rejects.toThrow("database unavailable");
+    await expect(recoverRoomsOnStartup(h.deps)).rejects.toThrow("ROOM_RECOVERY_INFRASTRUCTURE_FAILED:list-rooms");
     expect(h.roomManager.activeRoomCount()).toBe(0);
+    expect(h.createRecoveredFresh).not.toHaveBeenCalled();
+  });
+
+  it("redacts a failure from the initial active-tournament database read", async () => {
+    const h = harness([fixture()]);
+    vi.spyOn(h.recoveryRepo, "listActiveTournaments").mockRejectedValueOnce(new Error("private SQL parameters"));
+    await expect(recoverRoomsOnStartup(h.deps)).rejects.toThrow("ROOM_RECOVERY_INFRASTRUCTURE_FAILED:list-active-tournaments");
+    expect(h.onIsolated).not.toHaveBeenCalled();
+    expect(h.roomManager.activeRoomCount()).toBe(0);
+  });
+
+  it.each(([
+    "list-snapshots", "check-event-continuity", "rollback-snapshot", "reserve-room-revision", "set-room-status",
+  ] as const).flatMap(operation => [{ operation, infrastructure: true }, { operation, infrastructure: false }]))(
+    "$operation distinguishes infrastructure failure ($infrastructure) from known per-room inconsistency",
+    async ({ operation, infrastructure }) => {
+      const record = { ...fixture("r1", "t1", 14n), status: "FINISHED" as const };
+      const healthy = lobby(fixture("r2", "t2"));
+      const h = harness([record, healthy]);
+      h.recoveryRepo.setSnapshots([snapshotRecordFromBundle(makeBundle("t1", 2, 7n, 4))]);
+      h.recoveryRepo.eventCount = 14n;
+      const failure = infrastructure
+        ? Object.assign(new Error("private SQL parameters and credential contents"), { code: operation === "reserve-room-revision" ? "42703" : "ECONNRESET" })
+        : new PersistenceError("known target/checkpoint/reservation inconsistency");
+      switch (operation) {
+        case "list-snapshots": vi.spyOn(h.recoveryRepo, "listSnapshots").mockRejectedValueOnce(failure); break;
+        case "check-event-continuity": vi.spyOn(h.recoveryRepo, "hasCommittedEventsThrough").mockRejectedValueOnce(failure); break;
+        case "rollback-snapshot": vi.spyOn(h.recoveryRepo, "rollbackToSnapshot").mockRejectedValueOnce(failure); break;
+        case "reserve-room-revision": h.reserveRoomRevision.mockRejectedValueOnce(failure); break;
+        case "set-room-status": h.setRoomStatus.mockRejectedValueOnce(failure); break;
+      }
+      if (infrastructure) {
+        const error: unknown = await recoverRoomsOnStartup(h.deps).catch(error => error);
+        expect(error).toMatchObject({ name: "RecoveryInfrastructureError", message: `ROOM_RECOVERY_INFRASTRUCTURE_FAILED:${operation}` });
+        expect(error).not.toHaveProperty("cause");
+        expect(String(error)).not.toContain("private SQL");
+        expect(h.onIsolated).not.toHaveBeenCalled();
+        expect(h.roomManager.activeRoomCount()).toBe(0);
+        expect(h.createRecovered).not.toHaveBeenCalled();
+        expect(h.createRecoveredFresh).not.toHaveBeenCalled();
+        // A failed startup releases its barrier; a caller can retry after repairing the database.
+        const retried = await recoverRoomsOnStartup(h.deps);
+        expect(retried.restoredRooms).toEqual([record.roomId, healthy.roomId]);
+      } else {
+        const result = await recoverRoomsOnStartup(h.deps);
+        expect(result.isolated).toEqual([{ roomId: record.roomId, tournamentId: "t1", reason: "recovery-validation-or-registration-failed" }]);
+        expect(result.restoredRooms).toEqual([healthy.roomId]);
+        expect(h.roomManager.findRoom(record.roomId)).toBeUndefined();
+      }
+    },
+  );
+
+  it("does not mistake an Engine construction failure for repository infrastructure failure", async () => {
+    const record = fixture();
+    const healthy = lobby(fixture("r2", "t2"));
+    const h = harness([record, healthy]);
+    const result = await recoverRoomsOnStartup({
+      ...h.deps,
+      rngFactory: () => { throw Object.assign(new Error("failed engine random source"), { code: "ECONNRESET" }); },
+    });
+    expect(result.isolated).toEqual([{ roomId: record.roomId, tournamentId: "t1", reason: "recovery-validation-or-registration-failed" }]);
+    expect(result.restoredRooms).toEqual([healthy.roomId]);
     expect(h.createRecoveredFresh).not.toHaveBeenCalled();
   });
 });

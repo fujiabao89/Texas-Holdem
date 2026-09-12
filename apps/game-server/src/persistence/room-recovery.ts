@@ -2,6 +2,7 @@
 import { DisplayNameSchema, InviteCodeSchema, TournamentConfigSchema } from "@texas-holdem/protocol";
 import { stableStringify } from "../infrastructure/persistence/checksum";
 import { normalizeDisplayNameKey } from "../infrastructure/persistence/display-name";
+import { PersistenceError } from "../infrastructure/persistence/repositories/errors";
 import type { RoomRecoveryRecord, RoomRecoveryRepository } from "../infrastructure/persistence/repositories/room-recovery";
 import type { RoomRepository } from "../infrastructure/persistence/repositories/rooms";
 import type { RoomManager } from "../rooms/room-manager";
@@ -27,6 +28,26 @@ export interface RoomRecoverySummary {
 }
 
 class InvalidRecovery extends Error {}
+type RecoveryIoOperation = "list-rooms" | "list-active-tournaments" | "list-snapshots" | "check-event-continuity" | "rollback-snapshot" | "reserve-room-revision" | "set-room-status";
+
+/** 固定错误码可安全进入启动日志；不保留驱动错误、SQL 参数或凭证内容。 */
+class RecoveryInfrastructureError extends Error {
+  constructor(operation: RecoveryIoOperation) {
+    super(`ROOM_RECOVERY_INFRASTRUCTURE_FAILED:${operation}`);
+    this.name = "RecoveryInfrastructureError";
+  }
+}
+
+async function recoveryIo<T>(operation: RecoveryIoOperation, execute: () => Promise<T>): Promise<T> {
+  try {
+    return await execute();
+  } catch (error) {
+    // 已知仓储不一致（目标缺失、号段耗尽等）仍交逐房隔离；意外 I/O 必须阻止监听。
+    if (error instanceof PersistenceError) throw error;
+    throw new RecoveryInfrastructureError(operation);
+  }
+}
+
 function requireFact(valid: boolean, reason: string): asserts valid {
   if (!valid) throw new InvalidRecovery(reason);
 }
@@ -43,8 +64,18 @@ export function recoverRoomsOnStartup(deps: RoomRecoveryDeps): Promise<RoomRecov
 
 async function recoverRooms(deps: RoomRecoveryDeps): Promise<RoomRecoverySummary> {
   // 整体数据库不可用时阻止监听；逐 Room 验证错误只隔离该 Room。
-  const records = await deps.roomRecoveryRepo.listRecoverableRooms();
-  const activeRecords = await deps.recoveryRepo.listActiveTournaments();
+  const records = await recoveryIo("list-rooms", () => deps.roomRecoveryRepo.listRecoverableRooms());
+  const activeRecords = await recoveryIo("list-active-tournaments", () => deps.recoveryRepo.listActiveTournaments());
+  // 只包装真正的仓储边界，不把 Engine 校验、随机源或 Runtime 注册异常归类为 DB 故障。
+  const planDeps: RecoveryPlanDeps = {
+    ...deps,
+    recoveryRepo: {
+      ...deps.recoveryRepo,
+      listSnapshots: (id) => recoveryIo("list-snapshots", () => deps.recoveryRepo.listSnapshots(id)),
+      hasCommittedEventsThrough: (id, sequence) => recoveryIo("check-event-continuity", () => deps.recoveryRepo.hasCommittedEventsThrough(id, sequence)),
+      rollbackToSnapshot: (id, sequence, participants) => recoveryIo("rollback-snapshot", () => deps.recoveryRepo.rollbackToSnapshot(id, sequence, participants)),
+    },
+  };
   const restoredRooms: string[] = [];
   const skippedRooms: string[] = [];
   const isolated: { roomId: string; tournamentId?: string; reason: string }[] = [];
@@ -76,7 +107,7 @@ async function recoverRooms(deps: RoomRecoveryDeps): Promise<RoomRecoverySummary
         requireFact(latest !== undefined, "missing-latest-tournament");
         requireFact(deps.manager.getView(latest.tournamentId) === undefined, "tournament-already-registered-without-room");
         requireFact(stableStringify(TournamentConfigSchema.parse(latest.configJson)) === stableStringify(base.config), "room-tournament-config-conflict");
-        const candidate = await prepareTournamentRecovery(deps, latest.tournamentId, record.roomId, latest.configJson, latest.lastCommittedSequence, latest.players);
+        const candidate = await prepareTournamentRecovery(planDeps, latest.tournamentId, record.roomId, latest.configJson, latest.lastCommittedSequence, latest.players);
         requireFact(candidate.kind !== "unrecoverable", candidate.kind === "unrecoverable" ? candidate.reason : "invalid-checkpoint");
         plan = candidate;
         requireFact(latest.status === "IN_GAME" || plan.state.phase === "finished", "terminal-state-conflict");
@@ -98,10 +129,10 @@ async function recoverRooms(deps: RoomRecoveryDeps): Promise<RoomRecoverySummary
         requireFact(latest === undefined || latest.status !== "IN_GAME", "lobby-active-tournament-conflict");
       }
       const status = plan === undefined ? "LOBBY" : plan.state.phase === "finished" ? "FINISHED" : "IN_GAME";
-      const lease = await deps.roomRecoveryRepo.reserveRoomRevision(record.roomId);
+      const lease = await recoveryIo("reserve-room-revision", () => deps.roomRecoveryRepo.reserveRoomRevision(record.roomId));
       // 在任何运行时可见前完成回退/控制面协调；没有半恢复 Room 可以被认证。
       await plan?.commit();
-      if (status !== record.status) await deps.roomRepository.setRoomStatus(record.roomId, status);
+      if (status !== record.status) await recoveryIo("set-room-status", () => deps.roomRepository.setRoomStatus(record.roomId, status));
       const state: RoomState = { ...base, status, roomRevision: lease.initial, activeTournamentId: status === "IN_GAME" ? latest!.tournamentId : null };
       deps.roomManager.registerRecovered(state, lease.ceiling);
       registered = true;
@@ -117,6 +148,7 @@ async function recoverRooms(deps: RoomRecoveryDeps): Promise<RoomRecoverySummary
       restoredRooms.push(record.roomId);
     } catch (error) {
       if (registered) deps.roomManager.unregisterRecovered(record.roomId);
+      if (error instanceof RecoveryInfrastructureError) throw error;
       isolate({ roomId: record.roomId, tournamentId: latest?.tournamentId, reason: error instanceof InvalidRecovery ? error.message : "recovery-validation-or-registration-failed" });
     }
   }
