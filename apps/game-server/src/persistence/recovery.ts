@@ -252,6 +252,8 @@ function validSnapshotParticipants(state: TournamentState, players: readonly Act
   if (!parsed.success || stableStringify(parsed.data) !== stableStringify(config) ||
     !["running", "finished"].includes(state.phase) || !Number.isSafeInteger(state.handNumber) || state.handNumber < 1 ||
     !Number.isInteger(state.blindLevel) || state.blindLevel < 0 || state.blindLevel >= config.blindStructure.length ||
+    state.smallBlind !== config.blindStructure[state.blindLevel]!.smallBlind ||
+    state.bigBlind !== config.blindStructure[state.blindLevel]!.bigBlind ||
     !Number.isFinite(state.elapsedSeconds) || state.elapsedSeconds < 0 ||
     state.participants.length !== players.length || new Set(state.participants.map(p => p?.seatIndex)).size !== players.length ||
     state.initialTotalChips !== players.length * config.startingStack || !Number.isSafeInteger(state.forfeitedChips) || state.forfeitedChips < 0) return false;
@@ -264,6 +266,10 @@ function validSnapshotParticipants(state: TournamentState, players: readonly Act
       ((participant.status === "WITHDRAWN" || participant.status === "ELIMINATED") && participant.chips !== 0)) return false;
     total += participant.chips;
   }
+  if (state.phase === "finished") {
+    const active = state.participants.filter(participant => participant.status === "ACTIVE");
+    if (active.length > 1 || state.champion !== (active[0]?.seatIndex ?? null)) return false;
+  }
   return Number.isSafeInteger(total) && total === state.initialTotalChips;
 }
 
@@ -273,6 +279,8 @@ function isHandBoundaryState(value: unknown): value is TournamentState {
   return (
     typeof s.handInProgress === "boolean" &&
     s.handInProgress === false &&
+    // 生产检查点来自完整 Hand 结算；不可用 handInProgress=false 掩盖仍在下注的手。
+    (s.hand === null || (typeof s.hand === "object" && !Array.isArray(s.hand) && (s.hand as Record<string, unknown>).phase === "hand_end")) &&
     typeof s.nextSequence === "number" &&
     typeof s.handNumber === "number" &&
     typeof s.phase === "string" &&
