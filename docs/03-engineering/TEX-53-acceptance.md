@@ -72,4 +72,4 @@ TEX_E2E_PORT=3155 CI=1 pnpm exec playwright test -c tests/e2e/playwright.config.
 
 TEX-53 与 TEX-54 在独立验证工作区合并（验证提交 `73c69ba`），合并时仅处理文档同位置追加冲突，生产代码自动合并。`pnpm build`、`pnpm typecheck`、`pnpm lint` 全部通过；配置本机隔离 PostgreSQL 后执行 `pnpm test`，93 个文件、864 项测试全部通过，无数据库跳过。40 份变更 Markdown 的 410 个本地链接与 `git diff --check` 通过。Lint 仅有上述既有 warning。
 
-本地实现与联合验收已交付；GitHub CLI/HTTPS Git 暂无认证，因此尚未推送、创建 PR 或将 Linear 标记 Done。浏览器 E2E 仍按上节如实记录为 26 通过、1 项同环境主分支既有失败。前后端发布需使用同一共享协议版本。
+本地实现与联合验收已交付。GitHub 登录已恢复，分支已推送至 `sizhehao6-glitch/Texas-Holdem`，上游 [PR #47](https://github.com/fujiabao89/Texas-Holdem/pull/47) 已创建，待审阅与合并；最新交付状态在对应 Linear 任务跟踪。浏览器 E2E 仍按上节如实记录为 26 通过、1 项同环境主分支既有失败。前后端发布需使用同一共享协议版本。
