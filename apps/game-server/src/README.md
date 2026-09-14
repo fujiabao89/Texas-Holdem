@@ -4,6 +4,10 @@
 
 ## 模块
 
+TEX-52 生命周期装配：Room CLOSED → Gateway/幂等账本撤销 → Room 队列排空 → Tournament.disposeRoom → Writer.releaseTournament；独立 Bundle 可继续重试。终局只读保留及对象计数通过 managers API 提供，进程关停先冻结这些生产者再最终 flush。
+
+TEX-51 启动链路：`main.ts` → `persistence/room-recovery.ts` → 一致元数据/检查点验证 → Room 身份注册 → 等待 Tournament START → 监听。未知/损坏记录逐房隔离，不开放半恢复 Room。
+
 | 目录 | 职责 | 权威规格 |
 | --- | --- | --- |
 | `http/` | HTTP 入口与安全（routes/middleware/errors） | docs/04 §10；docs/02 §4/§8/§11 |
@@ -15,3 +19,5 @@
 | `infrastructure/persistence/` | Supabase PostgreSQL 持久化（Schema/迁移/连接/仓储，TEX-18；恢复读取/回退仓储，TEX-22） | docs/03 |
 | `persistence/` | 持久化运行时编排（TEX-22）：异步 Writer（队列/退避/watermark/flush）与崩溃恢复（校验/重建/向前退回） | docs/04 §12/§13 |
 | `app.ts` / `main.ts` / `config.ts` | Fastify 装配、进程入口（含启动恢复屏障、优雅关停与 backpressure 门控，TEX-22）、运行时配置 | docs/04 §4.1/§13 |
+
+TEX-54：`http/routes/tournament-result.ts` 经持久化只读仓储和 `projection/tournament-result.ts` 提供赛果，生产 `main.ts` 装配；不依赖内存 Runtime。契约见 [02](../../../docs/02-protocol-spec.md) 的 TEX-54 小节。

@@ -136,7 +136,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
 
   return <TableFrame reducedMotion={presentation.reducedMotion}>
     <header className="rr-table-header mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm sm:px-5">
-      <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="mt-0.5 text-sm text-slate-500">{message("table.handPhase")}：{phaseName(game.handPhase)}</p></div>
+      <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="mt-0.5 text-sm text-slate-600">{message("table.handPhase")}：{phaseName(game.handPhase)}</p></div>
       <div className="flex flex-wrap items-center gap-2">
         <button className={buttonClass} onClick={() => setHistoryOpen(true)} ref={historyButtonRef} type="button">{message("history.open")}</button>
         <button className={buttonClass} aria-label={message("table.soundLabel")} aria-pressed={soundEnabled} onClick={() => { void audio.unlock(); setSoundEnabled(!soundEnabled); }} type="button">{soundEnabled ? message("table.soundOn") : message("table.soundOff")}</button>

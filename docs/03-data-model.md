@@ -75,6 +75,10 @@ P0 的持久化策略是"**内存运行 + 关键状态持久化**"（《区块6-
 
 ### 4.3 恢复语义
 
+**TEX-51 实施**：启动恢复读取非 CLOSED Room、ACTIVE 身份及最新 Tournament 的一致元数据，原 HMAC 摘要与 key ID 继续鉴权，LEFT 身份不复活。Lobby seat/ready 不持久化，重启清空；比赛 seat 来自锁定参赛者，PokerStatus 来自已验证检查点。恢复顺序、控制面与异步终局的协调、错误隔离及号段策略见 [ADR-0003](./adr/0003-tex-51-room-recovery-authority.md)；不改变整手恢复粒度。
+
+`rooms.room_revision_ceiling`（bigint，默认 4294967295，范围 4294967295..9007199254740991）保存已分配 revision 号段的上界；每次恢复原子预留下一个 4294967296 大小的号段。它不是最新 RoomSnapshot，不持久化 Ready/连接状态。运行时不得越过所持号段，耗尽/预留失败拒绝恢复或变更，不用时间戳近似单调性。
+
 - **运行期重连**（刷新/切网/后台恢复）：game-server 用内存最新状态投影下发（[02](./02-protocol-spec.md) §6/§10），不依赖 DB 读取。
 - **进程崩溃后**：若 `last_committed_sequence > 0`，从对应的最新“整手已完整提交”手末 Snapshot 恢复；若仍为 0（首手尚未完整提交），从已持久化的 Tournament 配置和锁定参赛者重新初始化。P0 的 Hand Events 与手末 Snapshot 以整手为一个原子提交单元，因此恢复时不回放 Snapshot 之后的未提交/进行中 Hand Events；崩溃时进行中的 Hand 无损恢复**不是 P0 硬要求**（《总规划》§7.2；[02](./02-protocol-spec.md) §15）。
 - 每手末 Snapshot 是持久化检查点的下限粒度。《总规划》§7.2 将其与刷新、切网和手机后台恢复同时提及；本文的精确分工是：进程存活时这些场景使用内存最新投影，手末 DB Snapshot 只为进程重启/崩溃恢复托底。
@@ -138,7 +142,7 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 - 连接/在线状态仍只在内存；`room_players` 记录身份与成员关系，不使 PostgreSQL 成为 Presence 系统。
 
 > **实现注记（TEX-18）**：已实现。规格中 `token_digest`/`token_key_id` 标注 nullable，实现将"HUMAN 有凭证、BOT 无凭证"强化为 CHECK：`kind='HUMAN'` 时两者必填、`kind='BOT'` 时必须为 NULL；`octet_length(token_digest)=32` 亦由 CHECK 强制。`UNIQUE(room_id, id)` 供 `rooms_host_player_fk` 引用。HMAC 摘要计算/常数时间比较与 NFKC+小写 `display_name_key` 规范化（近似 case-fold，不声称防御所有 Unicode 同形字，与规格口径一致）由 persistence 模块工具提供；`playerToken` 的 CSPRNG 生成与下发属 TEX-19。
-- 服务端使用 CSPRNG 生成至少 256-bit 随机熵的 `playerToken`，仅在创建/加入 Room 的成功 HTTP 响应中返回原值。校验时对明确编码的 `room_id || player_id || playerToken` 按 `token_key_id` 计算 HMAC-SHA-256，并与 `token_digest` 常数时间比较。原 token 不可由摘要恢复；客户端丢失 token 即无法恢复该匿名身份，P0 不提供昵称找回。HMAC 校验密钥至少保留到其所属 Room 关闭；轮换策略不得使未关闭 Room 的现有 token 意外失效。
+- 服务端使用 CSPRNG 生成至少 256-bit 随机熵的 `playerToken`，仅在创建/加入 Room 的成功 HTTP 响应中返回原值。校验时对明确编码的 `room_id || player_id || playerToken` 按 `token_key_id` 计算 HMAC-SHA-256，并与 `token_digest` 常数时间比较。原 token 不可由摘要恢复；客户端丢失 token 即无法恢复该匿名身份，P0 不提供昵称找回。HMAC 校验密钥至少保留到其所属 Room 关闭；轮换策略不得使未关闭 Room 的现有 token 意外失效。生产配置以 `TOKEN_HMAC_SECRET` / `TOKEN_HMAC_KEY_ID` 签发新凭证，并用 `TOKEN_HMAC_RETAINED_KEYS` JSON 保存最多 16 个仅验证旧 key；Room、Hand History 与赛果读取统一按记录的 key ID 解析，未知 key 失败关闭。
 - 用户输入在入库前完成长度、字符集与 Unicode 规范化校验；输出时仍必须按所在上下文转义。
 
 ### 5.3 `tournaments`
@@ -421,3 +425,9 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 9. 保留期清理在隔离数据集上验证：终态 7 天只清理中间 Snapshot，180 天按 §5.9/§5.10 顺序清理业务历史，主库删除后的备份不超过 30 天；全程不删除活跃 Tournament 恢复根、不留孤立外键记录。
 10. P1 单人模式集成测试证明 `mode=SINGLE_PLAYER`、`invite_code=NULL`、`gameId=rooms.id`，一名 HUMAN Host 与 BOT 通过同一 `room_players`/`tournament_players`/Commit Bundle/Snapshot/AI Requests 链路运行，加入接口无法枚举或加入该 Room。
 11. [02](./02-protocol-spec.md) 的 sequence/单人恢复语义、[04](./04-game-server-architecture.md) 的持久化队列/恢复流程与 [06](./06-testing-strategy.md) 的测试项已同步本文已裁决契约，不再保留“Snapshot 后回放未提交 Events”或“sequence 作用域未定”的旧表述。
+
+## TEX-54：持久化赛果读取一致性
+
+赛果仓储在单个 REPEATABLE READ / READ ONLY 事务读取 Tournament、所属 Room 的 ACTIVE HUMAN 凭证、锁定 Participant、与 `last_committed_sequence` 对齐的终局 Snapshot 及终局事件标记。只接受 FINISHED，校验终局时间、保留期、Snapshot 版本/checksum/终局阶段/序列，交叉核对完整参赛者、最终筹码、状态、冠军与排名。并列范围来自 Snapshot `finalStandings`；`tournament_players.rank = placementRange.from + displayOrder - 1` 仅作持久化事实一致性校验，不能逆推并列。公开投影排除 WITHDRAWN 后按原分组顺序压缩为连续 `1..N`，并列组不拆分；WITHDRAWN 无排名而保留公开最终筹码。
+
+读取不依赖 Runtime/RoomManager，不回放事件或修改数据。截止 `retention_expires_at` 即不再开放赛果；180 天既有保留期不因请求续期，清理任务仍属后续范围。私有 Snapshot 只进入服务端白名单投影，底牌、Deck、Burn、serverTimeBank、内部 ID、凭证摘要与原始事件永不出 wire。无新增表、迁移或复制的赛果事实。接口见 02 的 TEX-54 契约。

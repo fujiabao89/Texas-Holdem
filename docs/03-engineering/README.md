@@ -6,6 +6,7 @@
 
 ## 索引
 
+- [TEX-51-52-acceptance.md](./TEX-51-52-acceptance.md)：Room/身份真实重启、终局运行时卸载、持久历史权限、有界生命周期 soak 的验证证据与部署边界。
 - [TEX-38-acceptance.md](./TEX-38-acceptance.md)：前端动画/音效优化的需求核对、验证证据与日常浏览器/实机发布边界。
 - [TEX-38-findings-ledger.md](./TEX-38-findings-ledger.md)：PR #40 的 Copilot、Codex、CodeRabbit 与 Greptile 审查意见逐项核验、定级和处置记录。
 
@@ -23,3 +24,4 @@ DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它�
 - [TEX-44-acceptance.md](./TEX-44-acceptance.md)：产品首页、全站品牌交互、移动端/键盘/动态偏好与既有牌桌回归证据。
 
 - [TEX-53-acceptance.md](./TEX-53-acceptance.md)：权威庄位/盲注座位、wire v4、恢复和多客户端一致性验证。
+- [TEX-54-acceptance.md](./TEX-54-acceptance.md)：持久化赛果读取的协议/真实PostgreSQL/授权隐私验收与既有终局写入边界。

@@ -2,7 +2,7 @@
 
 - 日期：2026-09-12
 - 分支：`feat/TEX-53-authoritative-blind-seats`
-- 决定：[ADR-0003](../adr/0003-tex-53-authoritative-blind-seats.md)
+- 决定：[ADR-0005](../adr/0005-tex-53-authoritative-blind-seats.md)
 - 权威字段与兼容规则：[02 §4.1 / §9.2](../02-protocol-spec.md)
 
 ## 交付

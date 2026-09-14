@@ -15,3 +15,5 @@
 
 - Integration 涉及数据库时使用 `tests/support/test-db.ts` 的 `describeTestDatabase`：缺配置受控跳过，有配置时按 `runId` 使用独立 schema。
 - WS 层多客户端驱动约定见 docs/06-testing-strategy.md §6；用例落地前该层以 `passWithNoTests` 受控跳过。
+
+TEX-54 在 `integration/tournament-result-read.test.ts` 用真实 TournamentExecutor → Commit Bundle → PostgreSQL → HTTP 验证持久化赛果（并列、撤回、无冠军、授权、到期、损坏、重建 app 和 no-store）；只读故障隐私测试位于 `src/http/routes/tournament-result.test.ts`。

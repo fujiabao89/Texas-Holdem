@@ -1,5 +1,5 @@
 import { buildApp } from "./app";
-import { parseAppConfig } from "./config";
+import { parseAppConfig, resolveTokenSecret } from "./config";
 import {
   createDatabase,
   parseDatabaseConfig,
@@ -7,8 +7,10 @@ import {
 import {
   createHandCommitRepository,
   createHandHistoryRepository,
+  createTournamentResultRepository,
   createRecoveryRepository,
   createRoomRepository,
+  createRoomRecoveryRepository,
 } from "./infrastructure/persistence/repositories";
 import { createNodeIdSource } from "./rooms/id-source";
 import { createRoomManager, type RoomManager } from "./rooms/room-manager";
@@ -23,7 +25,7 @@ import { createConnectionEpochRegistry } from "./realtime/connection-epochs";
 import { createTournamentEventBus } from "./realtime/tournament-event-bus";
 import { createBackpressureLatch } from "./persistence/backpressure";
 import { createPersistenceWriter } from "./persistence/persistence-writer";
-import { recoverActiveTournaments } from "./persistence/recovery";
+import { recoverRoomsOnStartup } from "./persistence/room-recovery";
 import { createTestRngFactory } from "./test-rng-factory";
 import { createServerMetrics, N as MetricName } from "./observability/server-metrics";
 import { createRateLimiter, parseRateLimitProfile } from "./http/middleware/rate-limit";
@@ -63,7 +65,7 @@ const tournamentEvents = createTournamentEventBus();
 const baseStarter = createPersistenceTournamentStarter(roomRepository);
 
 // 持久化降级门控：soft watermark 后停止创建新 Room；shutdown 时也置为拒绝（§12.2/§13.1）。
-const persistenceDegraded = { accepting: true };
+const persistenceDegraded = { accepting: true, shuttingDown: false };
 const isPersistenceAvailable = (): boolean => persistenceDegraded.accepting;
 
 // 背压 latch：hard 命中后保持暂停直到回落到 ok（低于 soft）才恢复（§12.2）。
@@ -76,15 +78,20 @@ const writer = createPersistenceWriter({
   clock: tournamentClock,
   onBackpressureChange: (level) => {
     backpressureLatch.onLevel(level);
-    persistenceDegraded.accepting = level === "ok";
-    metrics.set(MetricName.persistenceWatermarkLevel, level === "hard" ? 2 : level === "soft" ? 1 : 0);
+    persistenceDegraded.accepting = !persistenceDegraded.shuttingDown && level === "ok";
+    metrics.set(
+      MetricName.persistenceWatermarkLevel,
+      level === "hard" ? 2 : level === "soft" ? 1 : 0,
+    );
     metrics.set(MetricName.persistenceDegraded, level === "ok" ? 0 : 1);
     if (level === "hard") {
       console.warn("persistence hard watermark: pausing active tournaments at hand boundary");
     }
     // soft/hard → 停止创建新 Room；hard → 当前手结束后停在手间边界；仅回落到 ok → 恢复。
     if (tournamentManager !== undefined) {
-      void tournamentManager.pauseAll(backpressureLatch.hardPaused);
+      void tournamentManager.pauseAll(
+        persistenceDegraded.shuttingDown || backpressureLatch.hardPaused,
+      );
     }
   },
   onIntegrityError: (error, bundle) => {
@@ -111,6 +118,7 @@ tournamentManager = createTournamentManager({
   clock: tournamentClock,
   ids,
   scheduler,
+  onUnloaded: (tournamentId) => writer.releaseTournament(tournamentId),
   output: {
     // 事件/计时输出供 TEX-21 连接层订阅、Commit Bundle 交 TEX-22 Writer 处理。
     emitEvents: tournamentEvents.emitEvents,
@@ -148,8 +156,16 @@ roomManager = createRoomManager({
   persistence,
   roomRepository,
   ids,
+  clock: tournamentClock,
+  scheduler,
+  onClosed: async (roomId) => {
+    connectionEpochs.forgetRoom(roomId);
+    await tournamentManager.disposeRoom(roomId);
+  },
+  onObserverError: (roomId) => console.error(`room snapshot observer failed room=${roomId}`),
   tokenSecret: config.token.secret,
   tokenKeyId: config.token.keyId,
+  tokenSecretForKeyId: (keyId) => resolveTokenSecret(config, keyId),
   isConnectionCurrent: connectionEpochs.isCurrent,
   isPersistenceAvailable,
   onStartCommitted: registerRuntime.register,
@@ -167,6 +183,7 @@ const app = buildApp({
   // Hand History 投影读取（TEX-36）：归档历史经 token 摘要数据库侧鉴权，
   // 不依赖内存 RoomManager（进程重启/房间关闭后仍可读）。
   handHistoryRepository: createHandHistoryRepository(database),
+  tournamentResultRepository: createTournamentResultRepository(database),
 });
 
 // ---- TEX-29 进程采样器：Active Room/Tournament、持久化队列/水位、内存/CPU/事件循环滞后 ----
@@ -175,6 +192,14 @@ let lastCpuUsage = process.cpuUsage();
 let lastCpuAtMs = Date.now();
 let lastEventLoopTickAt = Date.now();
 function sampleProcessMetrics(): void {
+  const rooms = roomManager.runtimeCounts();
+  const tournaments = tournamentManager.runtimeCounts();
+  metrics.set(MetricName.registeredRooms, rooms.registered);
+  metrics.set(MetricName.closedRoomTombstones, rooms.closedTombstones);
+  metrics.set(MetricName.registeredTournaments, tournaments.registered);
+  metrics.set(MetricName.finishedRetainedTournaments, tournaments.finishedRetained);
+  metrics.set(MetricName.frozenTournaments, tournaments.frozen);
+  metrics.set(MetricName.persistenceRegisteredQueues, writer.queueCount());
   metrics.set(MetricName.activeRooms, roomManager.activeRoomCount());
   metrics.set(MetricName.activeTournaments, tournamentManager.activeTournamentIds().length);
   const memory = process.memoryUsage();
@@ -191,7 +216,7 @@ function sampleProcessMetrics(): void {
   if (wallSeconds > 0) {
     metrics.set(
       MetricName.processCpuRatio,
-      Math.max(0, (userDelta + systemDelta)) / 1e6 / wallSeconds,
+      Math.max(0, userDelta + systemDelta) / 1e6 / wallSeconds,
     );
   }
   lastCpuUsage = cpuNow;
@@ -199,9 +224,15 @@ function sampleProcessMetrics(): void {
   const writerMetrics = writer.getMetrics();
   metrics.set(MetricName.persistenceQueueItems, writerMetrics.items);
   metrics.set(MetricName.persistenceQueueBytes, writerMetrics.bytes);
-  metrics.set(MetricName.persistenceQueueOldestSeconds, (writerMetrics.oldestPendingAgeMs ?? 0) / 1000);
+  metrics.set(
+    MetricName.persistenceQueueOldestSeconds,
+    (writerMetrics.oldestPendingAgeMs ?? 0) / 1000,
+  );
   metrics.set(MetricName.persistenceQuarantined, writerMetrics.quarantined.length);
-  metrics.set(MetricName.persistenceLastDbLatencySeconds, (writerMetrics.lastDbLatencyMs ?? 0) / 1000);
+  metrics.set(
+    MetricName.persistenceLastDbLatencySeconds,
+    (writerMetrics.lastDbLatencyMs ?? 0) / 1000,
+  );
   metrics.set(MetricName.persistenceConsecutiveFailures, writerMetrics.consecutiveFailures);
   metrics.set(MetricName.uptimeSeconds, process.uptime());
 }
@@ -238,15 +269,22 @@ const host = process.env.HOST ?? "0.0.0.0";
 
 /** 启动屏障（docs/04 §13）：监听前恢复活跃比赛；失败则快速退出，不对外提供服务。 */
 async function recoverOnStartup(): Promise<void> {
-  const summary = await recoverActiveTournaments({
+  const summary = await recoverRoomsOnStartup({
+    roomRecoveryRepo: createRoomRecoveryRepository(database),
+    roomRepository,
+    roomManager,
+    tokenKeyId: config.token.keyId,
+    tokenSecretForKeyId: (keyId) => resolveTokenSecret(config, keyId),
     recoveryRepo: createRecoveryRepository(database),
     manager: tournamentManager,
     clock: tournamentClock,
     ids,
     scheduler,
     rngFactory,
-    onUnrecoverable: (tournamentId, reason) => {
-      console.error(`unrecoverable tournament=${tournamentId} isolated: ${reason}`);
+    onIsolated: ({ roomId, tournamentId, reason }) => {
+      console.error(
+        `recovery isolated room=${roomId} tournament=${tournamentId ?? "none"} reason=${reason}`,
+      );
     },
   });
   if (summary.recovered.length > 0) {
@@ -255,8 +293,9 @@ async function recoverOnStartup(): Promise<void> {
   if (summary.reinitialized.length > 0) {
     console.info(`reinitialized ${summary.reinitialized.length} tournament(s) (no committed hand)`);
   }
-  if (summary.unrecovered.length > 0) {
-    console.error(`${summary.unrecovered.length} tournament(s) have no verifiable recovery root`);
+  console.info(`restored ${summary.restoredRooms.length} room(s)`);
+  if (summary.isolated.length > 0) {
+    console.error(`${summary.isolated.length} recovery record(s) isolated`);
   }
 }
 
@@ -284,16 +323,23 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   console.info(`received ${signal}, shutting down`);
   try {
+    persistenceDegraded.shuttingDown = true;
     persistenceDegraded.accepting = false; // 停止新 WS Upgrade/创建加入/启动 Tournament
     await tournamentManager.pauseAll(true); // 所有 Tournament 停当前手后
     await waitForHandDrain(90_000); // §13.1 step 3：当前手最多 90 秒
+    // 先关闭入口、等待 Room 控制事务并停止 Runtime，保证 final flush 期间无新的 Bundle。
+    await app.close();
+    await roomManager.dispose();
+    await tournamentManager.dispose();
     await writer.flush(30_000); // §13.1 step 4：Writer 最多 Flush 30 秒
     // §13.1 step 4「记录未提交 Bundle 数量后退出」：flush 超时后剩余为未提交。
     const uncommitted = writer.pendingCount();
     if (uncommitted > 0) {
-      console.error(`shutdown: ${uncommitted} commit bundle(s) not flushed; they are not recovery roots`);
+      console.error(
+        `shutdown: ${uncommitted} commit bundle(s) not flushed; they are not recovery roots`,
+      );
     }
-    await app.close();
+    writer.dispose();
     await database.end();
   } finally {
     process.exit(0);

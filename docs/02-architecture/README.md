@@ -2,4 +2,5 @@
 
 系统、前端、服务端、扑克引擎、实时协议和数据模型的设计决策。
 
-- [ADR-0003：Snapshot 中的权威庄位与盲注座位](../adr/0003-tex-53-authoritative-blind-seats.md)：TEX-53 的来源、无手/手末语义和 wire v4 同步升级决定。
+- [ADR-0004：TEX-54 持久化赛果读取](../adr/0004-tex-54-persisted-tournament-result.md)：Room成员授权、只读一致性终局来源、隐私/到期边界与HTTP增量。
+- [ADR-0005：Snapshot 中的权威庄位与盲注座位](../adr/0005-tex-53-authoritative-blind-seats.md)：TEX-53 的来源、无手/手末语义和 wire v4 同步升级决定。

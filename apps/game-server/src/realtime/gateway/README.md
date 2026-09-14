@@ -1,5 +1,7 @@
 # Gateway
 
+TEX-52：Room CLOSED 同步发送最终房间投影、撤销所有 epoch/订阅/心跳，Socket 关闭等待该连接在途 Lobby 命令的回执发送完毕。Gateway 全局订阅在 app.close 时注销。请求同 Room 的终局保留 Tournament 时允许最终 Snapshot 和原 Action/TimeBank 幂等查账，新动作由执行器拒绝；旧赛不能控制新赛，跨房间仍拒绝。
+
 WebSocket 接入、认证握手和消息路由入口。
 
 `lobby-gateway.ts` 适配认证、Lobby 命令、Tournament Action/Time Bank、快照重同步

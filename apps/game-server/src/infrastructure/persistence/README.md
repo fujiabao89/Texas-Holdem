@@ -1,6 +1,6 @@
 # Persistence adapters
 
-基于 Supabase PostgreSQL 的持久化实现（Drizzle ORM + `pg`，权威规格：[docs/03-data-model.md](../../../../docs/03-data-model.md)）。数据库是记录与恢复检查点，**不是**运行中牌局状态机，也不参与客户端裁决。
+基于 Supabase PostgreSQL 的持久化实现（Drizzle ORM + `pg`，权威规格：[docs/03-data-model.md](../../../../../docs/03-data-model.md)）。数据库是记录与恢复检查点，**不是**运行中牌局状态机，也不参与客户端裁决。
 
 ## 结构
 
@@ -36,3 +36,7 @@
 - Hand History 投影读取（docs/03 §6，读时投影）。
 - 保留期清理任务（docs/03 §5.10）。
 - Room/Lobby 内存态恢复（成员/Host/配置 → RoomManager）。
+
+## TEX-54 赛果读取
+
+`repositories/tournament-result.ts` 从同一只读事务内的 Tournament、成员凭证、Participant、终局 Snapshot/事件标记提供私有读取来源；HTTP 仅发送 `projection/tournament-result.ts` 白名单结果。数据一致性与到期访问规则见 [03](../../../../../docs/03-data-model.md) 的 TEX-54 小节。
