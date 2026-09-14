@@ -1,5 +1,7 @@
 # Server realtime
 
+TEX-52：epoch 采用全局单调分配，只保存活跃连接映射；Room 关闭时 `forgetRoom` 精确撤销，不保留随历史玩家数增长的 generation Map。Gateway 的全局订阅、心跳和认证映射在闭房/关停时释放；终局只读快照仅向该 Tournament 的原参赛者开放，后来加入同 Room 的成员没有历史访问权，详见 [Gateway](./gateway/README.md)。
+
 服务端实时传输层。负责协议适配和连接管理，不负责裁决扑克规则。
 
 TEX-21 在 TEX-24 的同一 Gateway 上补齐完整生命周期：首帧强制认证、协议版本

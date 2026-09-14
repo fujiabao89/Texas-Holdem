@@ -21,8 +21,20 @@ import { generatePlayerToken } from "./player-token";
 import { RoomDomainError } from "./room-errors";
 import { RoomRuntime, type RoomCommand, type RoomCommandResult } from "./room-executor";
 import type { RoomPersistence } from "./room-persistence";
-import { createRoomState, projectRoomSnapshot } from "./room-runtime";
+import { createRoomState, projectRoomSnapshot, type RoomState } from "./room-runtime";
 import type { TournamentStartRequest } from "./tournament-starter";
+import {
+  createNodeTimerScheduler,
+  type TimerHandle,
+  type TimerScheduler,
+} from "../scheduler/timer-scheduler";
+
+export const CLOSED_ROOM_RETENTION_MS = 600_000;
+export interface ClosedRoomTombstone {
+  readonly roomId: string;
+  readonly closedReason: string;
+  readonly closedAt: number;
+}
 
 export interface RoomManagerDeps {
   readonly persistence: RoomPersistence;
@@ -37,6 +49,12 @@ export interface RoomManagerDeps {
   readonly isPersistenceAvailable?: () => boolean;
   /** START_TOURNAMENT 在 Room 提交 IN_GAME 后注册 Tournament 运行时（§5.7；TEX-28 F-7）。 */
   readonly onStartCommitted?: (request: TournamentStartRequest) => void;
+  readonly clock?: () => number;
+  readonly scheduler?: TimerScheduler;
+  /** CLOSED 已广播并同步撤销连接后，释放该房间所有比赛（Writer 已独立持有 Bundle）。 */
+  readonly onClosed?: (roomId: string) => Promise<void>;
+  /** 观察者失败不能回滚已提交状态或中断其它观察者的权限撤销；仅报告安全 ID。 */
+  readonly onObserverError?: (roomId: string) => void;
 }
 
 export interface PlayerSession {
@@ -49,6 +67,10 @@ export interface PlayerSession {
 export type RoomSnapshotListener = (snapshot: RoomSnapshot) => void;
 
 export interface RoomManager {
+  /** 启动屏障专用：只注册已验证的完整 Room，不替换现有运行时。 */
+  registerRecovered(state: RoomState, revisionCeiling: number): void;
+  /** 撤销本次失败的启动注册；不得用于正常运行期关闭。 */
+  unregisterRecovered(roomId: string): void;
   createRoom(input: {
     readonly displayName: string;
     readonly displayNameKey: string;
@@ -66,6 +88,9 @@ export interface RoomManager {
   getSnapshot(roomId: string): RoomSnapshot | undefined;
   /** 当前活跃（内存）Room 数（TEX-29 Active Rooms 指标采样用）。 */
   activeRoomCount(): number;
+  runtimeCounts(): { registered: number; active: number; closedTombstones: number };
+  getTombstone(roomId: string): ClosedRoomTombstone | undefined;
+  dispose(): Promise<void>;
   subscribe(listener: RoomSnapshotListener): () => void;
   /** 由 token 摘要反查 playerId（常数时间比较每个候选真人）。 */
   authenticate(roomId: string, token: string): string;
@@ -75,9 +100,26 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
   const rooms = new Map<string, RoomRuntime>();
   const inviteByCode = new Map<string, string>();
   const listeners = new Set<RoomSnapshotListener>();
+  const tombstones = new Map<string, ClosedRoomTombstone>();
+  const tombstoneTimers = new Map<string, TimerHandle>();
+  const closing = new Map<string, Promise<void>>();
+  const admittedCreates = new Set<Promise<PlayerSession>>();
+  const scheduler = deps.scheduler ?? createNodeTimerScheduler();
+  const clock = deps.clock ?? deps.ids.now;
+  let disposed = false;
 
   function publish(snapshot: RoomSnapshot): void {
-    for (const listener of listeners) listener(snapshot);
+    for (const listener of listeners) {
+      try {
+        listener(snapshot);
+      } catch {
+        try {
+          deps.onObserverError?.(snapshot.roomId);
+        } catch {
+          /* diagnostics cannot own the Room queue */
+        }
+      }
+    }
   }
 
   function makeToken(roomId: string, playerId: string): { token: string; digest: Buffer } {
@@ -92,46 +134,155 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
     return { token, digest };
   }
 
+  function requireRuntime(roomId: string): RoomRuntime {
+    if (disposed) throw new RoomDomainError("GAME_UNAVAILABLE");
+    if (tombstones.has(roomId)) throw new RoomDomainError("ROOM_NOT_FOUND");
+    const runtime = rooms.get(roomId);
+    if (runtime === undefined) throw new RoomDomainError("ROOM_NOT_FOUND");
+    if (runtime.current.status === "CLOSED") throw new RoomDomainError("ROOM_NOT_FOUND");
+    return runtime;
+  }
+
+  // 单独的 closure 作用域：保留期 timer 只能捕获三字段 tombstone，不能捕获重型 state/runtime。
+  function retainTombstone(tombstone: ClosedRoomTombstone): void {
+    const handle = scheduler.setTimeout(
+      () => {
+        if (tombstones.get(tombstone.roomId) !== tombstone) return;
+        tombstones.delete(tombstone.roomId);
+        tombstoneTimers.delete(tombstone.roomId);
+      },
+      Math.max(0, CLOSED_ROOM_RETENTION_MS - (clock() - tombstone.closedAt)),
+    );
+    tombstoneTimers.set(tombstone.roomId, handle);
+  }
+
+  async function publishResult(runtime: RoomRuntime, state: RoomState): Promise<void> {
+    if (state.status !== "CLOSED") {
+      publish(projectRoomSnapshot(state));
+      return;
+    }
+    const existing = closing.get(state.roomId);
+    if (existing !== undefined) return existing;
+    // 此后身份与邀请码立即失效；广播仍携带最终快照，但不保留在 tombstone 中。
+    const tombstone: ClosedRoomTombstone = {
+      roomId: state.roomId,
+      closedReason: state.closedReason ?? "ROOM_CLOSED",
+      closedAt: clock(),
+    };
+    tombstones.set(state.roomId, tombstone);
+    for (const [code, roomId] of inviteByCode)
+      if (roomId === state.roomId) inviteByCode.delete(code);
+    publish(projectRoomSnapshot(state));
+    const pending = (async () => {
+      await runtime.dispose();
+      try {
+        await deps.onClosed?.(state.roomId);
+      } finally {
+        // 下游释放失败向调用方报告，但不让已关闭/已排空的 Room 永久占据重型 Map。
+        if (rooms.get(state.roomId) === runtime) rooms.delete(state.roomId);
+        if (!disposed) retainTombstone(tombstone);
+      }
+    })().finally(() => closing.delete(state.roomId));
+    closing.set(state.roomId, pending);
+    await pending;
+  }
+
   return {
+    registerRecovered(state, revisionCeiling) {
+      if (
+        disposed ||
+        tombstones.has(state.roomId) ||
+        rooms.has(state.roomId) ||
+        (state.inviteCode !== null && inviteByCode.has(state.inviteCode))
+      ) {
+        throw new RoomDomainError("GAME_UNAVAILABLE");
+      }
+      if (state.status === "CLOSED" || state.roomRevision > revisionCeiling) {
+        throw new RoomDomainError("GAME_UNAVAILABLE");
+      }
+      const runtime = new RoomRuntime(state, {
+        persistence: deps.persistence,
+        ids: deps.ids,
+        revisionCeiling,
+        isConnectionCurrent: deps.isConnectionCurrent,
+        onStartCommitted: deps.onStartCommitted,
+      });
+      rooms.set(state.roomId, runtime);
+      if (state.inviteCode !== null) inviteByCode.set(state.inviteCode, state.roomId);
+    },
+
+    unregisterRecovered(roomId) {
+      const runtime = rooms.get(roomId);
+      if (runtime === undefined) return;
+      const code = runtime.current.inviteCode;
+      if (code !== null && inviteByCode.get(code) === roomId) inviteByCode.delete(code);
+      rooms.delete(roomId);
+    },
+
     async createRoom(input) {
+      if (disposed) throw new RoomDomainError("GAME_UNAVAILABLE");
       // soft watermark 后停止创建新 Room（docs/04 §12.2）；已开始的 Hand 不受影响。
       if (deps.isPersistenceAvailable !== undefined && !deps.isPersistenceAvailable()) {
         throw new RoomDomainError("GAME_UNAVAILABLE");
       }
-      const roomId = deps.ids.uuid();
-      const playerId = deps.ids.uuid();
-      const inviteCode = generateUniqueInviteCode(deps.ids.randomBytes, (code) => inviteByCode.has(code));
-      const { token, digest } = makeToken(roomId, playerId);
-      await deps.roomRepository.createRoomWithHost({
-        roomId,
-        mode: "MULTIPLAYER",
-        inviteCode,
-        configJson: input.config,
-        initialStatus: "LOBBY",
-        host: { playerId, displayName: input.displayName, tokenDigest: digest, tokenKeyId: deps.tokenKeyId },
-      });
-      const state = createRoomState({
-        roomId,
-        inviteCode,
-        host: {
-          playerId,
-          displayName: input.displayName,
-          displayNameKey: input.displayNameKey,
-          joinedAt: deps.ids.now(),
-          tokenDigest: digest,
-          tokenKeyId: deps.tokenKeyId,
-        },
-        config: input.config,
-      });
-      const runtime = new RoomRuntime(state, { persistence: deps.persistence, ids: deps.ids, isConnectionCurrent: deps.isConnectionCurrent, onStartCommitted: deps.onStartCommitted });
-      rooms.set(roomId, runtime);
-      inviteByCode.set(inviteCode, roomId);
-      const roomSnapshot = projectRoomSnapshot(state);
-      publish(roomSnapshot);
-      return { roomId, playerId, playerToken: token, roomSnapshot };
+      // shutdown 只拒绝尚未准入的创建；一旦进入持久化事务，就必须完成运行时注册并
+      // 返回凭证。dispose 会等待这些操作后再统一卸载，避免留下无人可达的持久化 Room。
+      const operation = (async (): Promise<PlayerSession> => {
+        const roomId = deps.ids.uuid();
+        const playerId = deps.ids.uuid();
+        const inviteCode = generateUniqueInviteCode(deps.ids.randomBytes, (code) =>
+          inviteByCode.has(code),
+        );
+        const { token, digest } = makeToken(roomId, playerId);
+        await deps.roomRepository.createRoomWithHost({
+          roomId,
+          mode: "MULTIPLAYER",
+          inviteCode,
+          configJson: input.config,
+          initialStatus: "LOBBY",
+          host: {
+            playerId,
+            displayName: input.displayName,
+            tokenDigest: digest,
+            tokenKeyId: deps.tokenKeyId,
+          },
+        });
+        const state = createRoomState({
+          roomId,
+          inviteCode,
+          host: {
+            playerId,
+            displayName: input.displayName,
+            displayNameKey: input.displayNameKey,
+            joinedAt: deps.ids.now(),
+            tokenDigest: digest,
+            tokenKeyId: deps.tokenKeyId,
+          },
+          config: input.config,
+        });
+        const runtime = new RoomRuntime(state, {
+          persistence: deps.persistence,
+          ids: deps.ids,
+          revisionCeiling: 4_294_967_295,
+          isConnectionCurrent: deps.isConnectionCurrent,
+          onStartCommitted: deps.onStartCommitted,
+        });
+        rooms.set(roomId, runtime);
+        inviteByCode.set(inviteCode, roomId);
+        const roomSnapshot = projectRoomSnapshot(state);
+        publish(roomSnapshot);
+        return { roomId, playerId, playerToken: token, roomSnapshot };
+      })();
+      admittedCreates.add(operation);
+      try {
+        return await operation;
+      } finally {
+        admittedCreates.delete(operation);
+      }
     },
 
     async joinRoom(input) {
+      if (disposed) throw new RoomDomainError("GAME_UNAVAILABLE");
       const roomId = inviteByCode.get(input.inviteCode);
       if (roomId === undefined) {
         throw new RoomDomainError("INVALID_INVITE_CODE");
@@ -164,10 +315,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
     },
 
     async submitCommand(roomId, command) {
-      const runtime = rooms.get(roomId);
-      if (runtime === undefined) {
-        throw new RoomDomainError("ROOM_NOT_FOUND");
-      }
+      const runtime = requireRuntime(roomId);
       // 持久化降级（soft/hard watermark）或优雅关停期间拒绝新开局（docs/04 §12.2/§13.1）：
       // 不新增 Tournament，避免在积压/关停窗口继续产生待提交 Bundle。
       if (
@@ -178,17 +326,14 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
         throw new RoomDomainError("GAME_UNAVAILABLE");
       }
       const result = await runtime.submit(command);
-      publish(projectRoomSnapshot(result.state));
+      await publishResult(runtime, result.state);
       return result;
     },
 
     async transferHost(roomId) {
-      const runtime = rooms.get(roomId);
-      if (runtime === undefined) {
-        throw new RoomDomainError("ROOM_NOT_FOUND");
-      }
+      const runtime = requireRuntime(roomId);
       const result = await runtime.submit({ type: "TRANSFER_HOST" });
-      publish(projectRoomSnapshot(result.state));
+      await publishResult(runtime, result.state);
       return result;
     },
 
@@ -202,7 +347,33 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
     },
 
     activeRoomCount() {
-      return rooms.size;
+      return [...rooms.values()].filter((runtime) => runtime.current.status !== "CLOSED").length;
+    },
+
+    runtimeCounts() {
+      return {
+        registered: rooms.size,
+        active: [...rooms.values()].filter((runtime) => runtime.current.status !== "CLOSED").length,
+        closedTombstones: tombstones.size,
+      };
+    },
+
+    getTombstone(roomId) {
+      const tombstone = tombstones.get(roomId);
+      return tombstone === undefined ? undefined : { ...tombstone };
+    },
+
+    async dispose() {
+      disposed = true;
+      for (const timer of tombstoneTimers.values()) scheduler.clearTimeout(timer);
+      tombstoneTimers.clear();
+      await Promise.allSettled([...admittedCreates]);
+      await Promise.all([...rooms.values()].map((runtime) => runtime.dispose()));
+      await Promise.all([...closing.values()]);
+      rooms.clear();
+      inviteByCode.clear();
+      tombstones.clear();
+      listeners.clear();
     },
 
     subscribe(listener) {
@@ -211,12 +382,10 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
     },
 
     authenticate(roomId, token) {
-      const runtime = rooms.get(roomId);
-      if (runtime === undefined) {
-        throw new RoomDomainError("ROOM_NOT_FOUND");
-      }
+      const runtime = requireRuntime(roomId);
       for (const member of runtime.current.members.values()) {
-        if (member.kind !== "HUMAN" || member.tokenDigest === null || member.tokenKeyId === null) continue;
+        if (member.kind !== "HUMAN" || member.tokenDigest === null || member.tokenKeyId === null)
+          continue;
         const digest = computePlayerTokenDigest({
           roomId,
           playerId: member.playerId,

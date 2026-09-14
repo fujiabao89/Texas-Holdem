@@ -1,5 +1,7 @@
 # Security documents
 
+TEX-51 启动恢复只加载 ACTIVE 成员的 HMAC 摘要和受支持 key ID，不存储/重签原 token，不复活 LEFT 身份。Host/成员/参赛者不一致时隔离，诊断不打印快照、昵称或摘要。未关闭 Room 的密钥须保持可用；本次不引入轮换系统。详见 [ADR-0003](../adr/0003-tex-51-room-recovery-authority.md)。
+
 身份、权限、作弊防范、随机性、审计与威胁模型。真钱能力在明确合规范围前不纳入实现。
 
 Hand History 的凭证有效期与成员资格遵循 [协议规格](../02-protocol-spec.md) §4.2 / §5；历史记录保留期不延长授权，见 [数据模型](../03-data-model.md) §5.10。TEX-36 对两个读取端点执行数据库侧状态校验。

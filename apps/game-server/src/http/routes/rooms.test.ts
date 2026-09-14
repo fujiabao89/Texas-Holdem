@@ -35,7 +35,11 @@ function makeIds(): IdSource {
 }
 
 function makeApp(
-  overrides: { now?: () => number; rateLimit?: { max: number; timeWindow: string } } = {},
+  overrides: {
+    now?: () => number;
+    rateLimit?: { max: number; timeWindow: string };
+    idempotency?: IdempotencyStore;
+  } = {},
 ): FastifyInstance {
   const config = parseAppConfig({ TOKEN_HMAC_SECRET: TOKEN_SECRET });
   const manager = createRoomManager({
@@ -49,7 +53,7 @@ function makeApp(
     config,
     roomManager: manager,
     rateLimiter: createRateLimiter(overrides.now ?? (() => 1000)),
-    idempotency: new IdempotencyStore(),
+    idempotency: overrides.idempotency ?? new IdempotencyStore(),
     now: overrides.now ?? (() => 1000),
     rateLimit: overrides.rateLimit,
   });
@@ -69,7 +73,12 @@ async function createRoom(app: FastifyInstance, ip = "127.0.0.1"): Promise<Playe
   return response.json().data as PlayerSession;
 }
 
-async function joinRoom(app: FastifyInstance, inviteCode: string, displayName: string, ip: string): Promise<PlayerSession> {
+async function joinRoom(
+  app: FastifyInstance,
+  inviteCode: string,
+  displayName: string,
+  ip: string,
+): Promise<PlayerSession> {
   const response = await app.inject({
     method: "POST",
     url: "/api/v1/rooms/join",
@@ -112,8 +121,18 @@ describe("POST /api/v1/rooms", () => {
     const idemKey = key();
     const payload = { displayName: "Host", config: makeConfig() };
     const [first, second] = await Promise.all([
-      app.inject({ method: "POST", url: "/api/v1/rooms", headers: { "idempotency-key": idemKey }, payload }),
-      app.inject({ method: "POST", url: "/api/v1/rooms", headers: { "idempotency-key": idemKey }, payload }),
+      app.inject({
+        method: "POST",
+        url: "/api/v1/rooms",
+        headers: { "idempotency-key": idemKey },
+        payload,
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/v1/rooms",
+        headers: { "idempotency-key": idemKey },
+        payload,
+      }),
     ]);
     expect(first.statusCode).toBe(200);
     expect(second.statusCode).toBe(200);
@@ -214,7 +233,10 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
       method: "PATCH",
       url: `/api/v1/rooms/${host.roomId}`,
       headers: authHeaders(host.playerToken),
-      payload: { expectedRoomRevision: host.roomSnapshot.roomRevision, operation: { type: "CHANGE_SEAT", seat: 0 } },
+      payload: {
+        expectedRoomRevision: host.roomSnapshot.roomRevision,
+        operation: { type: "CHANGE_SEAT", seat: 0 },
+      },
     });
     expect(change.statusCode).toBe(200);
     expect(change.json().data.roomSnapshot.players[0]?.seat).toBe(0);
@@ -222,7 +244,10 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
       method: "PATCH",
       url: `/api/v1/rooms/${host.roomId}`,
       headers: authHeaders(host.playerToken),
-      payload: { expectedRoomRevision: host.roomSnapshot.roomRevision, operation: { type: "CHANGE_SEAT", seat: 1 } },
+      payload: {
+        expectedRoomRevision: host.roomSnapshot.roomRevision,
+        operation: { type: "CHANGE_SEAT", seat: 1 },
+      },
     });
     expect(stale.statusCode).toBe(409);
     expect(stale.json().error.code).toBe("STALE_ROOM_STATE");
@@ -235,7 +260,10 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
       method: "PATCH",
       url: `/api/v1/rooms/${host.roomId}`,
       headers: { "idempotency-key": key() },
-      payload: { expectedRoomRevision: host.roomSnapshot.roomRevision, operation: { type: "CHANGE_SEAT", seat: 0 } },
+      payload: {
+        expectedRoomRevision: host.roomSnapshot.roomRevision,
+        operation: { type: "CHANGE_SEAT", seat: 0 },
+      },
     });
     expect(missing.statusCode).toBe(401);
     expect(missing.json().error.code).toBe("AUTH_REQUIRED");
@@ -243,7 +271,10 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
       method: "PATCH",
       url: `/api/v1/rooms/${host.roomId}`,
       headers: authHeaders("wrong-token"),
-      payload: { expectedRoomRevision: host.roomSnapshot.roomRevision, operation: { type: "CHANGE_SEAT", seat: 0 } },
+      payload: {
+        expectedRoomRevision: host.roomSnapshot.roomRevision,
+        operation: { type: "CHANGE_SEAT", seat: 0 },
+      },
     });
     expect(bad.statusCode).toBe(401);
     expect(bad.json().error.code).toBe("AUTH_FAILED");
@@ -259,7 +290,10 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
         url: `/api/v1/rooms/${host.roomId}`,
         headers: { "idempotency-key": idemKey, authorization: "Bearer wrong-token" },
         remoteAddress: "11.0.0.1",
-        payload: { expectedRoomRevision: host.roomSnapshot.roomRevision, operation: { type: "CHANGE_SEAT", seat: 0 } },
+        payload: {
+          expectedRoomRevision: host.roomSnapshot.roomRevision,
+          operation: { type: "CHANGE_SEAT", seat: 0 },
+        },
       });
     for (let i = 0; i < 3; i += 1) {
       const res = await attempt(key());
@@ -281,7 +315,10 @@ describe("PATCH /api/v1/rooms/:roomId", () => {
       method: "PATCH",
       url: `/api/v1/rooms/${host.roomId}`,
       headers: authHeaders(alice.playerToken),
-      payload: { expectedRoomRevision: alice.roomSnapshot.roomRevision, operation: { type: "UPDATE_CONFIG", config: makeConfig() } },
+      payload: {
+        expectedRoomRevision: alice.roomSnapshot.roomRevision,
+        operation: { type: "UPDATE_CONFIG", config: makeConfig() },
+      },
     });
     expect(patch.statusCode).toBe(403);
     expect(patch.json().error.code).toBe("NOT_HOST");
@@ -331,6 +368,136 @@ describe("POST /api/v1/rooms/:roomId/leave", () => {
     });
     expect(leave.statusCode).toBe(200);
     const snapshot = leave.json().data.roomSnapshot;
-    expect(snapshot.players.some((p: { playerId: string }) => p.playerId === host.playerId)).toBe(false);
+    expect(snapshot.players.some((p: { playerId: string }) => p.playerId === host.playerId)).toBe(
+      false,
+    );
+  });
+});
+
+describe("Room-owned HTTP idempotency cleanup", () => {
+  it("does not cache a create response when its Room closes before the in-flight response resolves", async () => {
+    const config = parseAppConfig({ TOKEN_HMAC_SECRET: TOKEN_SECRET });
+    const manager = createRoomManager({
+      persistence: fakePersistence(),
+      roomRepository: fakeRoomRepository(),
+      ids: makeIds(),
+      tokenSecret: TOKEN_SECRET,
+      tokenKeyId: "k1",
+    });
+    const store = new IdempotencyStore();
+    let creations = 0;
+    const app = buildApp({
+      config,
+      idempotency: store,
+      roomManager: {
+        ...manager,
+        async createRoom(input) {
+          creations += 1;
+          const session = await manager.createRoom(input);
+          await manager.submitCommand(session.roomId, {
+            type: "LEAVE",
+            playerId: session.playerId,
+            reason: "USER_LEFT",
+            leftAt: 1001,
+          });
+          return session;
+        },
+      },
+    });
+    try {
+      const idemKey = key();
+      const request = {
+        method: "POST" as const,
+        url: "/api/v1/rooms",
+        headers: { "idempotency-key": idemKey },
+        payload: { displayName: "Host", config: makeConfig() },
+      };
+      const first = await app.inject(request);
+      expect(first.statusCode).toBe(200);
+      expect(creations).toBe(1);
+      expect(store.size).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("cleans create/join/patch/leave responses on closure while preserving another Room", async () => {
+    const store = new IdempotencyStore();
+    const app = makeApp({ idempotency: store });
+    try {
+      const host = await createRoom(app, "10.0.0.1");
+      const member = await joinRoom(app, host.roomSnapshot.inviteCode!, "Member", "10.0.0.2");
+      const other = await createRoom(app, "10.0.0.3");
+      const patchKey = key();
+      const patch = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/rooms/${host.roomId}`,
+        headers: authHeaders(host.playerToken, patchKey),
+        payload: {
+          expectedRoomRevision: member.roomSnapshot.roomRevision,
+          operation: { type: "CHANGE_SEAT", seat: 0 },
+        },
+      });
+      expect(patch.statusCode).toBe(200);
+      expect(store.size).toBe(4);
+      const memberLeave = await app.inject({
+        method: "POST",
+        url: `/api/v1/rooms/${host.roomId}/leave`,
+        headers: authHeaders(member.playerToken),
+        payload: {},
+      });
+      expect(memberLeave.statusCode).toBe(200);
+      expect(store.size).toBe(5);
+      const hostLeave = await app.inject({
+        method: "POST",
+        url: `/api/v1/rooms/${host.roomId}/leave`,
+        headers: authHeaders(host.playerToken),
+        payload: {},
+      });
+      expect(hostLeave.statusCode).toBe(200);
+      expect(hostLeave.json().data.roomSnapshot.status).toBe("CLOSED");
+      expect(store.lookup(`player:${host.playerId}:patch:${patchKey}`)).toBeUndefined();
+      // The closing LEAVE result finishes after the CLOSED notification. It must
+      // not reinsert itself after the Room's other cached private data was freed.
+      expect(store.size).toBe(1);
+      const stillAvailable = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/rooms/${other.roomId}`,
+        headers: authHeaders(other.playerToken),
+        payload: {
+          expectedRoomRevision: other.roomSnapshot.roomRevision,
+          operation: { type: "CHANGE_SEAT", seat: 0 },
+        },
+      });
+      expect(stillAvailable.statusCode).toBe(200);
+    } finally {
+      await app.close();
+    }
+    expect(store.size).toBe(0);
+  });
+
+  it("binds residency for injected stores and clears them when the app closes", async () => {
+    const store = new IdempotencyStore();
+    store.store("orphan", {
+      payloadHash: "hash",
+      statusCode: 200,
+      body: { playerToken: "old" },
+      ownerRoomId: "missing-room",
+    });
+    const app = makeApp({ idempotency: store });
+    expect(store.size).toBe(0);
+    await createRoom(app);
+    expect(store.size).toBe(1);
+    await app.close();
+    expect(store.size).toBe(0);
+    // An external owner can retain the injected store after app.close(). Its old
+    // residency closure must no longer keep or accept Room-owned responses.
+    store.store("late", {
+      payloadHash: "hash",
+      statusCode: 200,
+      body: "late",
+      ownerRoomId: "room",
+    });
+    expect(store.size).toBe(0);
   });
 });

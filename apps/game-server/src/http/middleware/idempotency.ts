@@ -15,6 +15,20 @@ export interface IdempotencyEntry {
   readonly payloadHash: string;
   readonly statusCode: number;
   readonly body: unknown;
+  readonly ownerRoomId?: string;
+}
+
+/** 创建/加入只有执行完成时才知道归属房间；归属为服务器内部元数据。 */
+export interface IdempotencyResult {
+  readonly statusCode: number;
+  readonly body: unknown;
+  readonly ownerRoomId?: string;
+}
+
+interface InFlightExecution {
+  readonly ownerRoomId?: string;
+  readonly done: Promise<IdempotencyEntry | undefined>;
+  cacheAllowed: boolean;
 }
 
 export type IdempotencyOutcome =
@@ -24,22 +38,100 @@ export type IdempotencyOutcome =
 
 export class IdempotencyStore {
   private readonly entries = new Map<string, IdempotencyEntry>();
-  private readonly inFlight = new Map<string, Promise<void>>();
+  private readonly keysByRoom = new Map<string, Set<string>>();
+  private readonly inFlight = new Map<string, InFlightExecution>();
+  private isRoomResident: (roomId: string) => boolean = () => true;
+  private cacheGeneration: object = {};
+
+  /** 应用装配时总会绑定（包括外部注入的 store），不持有无界的已关闭 Room ID 集合。 */
+  bindRoomResidency(isRoomResident: (roomId: string) => boolean): void {
+    this.isRoomResident = isRoomResident;
+    for (const [key, entry] of this.entries) {
+      if (entry.ownerRoomId !== undefined && !isRoomResident(entry.ownerRoomId))
+        this.deleteEntry(key);
+    }
+  }
+
+  /** 驻留期内不做 TTL/LRU；Room 关闭卸载时精确回收其账本。 */
+  releaseRoom(roomId: string): void {
+    for (const key of this.keysByRoom.get(roomId) ?? []) this.entries.delete(key);
+    this.keysByRoom.delete(roomId);
+    for (const pending of this.inFlight.values()) {
+      if (pending.ownerRoomId === roomId) pending.cacheAllowed = false;
+    }
+  }
+
+  /** 关停清理不拆除正在执行的门闩；旧执行完成后也不能重新填充已清空缓存。 */
+  clear(): void {
+    this.cacheGeneration = {};
+    this.entries.clear();
+    this.keysByRoom.clear();
+    for (const pending of this.inFlight.values()) pending.cacheAllowed = false;
+  }
+
+  get size(): number {
+    return this.entries.size;
+  }
 
   lookup(key: string): IdempotencyEntry | undefined {
-    return this.entries.get(key);
+    const entry = this.entries.get(key);
+    if (entry?.ownerRoomId !== undefined && !this.isRoomResident(entry.ownerRoomId)) {
+      this.deleteEntry(key);
+      return undefined;
+    }
+    return entry;
   }
 
   store(key: string, entry: IdempotencyEntry): void {
+    this.deleteEntry(key);
+    if (entry.ownerRoomId !== undefined && !this.isRoomResident(entry.ownerRoomId)) return;
     this.entries.set(key, entry);
+    if (entry.ownerRoomId !== undefined) {
+      const keys = this.keysByRoom.get(entry.ownerRoomId) ?? new Set<string>();
+      keys.add(key);
+      this.keysByRoom.set(entry.ownerRoomId, keys);
+    }
+  }
+
+  private deleteEntry(key: string): void {
+    const entry = this.entries.get(key);
+    if (entry?.ownerRoomId !== undefined) {
+      const keys = this.keysByRoom.get(entry.ownerRoomId);
+      keys?.delete(key);
+      if (keys?.size === 0) this.keysByRoom.delete(entry.ownerRoomId);
+    }
+    this.entries.delete(key);
   }
 
   /**
    * 幂等执行：缓存命中则重放/冲突；同 key 已有 in-flight 请求则等待其完成后裁决；
    * 否则保留 key 并执行，成功后才缓存结果。
    */
-  async run(key: string, payloadHash: string, execute: () => Promise<{ statusCode: number; body: unknown }>): Promise<IdempotencyOutcome> {
-    const cached = this.entries.get(key);
+  async run(
+    key: string,
+    payloadHash: string,
+    execute: () => Promise<IdempotencyResult>,
+    ownerRoomId?: string,
+  ): Promise<IdempotencyOutcome> {
+    return this.runWithinGeneration(
+      key,
+      payloadHash,
+      execute,
+      ownerRoomId,
+      this.cacheGeneration,
+      true,
+    );
+  }
+
+  private async runWithinGeneration(
+    key: string,
+    payloadHash: string,
+    execute: () => Promise<IdempotencyResult>,
+    ownerRoomId: string | undefined,
+    generation: object,
+    cacheAllowed: boolean,
+  ): Promise<IdempotencyOutcome> {
+    const cached = this.lookup(key);
     if (cached !== undefined) {
       return cached.payloadHash === payloadHash
         ? { kind: "replay", statusCode: cached.statusCode, body: cached.body }
@@ -47,28 +139,44 @@ export class IdempotencyStore {
     }
     const inFlight = this.inFlight.get(key);
     if (inFlight !== undefined) {
-      await inFlight;
-      const after = this.entries.get(key);
+      // 等待者持有原执行的结果，而不是重新查可能已在关房时移除的缓存。
+      // 这样关闭/clear 期间同 key 请求仍只执行一次，临时结果随等待者释放。
+      const after = await inFlight.done;
       if (after === undefined) {
         // 原请求失败未缓存结果：当前请求按重试语义重新执行。
-        return this.run(key, payloadHash, execute);
+        return this.runWithinGeneration(
+          key,
+          payloadHash,
+          execute,
+          ownerRoomId,
+          generation,
+          cacheAllowed && inFlight.cacheAllowed,
+        );
       }
       return after.payloadHash === payloadHash
         ? { kind: "replay", statusCode: after.statusCode, body: after.body }
         : { kind: "conflict" };
     }
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
+    let release!: (entry: IdempotencyEntry | undefined) => void;
+    const gate = new Promise<IdempotencyEntry | undefined>((resolve) => {
       release = resolve;
     });
-    this.inFlight.set(key, gate);
+    const pending: InFlightExecution = { ownerRoomId, done: gate, cacheAllowed };
+    this.inFlight.set(key, pending);
+    let entry: IdempotencyEntry | undefined;
     try {
       const result = await execute();
-      this.entries.set(key, { payloadHash, statusCode: result.statusCode, body: result.body });
+      entry = {
+        payloadHash,
+        statusCode: result.statusCode,
+        body: result.body,
+        ownerRoomId: ownerRoomId ?? result.ownerRoomId,
+      };
+      if (pending.cacheAllowed && generation === this.cacheGeneration) this.store(key, entry);
       return { kind: "executed", statusCode: result.statusCode, body: result.body };
     } finally {
       this.inFlight.delete(key);
-      release();
+      release(entry);
     }
   }
 }

@@ -1,5 +1,9 @@
 # tournaments（TEX-20）
 
+TEX-52：执行器进入 FINISHED/ABANDONED 后取消全部 timer 并失效 generation；保留期内先查询原动作幂等结果，新动作拒绝。`onTerminal` 在最后输出和队列 drain 后仅通知一次。Manager 将终局转为 10 分钟只读保留，立即退出 `activeTournamentIds()`；到期 `dispose()` 等待在途转换结束后按实例 identity 卸载，不影响同房新比赛。`runtimeCounts()` 区分 registered/running/finishedRetained/frozen；Frozen 需显式处置，不伪装成活跃桌。`onUnloaded` 通知 Writer 退休队列，失败 Bundle 独立继续提交。`tournament-lifecycle.test.ts` 包含 100 轮结束/卸载/失败重试回收验证。
+
+TEX-51：恢复注册返回可等待的启动结果，只有所有断线初始化与 START 成功后才解除屏障；失败撤销本次执行器和所有计时器。相同 tournamentId 不允许覆盖旧执行器。完整恢复由 `persistence/room-recovery.ts` 先验证 Room 与身份，不再单独暴露无 Room 的比赛。
+
 单桌 Tournament 运行时与唯一串行执行器。权威规格：docs/04-game-server-architecture.md §6/§7、docs/02-protocol-spec.md §7、docs/03-data-model.md §7。
 
 ## 模块

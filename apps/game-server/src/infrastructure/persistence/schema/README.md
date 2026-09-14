@@ -6,7 +6,7 @@ Drizzle 表定义（docs/03-data-model.md §5 的字段级实现；8 张核心�
 | --- | --- |
 | [enums.ts](./enums.ts) | 全部 PostgreSQL 枚举类型 |
 | [bytea.ts](./bytea.ts) | `bytea` 自定义列类型（Buffer 往返，用于摘要/checksum） |
-| [rooms.ts](./rooms.ts) | `rooms` |
+| [rooms.ts](./rooms.ts) | `rooms`（TEX-51 增加 `room_revision_ceiling` 号段上界与安全整数 CHECK，见迁移 `0003`） |
 | [room-players.ts](./room-players.ts) | `room_players` |
 | [tournaments.ts](./tournaments.ts) | `tournaments` |
 | [hands.ts](./hands.ts) | `hands` |

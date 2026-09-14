@@ -18,10 +18,29 @@ import type {
 import { createTournamentManager } from "../tournaments/tournament-manager";
 import { createTournamentRuntimeState, type PlayerSeed } from "../tournaments/tournament-runtime";
 import { TournamentExecutor, type TournamentOutputSink } from "../tournaments/tournament-executor";
-import type { ClockUpdatedPayload, GameEventMessage, TournamentConfig } from "@texas-holdem/protocol";
+import type {
+  ClockUpdatedPayload,
+  GameEventMessage,
+  TournamentConfig,
+} from "@texas-holdem/protocol";
 import type { HandCommitBundle } from "../infrastructure/persistence/repositories/hand-commit";
 import { sha256Checksum } from "../infrastructure/persistence/checksum";
 import { recoverActiveTournaments, type RecoveryDeps } from "./recovery";
+
+function finishedState(state: Record<string, unknown>, hasActive = true): Record<string, unknown> {
+  return {
+    ...state,
+    phase: "finished",
+    champion: hasActive ? 0 : null,
+    forfeitedChips: hasActive ? 0 : state.initialTotalChips,
+    participants: (state.participants as Record<string, unknown>[]).map((player) => ({
+      ...player,
+      status:
+        hasActive && player.seatIndex === 0 ? "ACTIVE" : hasActive ? "ELIMINATED" : "WITHDRAWN",
+      chips: hasActive && player.seatIndex === 0 ? state.initialTotalChips : 0,
+    })),
+  };
+}
 
 /** 记录型 Fake TournamentManager：捕获 create/createRecovered 输入。 */
 function fakeManager(): {
@@ -58,6 +77,11 @@ function fakeManager(): {
     activeTournamentIds() {
       return [];
     },
+    runtimeCounts() {
+      return { registered: 0, running: 0, finishedRetained: 0, frozen: 0 };
+    },
+    async disposeRoom() {},
+    async dispose() {},
   };
   return { manager, created, recovered, recoveredFresh };
 }
@@ -139,6 +163,101 @@ describe("recoverActiveTournaments（崩溃恢复编排）", () => {
     expect(summary.recovered).toEqual([{ tournamentId: "t1", fromSequence: 10n }]);
     expect(repo.rollbacks).toEqual([{ tournamentId: "t1", toSequence: 10n }]);
     expect(recovered[0]!.recovered.lastWireSequence).toBe(10);
+  });
+
+  it.each<[string, (state: Record<string, unknown>) => unknown]>([
+    [
+      "incomplete hand under a false handInProgress flag",
+      (state) => ({ ...state, hand: { phase: "flop", seats: [] } }),
+    ],
+    ["primitive hand", (state) => ({ ...state, hand: "hand_end" })],
+    ["array hand", (state) => ({ ...state, hand: [] })],
+    ["missing hand", (state) => ({ ...state, hand: undefined })],
+    ["small blind disagrees with current level", (state) => ({ ...state, smallBlind: 5 })],
+    ["big blind disagrees with current level", (state) => ({ ...state, bigBlind: 40 })],
+    [
+      "champion points at an eliminated seat",
+      (state) => ({ ...finishedState(state), champion: 1 }),
+    ],
+    [
+      "champion points at a nonexistent seat",
+      (state) => ({ ...finishedState(state), champion: 99 }),
+    ],
+    [
+      "champion exists without an ACTIVE player",
+      (state) => ({ ...finishedState(state, false), champion: 0 }),
+    ],
+    ["null config", (state) => ({ ...state, config: null })],
+    [
+      "null participant",
+      (state) => ({
+        ...state,
+        participants: [null, ...(state.participants as unknown[]).slice(1)],
+      }),
+    ],
+    [
+      "primitive participant",
+      (state) => ({ ...state, participants: [17, ...(state.participants as unknown[]).slice(1)] }),
+    ],
+    ["null eliminations", (state) => ({ ...state, eliminations: null })],
+    ["null finalStandings", (state) => ({ ...state, finalStandings: null })],
+    ["null state", () => null],
+    ["primitive state", () => 17],
+  ])(
+    "checksum-correct %s falls back instead of aborting candidate validation",
+    async (_name, corrupt) => {
+      const { manager, recovered } = fakeManager();
+      const repo = createFakeRecoveryRepository();
+      const latest = snapshotRecordFromBundle(makeBundle("t1", 3, 11n, 4));
+      const state = corrupt(latest.state as Record<string, unknown>);
+      const previous = snapshotRecordFromBundle(makeBundle("t1", 2, 7n, 4));
+      repo.setActive([makeActiveTournament("t1", "r1", 14n)]);
+      repo.setSnapshots([{ ...latest, state, stateChecksum: sha256Checksum(state) }, previous]);
+      repo.eventCount = 14n;
+      const summary = await recoverActiveTournaments(recoveryDeps({ recoveryRepo: repo, manager }));
+      expect(summary.unrecovered).toEqual([]);
+      expect(summary.recovered).toEqual([{ tournamentId: "t1", fromSequence: 10n }]);
+      expect(repo.rollbacks).toEqual([{ tournamentId: "t1", toSequence: 10n }]);
+      expect(recovered[0]!.recovered.lastWireSequence).toBe(10);
+    },
+  );
+
+  it.each([true, false])(
+    "accepts a valid terminal champion/ACTIVE relationship (has champion: %s)",
+    async (hasActive) => {
+      const { manager } = fakeManager();
+      const repo = createFakeRecoveryRepository();
+      const snapshot = snapshotRecordFromBundle(makeBundle("t1", 3, 11n, 4));
+      const state = finishedState(snapshot.state as Record<string, unknown>, hasActive);
+      repo.setActive([makeActiveTournament("t1", "r1", 14n)]);
+      repo.setSnapshots([{ ...snapshot, state, stateChecksum: sha256Checksum(state) }]);
+      repo.eventCount = 14n;
+      const summary = await recoverActiveTournaments(recoveryDeps({ recoveryRepo: repo, manager }));
+      expect(summary.recovered).toEqual([{ tournamentId: "t1", fromSequence: 14n }]);
+      expect(repo.rollbacks).toEqual([]);
+    },
+  );
+
+  it("matches checkpoint blinds against the current level instead of the initial level", async () => {
+    const { manager } = fakeManager();
+    const repo = createFakeRecoveryRepository();
+    const snapshot = snapshotRecordFromBundle(makeBundle("t1", 3, 11n, 4));
+    const previous = snapshot.state as Record<string, unknown>;
+    const config = {
+      ...(previous.config as object),
+      blindMode: "hands",
+      blindStructure: [
+        { smallBlind: 10, bigBlind: 20, hands: 2 },
+        { smallBlind: 20, bigBlind: 40, hands: 2 },
+      ],
+    };
+    const state = { ...previous, config, blindLevel: 1, smallBlind: 20, bigBlind: 40 };
+    repo.setActive([makeActiveTournament("t1", "r1", 14n, { configJson: config })]);
+    repo.setSnapshots([{ ...snapshot, state, stateChecksum: sha256Checksum(state) }]);
+    repo.eventCount = 14n;
+    const summary = await recoverActiveTournaments(recoveryDeps({ recoveryRepo: repo, manager }));
+    expect(summary.recovered).toEqual([{ tournamentId: "t1", fromSequence: 14n }]);
+    expect(repo.rollbacks).toEqual([]);
   });
 
   it("孤立快照 / 事件缺口 / 版本不兼容均被拒绝：回退或隔离", async () => {
@@ -246,7 +365,7 @@ describe("recoverActiveTournaments（崩溃恢复编排）", () => {
     const state3 = { ...(fresh3.state as Record<string, unknown>) } as Record<string, unknown>;
     state3.config = { ...(state3.config as Record<string, unknown>), timeBank: 0 };
     delete state3.serverTimeBank;
-    repo3.setActive([makeActiveTournament("t1", "r1", 10n)]);
+    repo3.setActive([makeActiveTournament("t1", "r1", 10n, { configJson: state3.config })]);
     repo3.setSnapshots([
       { ...fresh3, schemaVersion: 2, state: state3, stateChecksum: sha256Checksum(state3) },
     ]);
@@ -327,7 +446,10 @@ function makePlayers(): PlayerSeed[] {
 }
 
 /** 通过执行器打完整一手（全员 FOLD），以 handNumber 变化为手边界（避免自动推进到下一手）。 */
-async function playHandThroughExecutor(executor: TournamentExecutor, clock: FakeClock): Promise<void> {
+async function playHandThroughExecutor(
+  executor: TournamentExecutor,
+  clock: FakeClock,
+): Promise<void> {
   const startHand = executor.getView().engineState.handNumber;
   let guard = 0;
   while (guard++ < 100) {
@@ -392,7 +514,13 @@ describe("崩溃恢复 Time Bank 保留（P1-B）", () => {
     // Phase 1：真实执行器，当前行动者使用 Time Bank（60→30）后完成手 1。
     const players = makePlayers();
     const runtime = createTournamentRuntimeState(
-      { tournamentId: "t1", roomId: "r1", config: makeConfig(), players, rng: new SeededRandomSource(1) },
+      {
+        tournamentId: "t1",
+        roomId: "r1",
+        config: makeConfig(),
+        players,
+        rng: new SeededRandomSource(1),
+      },
       { clock: () => clock.now(), ids, scheduler: clock },
     );
     const executor = new TournamentExecutor(runtime, { output: sink });
@@ -426,6 +554,7 @@ describe("崩溃恢复 Time Bank 保留（P1-B）", () => {
     const repo = createFakeRecoveryRepository();
     repo.setActive([
       makeActiveTournament("t1", "r1", bundle.snapshot.sequence, {
+        configJson: makeConfig(),
         players: players.map((p) => ({
           id: p.tournamentPlayerId,
           playerId: p.playerId,
@@ -472,7 +601,13 @@ describe("崩溃恢复端到端序列连续性", () => {
     // 崩溃前进程：真实运行时跑 2 手，产出 2 个 bundle（模拟已提交）。
     const players = makePlayers();
     const runtime = createTournamentRuntimeState(
-      { tournamentId: "t1", roomId: "r1", config: makeConfig(), players, rng: new SeededRandomSource(1) },
+      {
+        tournamentId: "t1",
+        roomId: "r1",
+        config: makeConfig(),
+        players,
+        rng: new SeededRandomSource(1),
+      },
       { clock: () => clock.now(), ids, scheduler: clock },
     );
     const executor = new TournamentExecutor(runtime, { output: sink });
@@ -488,6 +623,7 @@ describe("崩溃恢复端到端序列连续性", () => {
     const repo = createFakeRecoveryRepository();
     repo.setActive([
       makeActiveTournament("t1", "r1", BigInt(watermark), {
+        configJson: makeConfig(),
         players: players.map((p) => ({
           id: p.tournamentPlayerId,
           playerId: p.playerId,

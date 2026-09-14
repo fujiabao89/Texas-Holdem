@@ -1,13 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SeededRandomSource } from "@texas-holdem/poker-engine";
-import type { ClockUpdatedPayload, GameEventMessage, SubmitAction, TournamentConfig } from "@texas-holdem/protocol";
+import type {
+  ClockUpdatedPayload,
+  GameEventMessage,
+  SubmitAction,
+  TournamentConfig,
+} from "@texas-holdem/protocol";
 import type { HandCommitBundle } from "../infrastructure/persistence/repositories/hand-commit";
 import type { RoomCommand } from "../rooms/room-executor";
 import type { IdSource } from "../rooms/id-source";
 import { createFakeClock, type FakeClock } from "../../../../tests/support/fake-clock";
-import { createTournamentRuntimeState, type PlayerSeed, type TournamentRuntimeState } from "./tournament-runtime";
+import {
+  createTournamentRuntimeState,
+  type PlayerSeed,
+  type TournamentRuntimeState,
+} from "./tournament-runtime";
 import {
   TournamentExecutor,
+  type TournamentExecutorDeps,
   type TournamentOutputSink,
 } from "./tournament-executor";
 import type { TournamentCommand } from "./tournament-commands";
@@ -85,12 +95,15 @@ function recordingSink(): RecordingSink {
   };
 }
 
-function makeHarness(overrides: {
-  config?: Partial<TournamentConfig>;
-  seats?: number;
-  isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
-  isBackpressurePaused?: () => boolean;
-} = {}): Harness {
+function makeHarness(
+  overrides: {
+    config?: Partial<TournamentConfig>;
+    seats?: number;
+    isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
+    isBackpressurePaused?: () => boolean;
+    onTerminal?: TournamentExecutorDeps["onTerminal"];
+  } = {},
+): Harness {
   const clock = createFakeClock({ now: 1000 });
   const config = makeConfig(overrides.config);
   const players = makePlayers(overrides.seats ?? 2);
@@ -110,6 +123,7 @@ function makeHarness(overrides: {
     output,
     isConnectionCurrent: overrides.isConnectionCurrent,
     isBackpressurePaused: overrides.isBackpressurePaused,
+    onTerminal: overrides.onTerminal,
   });
   return { executor, clock, output, runtime };
 }
@@ -171,10 +185,17 @@ describe("TournamentExecutor（串行执行）", () => {
   });
 
   it("RECORD_ELAPSED_TIME 并发提交全部按序生效（time 模式；不丢命令）", async () => {
-    const harness = makeHarness({ config: { blindMode: "time", blindStructure: [{ smallBlind: 5, bigBlind: 10, durationSeconds: 60 }] } });
+    const harness = makeHarness({
+      config: {
+        blindMode: "time",
+        blindStructure: [{ smallBlind: 5, bigBlind: 10, durationSeconds: 60 }],
+      },
+    });
     await start(harness);
     await Promise.all(
-      Array.from({ length: 5 }, () => harness.executor.submit({ type: "RECORD_ELAPSED_TIME", seconds: 100 })),
+      Array.from({ length: 5 }, () =>
+        harness.executor.submit({ type: "RECORD_ELAPSED_TIME", seconds: 100 }),
+      ),
     );
     expect(harness.executor.getEngineState().elapsedSeconds).toBe(500);
   });
@@ -208,7 +229,9 @@ describe("TournamentExecutor（串行执行）", () => {
     })) as { status: string; error?: { code: string } };
     expect(result.status).toBe("REJECTED");
     expect(result.error?.code).toBe("ACTION_TIMEOUT");
-    expect(harness.output.events.filter((m) => m.payload.event.type === "PLAYER_CALLED")).toHaveLength(0);
+    expect(
+      harness.output.events.filter((m) => m.payload.event.type === "PLAYER_CALLED"),
+    ).toHaveLength(0);
   });
 
   it("Timer 到期执行 Auto Fold（SYSTEM_TIMER 源）", async () => {
@@ -218,8 +241,13 @@ describe("TournamentExecutor（串行执行）", () => {
     harness.clock.advance(30_000);
     await Promise.resolve();
     const folded = harness.output.events.find(
-      (m): m is GameEventMessage & { payload: { event: { type: "PLAYER_FOLDED"; payload: { source: string; playerId: string } } } } =>
-        m.payload.event.type === "PLAYER_FOLDED",
+      (
+        m,
+      ): m is GameEventMessage & {
+        payload: {
+          event: { type: "PLAYER_FOLDED"; payload: { source: string; playerId: string } };
+        };
+      } => m.payload.event.type === "PLAYER_FOLDED",
     );
     expect(folded).toBeDefined();
     expect(folded!.payload.event.payload.source).toBe("SYSTEM_TIMER");
@@ -261,7 +289,10 @@ describe("Time Bank", () => {
     await start(harness);
     const firstActor = currentActor(harness)!;
     await useTimeBank(harness, firstActor, "r1");
-    const second = (await useTimeBank(harness, firstActor, "r2")) as { status: string; error?: { code: string } };
+    const second = (await useTimeBank(harness, firstActor, "r2")) as {
+      status: string;
+      error?: { code: string };
+    };
     expect(second.status).toBe("REJECTED");
     expect(second.error?.code).toBe("TIME_BANK_NOT_AVAILABLE");
   });
@@ -270,7 +301,10 @@ describe("Time Bank", () => {
     const harness = makeHarness({ config: { actionTime: "UNLIMITED", timeBank: 0 } });
     await start(harness);
     const firstActor = currentActor(harness)!;
-    const result = (await useTimeBank(harness, firstActor, "r1")) as { status: string; error?: { code: string } };
+    const result = (await useTimeBank(harness, firstActor, "r1")) as {
+      status: string;
+      error?: { code: string };
+    };
     expect(result.status).toBe("REJECTED");
     expect(result.error?.code).toBe("TIME_BANK_DISABLED");
   });
@@ -288,9 +322,16 @@ describe("Time Bank", () => {
     expect(actor).not.toBe(second);
     await useTimeBank(harness, actor, "tb-1");
     // 撤回 all-in 的非当前行动者 → 当前行动者/决策点不变 → 机会标记不复位
-    await harness.executor.submit({ type: "WITHDRAW_PLAYER", playerId: second, reason: "USER_LEFT" });
+    await harness.executor.submit({
+      type: "WITHDRAW_PLAYER",
+      playerId: second,
+      reason: "USER_LEFT",
+    });
     expect(currentActor(harness)).toBe(actor);
-    const again = (await useTimeBank(harness, actor, "tb-2")) as { status: string; error?: { code: string } };
+    const again = (await useTimeBank(harness, actor, "tb-2")) as {
+      status: string;
+      error?: { code: string };
+    };
     expect(again.status).toBe("REJECTED");
     expect(again.error?.code).toBe("TIME_BANK_NOT_AVAILABLE");
   });
@@ -319,33 +360,75 @@ describe("断线 / 离开 / 宽限 / 无真人关房", () => {
     const harness = makeHarness({ config: { actionTime: "UNLIMITED", timeBank: 0 } });
     await start(harness);
     const firstActor = currentActor(harness)!;
-    await harness.executor.submit({ type: "CONNECTION_CHANGED", playerId: firstActor, connected: false });
-    await harness.executor.submit({ type: "CONNECTION_CHANGED", playerId: firstActor, connected: true });
+    await harness.executor.submit({
+      type: "CONNECTION_CHANGED",
+      playerId: firstActor,
+      connected: false,
+    });
+    await harness.executor.submit({
+      type: "CONNECTION_CHANGED",
+      playerId: firstActor,
+      connected: true,
+    });
     harness.clock.advance(10 * 60 * 1000);
     await Promise.resolve();
-    expect(harness.executor.getEngineState().participants.find((p) => p.seatIndex === 0)!.status).toBe("ACTIVE");
+    expect(
+      harness.executor.getEngineState().participants.find((p) => p.seatIndex === 0)!.status,
+    ).toBe("ACTIVE");
 
-    await harness.executor.submit({ type: "CONNECTION_CHANGED", playerId: firstActor, connected: false });
+    await harness.executor.submit({
+      type: "CONNECTION_CHANGED",
+      playerId: firstActor,
+      connected: false,
+    });
     harness.clock.advance(10 * 60 * 1000 + 1);
     await Promise.resolve();
-    expect(harness.executor.getEngineState().participants.find((p) => p.seatIndex === 0)!.status).toBe("WITHDRAWN");
+    expect(
+      harness.executor.getEngineState().participants.find((p) => p.seatIndex === 0)!.status,
+    ).toBe("WITHDRAWN");
   });
 
   it("全员断线且宽限同时到期 → 无真人关房（ABANDONED_NO_HUMAN + Room CLOSED）", async () => {
-    const harness = makeHarness({ config: { actionTime: "UNLIMITED", timeBank: 0 } });
+    const terminal = vi.fn();
+    const harness = makeHarness({
+      config: { actionTime: "UNLIMITED", timeBank: 0 },
+      onTerminal: terminal,
+    });
     await start(harness);
     const firstActor = currentActor(harness)!;
     const other = firstActor === "p0" ? "p1" : "p0";
     // 首行动者先全下（不可折叠），使其宽限到期时仅转 EXIT_PENDING 而不被折叠成冠军；
     // 随后两名玩家都断线，宽限同时到期 → 两手均 EXIT_PENDING → 结算后 0 名 ACTIVE → 无真人关房。
     await submitAction(harness, { playerId: firstActor, action: { type: "ALL_IN" } });
-    await harness.executor.submit({ type: "CONNECTION_CHANGED", playerId: firstActor, connected: false });
-    await harness.executor.submit({ type: "CONNECTION_CHANGED", playerId: other, connected: false });
+    await harness.executor.submit({
+      type: "CONNECTION_CHANGED",
+      playerId: firstActor,
+      connected: false,
+    });
+    await harness.executor.submit({
+      type: "CONNECTION_CHANGED",
+      playerId: other,
+      connected: false,
+    });
     harness.clock.advance(10 * 60 * 1000);
     await Promise.resolve();
     const view = harness.executor.getView();
     expect(view.status).toBe("ABANDONED_NO_HUMAN");
-    expect(harness.output.roomCommands).toContainEqual({ type: "CLOSE_ROOM", reason: "ABANDONED_NO_HUMAN" });
+    expect(harness.output.roomCommands).toContainEqual({
+      type: "CLOSE_ROOM",
+      reason: "ABANDONED_NO_HUMAN",
+      tournamentId: "t1",
+    });
+    expect(terminal).toHaveBeenCalledExactlyOnceWith({
+      tournamentId: "t1",
+      roomId: "r1",
+      status: "ABANDONED_NO_HUMAN",
+    });
+    await harness.executor.submit({
+      type: "CONNECTION_CHANGED",
+      playerId: firstActor,
+      connected: false,
+    });
     // 计时任务已全部取消
     expect(harness.clock.pendingTimers()).toBe(0);
   });
@@ -354,10 +437,16 @@ describe("断线 / 离开 / 宽限 / 无真人关房", () => {
     const harness = makeHarness();
     await start(harness);
     const firstActor = currentActor(harness)!;
-    await harness.executor.submit({ type: "WITHDRAW_PLAYER", playerId: firstActor, reason: "USER_LEFT" });
+    await harness.executor.submit({
+      type: "WITHDRAW_PLAYER",
+      playerId: firstActor,
+      reason: "USER_LEFT",
+    });
     await Promise.resolve();
     const seat = firstActor === "p0" ? 0 : 1;
-    const participant = harness.executor.getEngineState().participants.find((p) => p.seatIndex === seat)!;
+    const participant = harness.executor
+      .getEngineState()
+      .participants.find((p) => p.seatIndex === seat)!;
     expect(participant.status).toBe("WITHDRAWN");
   });
 });
@@ -369,7 +458,7 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     const actor = currentActor(harness)!;
     const sequence = String(harness.executor.getView().lastWireSequence);
 
-    const action = await harness.executor.submit({
+    const action = (await harness.executor.submit({
       type: "SUBMIT_ACTION",
       requestId: "stale-action-request",
       actionId: "stale-action-id",
@@ -379,15 +468,15 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
       receivedAt: harness.clock.now(),
       ingressOrdinal: 1,
       connectionEpoch: 1,
-    }) as { status: string; error?: { code: string } };
-    const timeBank = await harness.executor.submit({
+    })) as { status: string; error?: { code: string } };
+    const timeBank = (await harness.executor.submit({
       type: "USE_TIME_BANK",
       requestId: "stale-time-bank-request",
       playerId: actor,
       expectedSequence: sequence,
       receivedAt: harness.clock.now(),
       connectionEpoch: 1,
-    }) as { status: string; error?: { code: string } };
+    })) as { status: string; error?: { code: string } };
 
     expect(action).toMatchObject({ status: "REJECTED", error: { code: "SESSION_REPLACED" } });
     expect(timeBank).toMatchObject({ status: "REJECTED", error: { code: "SESSION_REPLACED" } });
@@ -399,13 +488,19 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     const harness = makeHarness({ isConnectionCurrent: () => false });
     await start(harness);
     const actor = currentActor(harness)!;
-    await expect(harness.executor.submit({
-      type: "WITHDRAW_PLAYER",
-      playerId: actor,
-      reason: "USER_LEFT",
-      connectionEpoch: 1,
-    })).rejects.toMatchObject({ code: "SESSION_REPLACED" });
-    expect(harness.executor.getEngineState().participants.find((participant) => participant.seatIndex === 0)?.status).toBe("ACTIVE");
+    await expect(
+      harness.executor.submit({
+        type: "WITHDRAW_PLAYER",
+        playerId: actor,
+        reason: "USER_LEFT",
+        connectionEpoch: 1,
+      }),
+    ).rejects.toMatchObject({ code: "SESSION_REPLACED" });
+    expect(
+      harness.executor
+        .getEngineState()
+        .participants.find((participant) => participant.seatIndex === 0)?.status,
+    ).toBe("ACTIVE");
   });
 
   it("重复 actionId 相同 Payload → duplicate 复用原结果，不二次执行", async () => {
@@ -413,10 +508,20 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     await start(harness);
     const firstActor = currentActor(harness)!;
     const sequence = String(harness.executor.getView().lastWireSequence);
-    const first = (await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-same", expectedSequence: sequence })) as { status: string; duplicate: boolean };
+    const first = (await submitAction(harness, {
+      playerId: firstActor,
+      action: call(),
+      actionId: "act-same",
+      expectedSequence: sequence,
+    })) as { status: string; duplicate: boolean };
     expect(first.status).toBe("APPLIED");
     // 重试复用完全相同 Payload（含 expectedSequence）→ duplicate 复用原结果
-    const second = (await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-same", expectedSequence: sequence })) as { status: string; duplicate: boolean };
+    const second = (await submitAction(harness, {
+      playerId: firstActor,
+      action: call(),
+      actionId: "act-same",
+      expectedSequence: sequence,
+    })) as { status: string; duplicate: boolean };
     expect(second.status).toBe("APPLIED");
     expect(second.duplicate).toBe(true);
   });
@@ -426,8 +531,18 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     await start(harness);
     const firstActor = currentActor(harness)!;
     const sequence = String(harness.executor.getView().lastWireSequence);
-    await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-seq", expectedSequence: sequence });
-    const retry = (await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-seq", expectedSequence: "999" })) as { status: string; error?: { code: string } };
+    await submitAction(harness, {
+      playerId: firstActor,
+      action: call(),
+      actionId: "act-seq",
+      expectedSequence: sequence,
+    });
+    const retry = (await submitAction(harness, {
+      playerId: firstActor,
+      action: call(),
+      actionId: "act-seq",
+      expectedSequence: "999",
+    })) as { status: string; error?: { code: string } };
     expect(retry.status).toBe("REJECTED");
     expect(retry.error?.code).toBe("IDEMPOTENCY_KEY_REUSE");
   });
@@ -437,8 +552,18 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     await start(harness);
     const firstActor = currentActor(harness)!;
     const sequence = String(harness.executor.getView().lastWireSequence);
-    await submitAction(harness, { playerId: firstActor, action: call(), actionId: "act-x", expectedSequence: sequence });
-    const second = (await submitAction(harness, { playerId: firstActor, action: fold(), actionId: "act-x", expectedSequence: sequence })) as { status: string; error?: { code: string } };
+    await submitAction(harness, {
+      playerId: firstActor,
+      action: call(),
+      actionId: "act-x",
+      expectedSequence: sequence,
+    });
+    const second = (await submitAction(harness, {
+      playerId: firstActor,
+      action: fold(),
+      actionId: "act-x",
+      expectedSequence: sequence,
+    })) as { status: string; error?: { code: string } };
     expect(second.status).toBe("REJECTED");
     expect(second.error?.code).toBe("IDEMPOTENCY_KEY_REUSE");
   });
@@ -448,9 +573,16 @@ describe("重复 / 非法 / 过期命令不污染权威状态", () => {
     await start(harness);
     const firstActor = currentActor(harness)!;
     const other = firstActor === "p0" ? "p1" : "p0";
-    const stale = (await submitAction(harness, { playerId: firstActor, action: call(), expectedSequence: "999" })) as { status: string; error?: { code: string } };
+    const stale = (await submitAction(harness, {
+      playerId: firstActor,
+      action: call(),
+      expectedSequence: "999",
+    })) as { status: string; error?: { code: string } };
     expect(stale.error?.code).toBe("STALE_GAME_STATE");
-    const notTurn = (await submitAction(harness, { playerId: other, action: fold() })) as { status: string; error?: { code: string } };
+    const notTurn = (await submitAction(harness, { playerId: other, action: fold() })) as {
+      status: string;
+      error?: { code: string };
+    };
     expect(notTurn.error?.code).toBe("NOT_YOUR_TURN");
   });
 
@@ -529,7 +661,9 @@ describe("事件 sequence 与 Commit Bundle", () => {
     const view = harness.executor.getView();
     expect(view.lastWireSequence).toBeGreaterThan(0);
     // 每个 Engine 事件对每个接收者各产生一条消息（共享同一 sequence）；唯一 sequence 从 1 连续。
-    const sequences = [...new Set(harness.output.events.map((m) => Number(m.payload.sequence)))].sort((a, b) => a - b);
+    const sequences = [
+      ...new Set(harness.output.events.map((m) => Number(m.payload.sequence))),
+    ].sort((a, b) => a - b);
     expect(sequences[0]).toBe(1);
     expect(sequences).toHaveLength(view.lastWireSequence);
     for (let i = 1; i < sequences.length; i++) {
@@ -592,7 +726,11 @@ describe("事件 sequence 与 Commit Bundle", () => {
     const actor = currentActor(harness)!; // UTG（座位 0）正在行动
     const withdrawTarget = ["p0", "p1", "p2"].find((p) => p !== actor)!; // 非当前、未全下玩家
     const before = harness.output.events.length;
-    await harness.executor.submit({ type: "WITHDRAW_PLAYER", playerId: withdrawTarget, reason: "USER_LEFT" });
+    await harness.executor.submit({
+      type: "WITHDRAW_PLAYER",
+      playerId: withdrawTarget,
+      reason: "USER_LEFT",
+    });
     // 权威状态：原行动者仍待行动（非当前玩家撤回不转移行动权）
     expect(currentActor(harness)).toBe(actor);
     const newEvents = harness.output.events.slice(before);
@@ -609,7 +747,9 @@ describe("事件 sequence 与 Commit Bundle", () => {
     const harness = makeHarness();
     await start(harness);
     const dealToOther = harness.output.events.find(
-      (m) => m.payload.event.type === "DEAL_HOLE_CARD" && (m.payload.event.payload as { playerId: string }).playerId !== "p0",
+      (m) =>
+        m.payload.event.type === "DEAL_HOLE_CARD" &&
+        (m.payload.event.payload as { playerId: string }).playerId !== "p0",
     );
     if (dealToOther !== undefined) {
       const card = (dealToOther.payload.event.payload as { card?: unknown }).card;
@@ -629,7 +769,12 @@ async function playHandToCompletion(harness: Harness): Promise<void> {
     const actor = currentActor(harness);
     if (actor === null) return;
     const legal = harness.executor.getView().currentLegalActions;
-    const action = legal !== null && legal.canCheck ? check() : legal !== null && legal.canCall ? call() : fold();
+    const action =
+      legal !== null && legal.canCheck
+        ? check()
+        : legal !== null && legal.canCall
+          ? call()
+          : fold();
     const result = (await submitAction(harness, { playerId: actor, action })) as { status: string };
     if (result.status === "REJECTED") return; // 动作非法 → 停止推进（不应发生）
   }
@@ -704,5 +849,177 @@ describe("同步 hard 背压（isBackpressurePaused，§12.2）", () => {
     // hard 期间：不开始任何一手。
     expect(h.executor.getView().engineState.handNumber).toBe(0);
     expect(h.executor.getView().engineState.handInProgress).toBe(false);
+  });
+});
+
+describe("终局只读保留与执行器卸载（TEX-52，§13.2）", () => {
+  it("运行中的旧 Blind timer 回调不重复累加经过时间，也不替换当前 timer", async () => {
+    const h = makeHarness({
+      config: {
+        blindMode: "time",
+        blindStructure: [{ smallBlind: 5, bigBlind: 10, durationSeconds: 60 }],
+        actionTime: "UNLIMITED",
+        timeBank: 0,
+      },
+    });
+    const timerSpy = vi.spyOn(h.clock, "setTimeout");
+    await start(h);
+    const oldCallback = timerSpy.mock.calls[0]![0];
+    h.clock.advance(60_000);
+    await Promise.resolve();
+    expect(h.executor.getEngineState().elapsedSeconds).toBe(60);
+    const currentHandle = h.runtime.blindTimerHandle;
+    oldCallback();
+    await Promise.resolve();
+    expect(h.executor.getEngineState().elapsedSeconds).toBe(60);
+    expect(h.runtime.blindTimerHandle).toBe(currentHandle);
+    expect(h.clock.pendingTimers()).toBe(1);
+    await h.executor.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("最终输出完成后只通知一次，保留期拒绝新动作但重放末次成功动作与 Time Bank", async () => {
+    const terminal = vi.fn();
+    const h = makeHarness({ onTerminal: terminal });
+    await start(h);
+    const timeBank: Extract<TournamentCommand, { type: "USE_TIME_BANK" }> = {
+      type: "USE_TIME_BANK",
+      playerId: currentActor(h)!,
+      requestId: "retained-time-bank",
+      expectedSequence: String(h.executor.getView().lastWireSequence),
+      receivedAt: h.clock.now(),
+    };
+    expect(await h.executor.submit(timeBank)).toMatchObject({ status: "APPLIED" });
+    terminal.mockImplementation(() => {
+      expect(h.output.bundles.at(-1)?.tournamentFinish?.status).toBe("FINISHED");
+      expect(h.output.events.at(-1)?.payload.event.type).toBe("TOURNAMENT_FINISHED");
+      expect(h.runtime.idempotency.size).toBeGreaterThan(0);
+    });
+    let lastAction: Extract<TournamentCommand, { type: "SUBMIT_ACTION" }> | undefined;
+    for (let index = 0; index < 30 && h.executor.getView().status === "RUNNING"; index++) {
+      lastAction = {
+        type: "SUBMIT_ACTION",
+        playerId: currentActor(h)!,
+        requestId: `finish-${index}`,
+        actionId: `finish-action-${index}`,
+        expectedSequence: String(h.executor.getView().lastWireSequence),
+        action: h.executor.getView().currentLegalActions?.canAllIn ? { type: "ALL_IN" } : call(),
+        receivedAt: h.clock.now(),
+        ingressOrdinal: index,
+      };
+      expect(await h.executor.submit(lastAction)).toMatchObject({ status: "APPLIED" });
+    }
+    expect(h.executor.getView().status).toBe("FINISHED");
+    expect(terminal).toHaveBeenCalledExactlyOnceWith({
+      tournamentId: "t1",
+      roomId: "r1",
+      status: "FINISHED",
+    });
+    expect(await h.executor.submit(lastAction!)).toMatchObject({
+      status: "APPLIED",
+      duplicate: true,
+    });
+    expect(await h.executor.submit(timeBank)).toMatchObject({ status: "APPLIED", duplicate: true });
+    expect(
+      await h.executor.submit({
+        ...lastAction!,
+        requestId: "late-new",
+        actionId: "late-new-action",
+      }),
+    ).toMatchObject({ status: "REJECTED", error: { code: "TOURNAMENT_NOT_ACTIVE" } });
+    expect(await h.executor.submit({ ...timeBank, requestId: "late-time-bank" })).toMatchObject({
+      status: "REJECTED",
+      error: { code: "TOURNAMENT_NOT_ACTIVE" },
+    });
+    expect(await h.executor.submit({ ...lastAction!, action: { type: "FOLD" } })).toMatchObject({
+      status: "REJECTED",
+      error: { code: "IDEMPOTENCY_KEY_REUSE" },
+    });
+
+    const before = h.executor.getEngineState();
+    const events = h.output.events.length;
+    const commands = h.output.roomCommands.length;
+    await Promise.all([
+      h.executor.submit({ type: "CONNECTION_CHANGED", playerId: "p0", connected: false }),
+      h.executor.submit({ type: "RECORD_ELAPSED_TIME", seconds: 600 }),
+      h.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false }),
+      h.executor.submit({ type: "START" }),
+    ]);
+    h.clock.advance(20 * 60_000);
+    expect(h.executor.getEngineState()).toEqual(before);
+    expect(h.output.events).toHaveLength(events);
+    expect(h.output.roomCommands).toHaveLength(commands);
+    expect(h.clock.pendingTimers()).toBe(0);
+    expect(h.executor.getView()).toMatchObject({ actionDeadline: null, currentLegalActions: null });
+    expect(terminal).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispose 拒绝尚未执行及后续命令，幂等等待 idle，不提交半手", async () => {
+    const h = makeHarness();
+    const pending = h.executor.submit({ type: "START" });
+    const rejected = expect(pending).rejects.toMatchObject({ code: "TOURNAMENT_NOT_ACTIVE" });
+    const disposal = h.executor.dispose();
+    expect(h.executor.dispose()).toBe(disposal);
+    await Promise.all([rejected, disposal]);
+    await expect(h.executor.submit({ type: "START" })).rejects.toMatchObject({
+      code: "TOURNAMENT_NOT_ACTIVE",
+    });
+    expect(h.executor.getEngineState().handNumber).toBe(0);
+    expect(h.output.bundles).toHaveLength(0);
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("输出回调内发起 dispose 仍完成当前动作，随后拒绝队列余项并释放幂等账本", async () => {
+    const h = makeHarness();
+    await start(h);
+    const originalEmit = h.output.emitEvents;
+    let disposal: Promise<void> | undefined;
+    h.output.emitEvents = (messages) => {
+      originalEmit(messages);
+      disposal = h.executor.dispose();
+    };
+    const action = submitAction(h, { playerId: currentActor(h)!, action: fold() });
+    const queued = h.executor.submit({
+      type: "CONNECTION_CHANGED",
+      playerId: "p0",
+      connected: false,
+    });
+    const rejected = expect(queued).rejects.toMatchObject({ code: "TOURNAMENT_NOT_ACTIVE" });
+    expect(await action).toMatchObject({ status: "APPLIED" });
+    await Promise.all([rejected, disposal]);
+    expect(disposal).toBeDefined();
+    expect(h.output.bundles).toHaveLength(1);
+    expect(h.runtime.idempotency.size).toBe(0);
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("取消全部 timer generation，迟到的 Action/Blind/Grace 回调不能复活运行时", async () => {
+    const h = makeHarness({
+      config: {
+        blindMode: "time",
+        blindStructure: [{ smallBlind: 5, bigBlind: 10, durationSeconds: 60 }],
+      },
+    });
+    const timerSpy = vi.spyOn(h.clock, "setTimeout");
+    await start(h);
+    await h.executor.submit({ type: "CONNECTION_CHANGED", playerId: "p0", connected: false });
+    const callbacks = timerSpy.mock.calls.map(([callback]) => callback);
+    expect(callbacks).toHaveLength(3);
+    const actionGeneration = h.runtime.actionTimerGeneration;
+    const blindGeneration = h.runtime.blindTimerGeneration;
+    const graceGeneration = h.runtime.players.get("p0")!.graceGeneration;
+    const state = h.executor.getEngineState();
+    const eventCount = h.output.events.length;
+    await h.executor.dispose();
+    expect(h.runtime.actionTimerGeneration).toBeGreaterThan(actionGeneration);
+    expect(h.runtime.blindTimerGeneration).toBeGreaterThan(blindGeneration);
+    expect(h.runtime.players.get("p0")!.graceGeneration).toBeGreaterThan(graceGeneration);
+    for (const callback of callbacks) callback();
+    await Promise.resolve();
+    h.clock.advance(20 * 60_000);
+    expect(h.executor.getEngineState()).toEqual(state);
+    expect(h.output.events).toHaveLength(eventCount);
+    expect(h.output.bundles).toHaveLength(0);
+    expect(h.clock.pendingTimers()).toBe(0);
   });
 });

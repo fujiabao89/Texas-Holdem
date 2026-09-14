@@ -1,5 +1,7 @@
 # 工程文档总索引
 
+> **2026-09-12 增量核对（TEX-51 / TEX-52）**：完整 Room/成员/原身份启动恢复与终局运行时回收已实施。恢复包含持久 revision 号段迁移、逐房数据隔离与基础设施故障拒绝监听，见 [ADR-0003](./adr/0003-tex-51-room-recovery-authority.md) / [恢复运行手册](./05-operations/room-recovery.md)。终局 10 分钟只读保留、CLOSED 重型对象卸载与轻量墓碑、Writer 独立数据与缓存回收，见 [04 §13](./04-game-server-architecture.md)；真实 PostgreSQL/进程重启与 bounded lifecycle soak 见 [06](./06-testing-strategy.md)。下方旧核对中的“Room 恢复/内存保留期未实现”已由此更新；数据库历史 TTL 清理仍不在本次范围内。
+
 > 状态：草稿
 > 更新：2026-09-05
 
@@ -18,6 +20,8 @@
 > 项目现状（2026-08-24 核对）：TEX-11 已建立 pnpm monorepo 工程地基——`apps/web` 与 `apps/game-server` 可安装、可 lint / typecheck / build / test（见 [docs/03-engineering/monorepo-and-quality-baseline.md](./03-engineering/monorepo-and-quality-baseline.md)）；TEX-13 已实现扑克规则中的 `cards/` 子域（标准 52 张牌堆、随机源、七选五 Hand Evaluator，见 [01-engine-spec.md](./01-engine-spec.md) §7/§10/§15/§17）；TEX-14 已实现下注 / Pot / 手状态机；TEX-15 已实现 Tournament（淘汰 / 排名 / 冠军 / 撤回）、锦标赛级 Game Events 与 timer/；TEX-17 已实现协议包的严格 Schema、推导类型、消息/错误信封及纯投影；TEX-18 已实现持久化层（Drizzle Schema、版本化迁移、最小权限与控制面/手末 Commit Bundle 仓储，含真实 PostgreSQL 集成测试，见 [03-data-model.md](./03-data-model.md) §5/§15 与 `apps/game-server/src/infrastructure/persistence/`）；TEX-23 已实现 Web 路由壳、中文文案、客户端投影状态和 HTTP/WS Transport 基础（不含业务页面）；TEX-16 已落地 Headless Simulator 长跑（加权场景、不变量断言、Watchdog、Smoke/Nightly/RC 三档与失败产物，见 [06-testing-strategy.md](./06-testing-strategy.md) §5 与 `tests/simulator/`）。服务端 Room/Lobby 低频 HTTP 运行时（TEX-19：Room/Lobby 状态机、串行执行器与 HTTP 入口）已实现；Tournament 运行时与前端业务逻辑仍未实现。本文档体系内的工程规格（01–06）中，01 的 `cards/`、下注 / Pot / 状态机、Tournament、Game Events 与 timer，02 的 Schema/投影契约，03 的表结构与仓储部分，05 的 §4/§5、§14.1、§15 与 §17 中与 TEX-23 基础边界对应的部分，以及 06 的 Simulator（§5 与 §11 Simulator CI）已实现；04 的 §4/§5/§10 已实现（TEX-19）；其余章节仍为**设计意图**。
 
 ## 文档地图
+
+TEX-51 / TEX-52 的真实 PostgreSQL 重启、原身份继续游戏、终局卸载与历史权限证据见 [验收记录](./03-engineering/TEX-51-52-acceptance.md)，其中明确列出部署迁移、保守隔离与正式长时 soak 的边界。
 
 TEX-38 优化前端 Seat/Pot 反馈、统一音量/动态偏好、后台与追赶屏障及慢帧降级；验收证据与实机边界见 [TEX-38 验收记录](./03-engineering/TEX-38-acceptance.md)，行为契约以 05 §9.7/§10.3 为准。
 

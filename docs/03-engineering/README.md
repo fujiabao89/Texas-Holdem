@@ -6,6 +6,7 @@
 
 ## 索引
 
+- [TEX-51-52-acceptance.md](./TEX-51-52-acceptance.md)：Room/身份真实重启、终局运行时卸载、持久历史权限、有界生命周期 soak 的验证证据与部署边界。
 - [TEX-38-acceptance.md](./TEX-38-acceptance.md)：前端动画/音效优化的需求核对、验证证据与日常浏览器/实机发布边界。
 - [TEX-38-findings-ledger.md](./TEX-38-findings-ledger.md)：PR #40 的 Copilot、Codex、CodeRabbit 与 Greptile 审查意见逐项核验、定级和处置记录。
 
