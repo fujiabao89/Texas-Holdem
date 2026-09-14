@@ -111,6 +111,8 @@ export class TournamentExecutor {
   constructor(state: TournamentRuntimeState, deps: TournamentExecutorDeps) {
     this.state = state;
     this.deps = deps;
+    // 已持久化终局是只读恢复，不在后续拒绝动作时重发终局生命周期通知。
+    this.terminalNotified = state.status === "FINISHED" || state.status === "ABANDONED_NO_HUMAN";
   }
 
   /** 只读运行时视图（投影与测试用）。 */

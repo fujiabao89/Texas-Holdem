@@ -138,7 +138,7 @@ export async function startServerHarness(options: { seed: number }): Promise<Ser
 
   const app = buildApp({
     config: {
-      token: { secret: WS_TEST_TOKEN_SECRET, keyId: "ws-test" },
+      token: { secret: WS_TEST_TOKEN_SECRET, keyId: "ws-test", secretsByKeyId: { "ws-test": WS_TEST_TOKEN_SECRET } },
       corsAllowedOrigins: [],
     },
     roomManager,

@@ -26,12 +26,14 @@ export function httpStatusForCode(code: ErrorCode): number {
     case "NOT_HOST":
     case "SESSION_REPLACED":
       return 403;
+    case "TOURNAMENT_NOT_FOUND":
     case "ROOM_NOT_FOUND":
     case "INVALID_INVITE_CODE":
     case "INVITE_EXPIRED":
       return 404;
     case "RATE_LIMITED":
       return 429;
+    case "TOURNAMENT_NOT_FINISHED":
     case "ROOM_FULL":
     case "NICKNAME_TAKEN":
     case "ROOM_LOCKED":
@@ -40,6 +42,7 @@ export function httpStatusForCode(code: ErrorCode): number {
     case "IDEMPOTENCY_KEY_REUSE":
     case "INVALID_ACTION":
       return 409;
+    case "TOURNAMENT_RESULT_INCOMPLETE":
     case "GAME_UNAVAILABLE":
       return 503;
     case "INVALID_MESSAGE":
@@ -53,6 +56,7 @@ export function httpStatusForCode(code: ErrorCode): number {
 
 /** 可重试错误码：限流与临时性服务故障客户端应退避重试（docs/02-protocol-spec.md §11）。 */
 const RETRYABLE_CODES: ReadonlySet<ErrorCode> = new Set([
+  "TOURNAMENT_RESULT_INCOMPLETE",
   "INTERNAL_ERROR",
   "RATE_LIMITED",
   "GAME_UNAVAILABLE",

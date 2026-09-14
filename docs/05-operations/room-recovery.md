@@ -4,10 +4,11 @@
 
 ## 部署与恢复
 
-1. 停止旧写者，保留 PostgreSQL 与未关闭 Room 使用的 `TOKEN_HMAC_SECRET` / `TOKEN_HMAC_KEY_ID`。不要打印或复制真实令牌。
+1. 停止旧写者，保留 PostgreSQL 与未关闭 Room 使用的 `TOKEN_HMAC_SECRET` / `TOKEN_HMAC_KEY_ID`。轮换时将仍被使用的旧 key ID/secret 保留在 `TOKEN_HMAC_RETAINED_KEYS`，启动恢复与运行期鉴权使用同一解析器。不要打印或复制真实令牌。
 2. 用既有部署注入的目标 schema 执行 `pnpm --filter @texas-holdem/game-server db:migrate`，确认 `0003_room_revision_reservation` 已提交；应用不自行迁移。
 3. 启动服务。监听前完整恢复 Room/成员/最新比赛；总体 DB 读取失败拒绝监听。`restored N room(s)` 与 `recovery isolated room=... tournament=... reason=...` 为安全诊断。
 4. 玩家以原 token 重新认证，接受新的 Snapshot 屏障。Lobby 重新入座/准备；进行中比赛从最近已完整提交手末开始下一手，未提交手牌整体舍弃，不进入历史。
+5. 已提交终局恢复为 FINISHED 只读 Runtime，Room 不持有活跃 Tournament；客户端可在 10 分钟内 REQUEST_SNAPSHOT 读取最终手 ID/序列，不会重开发牌或重复结算。到期后使用持久化赛果/历史接口。
 
 ## 隔离处置
 

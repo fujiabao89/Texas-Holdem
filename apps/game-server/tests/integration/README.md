@@ -22,6 +22,8 @@
 
 ## 运行（本地 PostgreSQL 容器示例）
 
+`room-restart.test.ts` 的进行中比赛恢复按「原密钥 / 轮换并保留旧密钥」两种配置启动真实生产子进程，验证旧凭证认证、私有投影与下一手提交序列。
+
 ```bash
 docker run -d --name tex18-test-postgres -e POSTGRES_PASSWORD=tex18test -p 55432:5432 postgres:16-alpine
 TEX_TEST_DATABASE_URL=postgres://postgres:tex18test@localhost:55432/postgres pnpm test:integration
@@ -36,3 +38,5 @@ TEX_TEST_DATABASE_URL=postgres://postgres:tex18test@localhost:55432/postgres pnp
 ```
 
 重启测试由父测试进程迁移一次独立 schema，子进程直接执行生产入口；不能用会重建 schema 的 E2E/Performance launcher 代替。监听端口由系统分配，子进程只绑定 loopback；每个用例结束先停止其子进程并关闭 WebSocket，再清理自己的 schema。等待监听日志、真实帧或 PostgreSQL 已提交水位，有明确超时，不通过任意 sleep 推进被测业务。序列恢复锚定已提交水位，允许丢弃崩溃时尚未提交的一手；不会把旧进程最后一条实时事件当作持久化承诺。
+
+TEX-54：`tournament-result-read.test.ts` 从真实 Executor 生成未经改造的生产 Bundle，覆盖冠军/并列、手内主动退出、无冠军、同 Room 非参赛成员与多场隔离、无 Runtime 的新 app、失效授权/到期、11 类损坏、投影隐私和限流 no-store。运行：`TEX_TEST_DATABASE_URL=<隔离测试库> pnpm exec vitest run --project integration apps/game-server/tests/integration/tournament-result-read.test.ts`。已知手间写入缺口见 [验收记录](../../../../docs/03-engineering/TEX-54-acceptance.md)。

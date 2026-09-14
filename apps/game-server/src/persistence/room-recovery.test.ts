@@ -1,4 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import type { FastifyInstance } from "fastify";
+import { PROTOCOL_VERSION, ServerMessageSchema } from "@texas-holdem/protocol";
+import { IdempotencyStore } from "../http/middleware/idempotency";
+import { registerLobbyGateway } from "../realtime/gateway/lobby-gateway";
+import { createTournamentManager, TOURNAMENT_RETENTION_MS } from "../tournaments/tournament-manager";
 import { SeededRandomSource, type TournamentState } from "@texas-holdem/poker-engine";
 import { createFakeClock } from "../../../../tests/support/fake-clock";
 import {
@@ -26,7 +32,7 @@ import { recoverRoomsOnStartup, type RoomRecoveryDeps } from "./room-recovery";
 
 const TOKEN_SECRET = "tex51-room-recovery-test-secret";
 const KEY_ID = "test-key";
-const ORIGINAL_TOKEN = "original-token-held-only-by-test-client";
+const ORIGINAL_TOKEN = "original-token-held-only-by-test-client-000001";
 const REVISION_INITIAL = 2 ** 32;
 const REVISION_CEILING = 2 ** 33 - 1;
 
@@ -137,6 +143,7 @@ function harness(records: RoomRecoveryRecord[]) {
     onIsolated,
   };
   return {
+    clock,
     deps,
     roomManager,
     recoveryRepo,
@@ -152,6 +159,19 @@ function harness(records: RoomRecoveryRecord[]) {
 }
 
 describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
+  it("uses configured key availability and isolates unknown keys before registering any room", async () => {
+    const record = lobby();
+    const h = harness([record]);
+    const result = await recoverRoomsOnStartup({
+      ...h.deps,
+      tokenSecretForKeyId: () => undefined,
+    });
+    expect(result.restoredRooms).toEqual([]);
+    expect(result.isolated[0]?.reason).toBe("unavailable-member-credential");
+    expect(h.reserveRoomRevision).not.toHaveBeenCalled();
+    expect(h.roomManager.findRoom(record.roomId)).toBeUndefined();
+  });
+
   it("restores original HMAC identities and stable host with safe lobby defaults and a fresh revision reservation", async () => {
     const record = lobby();
     const h = harness([record]);
@@ -306,10 +326,11 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
     expect(h.roomManager.findRoom("r1")?.current.tournamentCount).toBe(2);
   });
 
-  it("restores a committed terminal Room without restarting the finished round or a stale older round", async () => {
+  it.each(["IN_GAME", "FINISHED"] as const)("restores a committed terminal %s Room with a read-only snapshot and no restart", async (roomStatus) => {
     const base = fixture("r1", "t2", 10n);
     const record: RoomRecoveryRecord = {
       ...base,
+      status: roomStatus,
       tournamentCount: 2,
       tournaments: [
         { ...base.tournaments[0]!, tournamentNo: 2, status: "FINISHED" },
@@ -345,7 +366,13 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
     };
     h.recoveryRepo.setSnapshots([{ ...snapshot, state, stateChecksum: sha256Checksum(state) }]);
     h.recoveryRepo.eventCount = 10n;
-    const result = await recoverRoomsOnStartup(h.deps);
+    const output = {
+      emitEvents: vi.fn(), emitClockUpdated: vi.fn(),
+      enqueueCommitBundles: vi.fn(), submitRoomCommand: vi.fn(),
+    };
+    const onTerminal = vi.fn();
+    const manager = createTournamentManager({ ...h.deps, output, executorDeps: { onTerminal } });
+    const result = await recoverRoomsOnStartup({ ...h.deps, manager });
     expect(result.restoredRooms).toEqual([record.roomId]);
     expect(result.isolated).toEqual([
       { roomId: "r1", tournamentId: "t1", reason: "superseded-tournament" },
@@ -356,17 +383,69 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
       activeTournamentId: null,
     });
     expect(recoveredRoom.players.every((player) => player.ready)).toBe(true);
+    if (roomStatus === "IN_GAME") expect(h.setRoomStatus).toHaveBeenCalledWith(record.roomId, "FINISHED");
+    else expect(h.setRoomStatus).not.toHaveBeenCalled();
+    expect(manager.getView("t2")).toMatchObject({
+      status: "FINISHED", lastWireSequence: 10, currentHandId: snapshot.handId,
+      actionDeadline: null, currentLegalActions: null,
+      engineState: { phase: "finished", handNumber: 2, champion: 0 },
+    });
+    expect(manager.activeTournamentIds()).toEqual([]);
+    expect(manager.runtimeCounts()).toEqual({ registered: 1, running: 0, finishedRetained: 1, frozen: 0 });
+    expect(h.clock.pendingTimers()).toBe(1); // Only bounded retention, no action/blind/grace timers.
+
+    // Drive the real gateway after the startup barrier with an original persisted token.
+    let handler!: (socket: EventEmitter) => void;
+    const app = { addHook() {}, get(_path: string, _options: unknown, route: typeof handler) { handler = route; } };
+    registerLobbyGateway(app as unknown as FastifyInstance, h.roomManager, {
+      now: h.clock.now, ids: h.deps.ids, clock: h.clock,
+      idempotency: new IdempotencyStore(), tournaments: manager,
+    });
+    const sent: unknown[] = [];
+    const socket = Object.assign(new EventEmitter(), {
+      OPEN: 1, readyState: 1, send: (raw: string) => sent.push(JSON.parse(raw)),
+      close: () => socket.emit("close"), ping() {}, terminate: () => socket.emit("close"),
+    });
+    handler(socket);
+    socket.emit("message", Buffer.from(JSON.stringify({
+      type: "AUTHENTICATE", protocolVersion: PROTOCOL_VERSION,
+      requestId: "00000000-0000-4000-8000-000000000001",
+      payload: { roomId: record.roomId, playerToken: ORIGINAL_TOKEN },
+    })));
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    socket.emit("message", Buffer.from(JSON.stringify({
+      type: "REQUEST_SNAPSHOT", requestId: "00000000-0000-4000-8000-000000000002",
+      payload: { tournamentId: "t2", lastSequence: "0", reason: "MANUAL" },
+    })));
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const messages = sent.map((message) => ServerMessageSchema.parse(message));
+    expect(messages).toContainEqual(expect.objectContaining({
+      type: "GAME_SNAPSHOT",
+      payload: expect.objectContaining({ tournamentId: "t2", sequence: "10", handId: snapshot.handId, reason: "RESYNC" }),
+    }));
+    socket.close();
+    await manager.setConnection("t2", record.hostPlayerId!, true);
+    for (const sink of Object.values(output)) expect(sink).not.toHaveBeenCalled();
+    expect(onTerminal).not.toHaveBeenCalled();
+    h.clock.advance(TOURNAMENT_RETENTION_MS - 1);
+    expect(manager.getView("t2")).toBeDefined();
+    h.clock.advance(1);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(manager.getView("t2")).toBeUndefined();
+
+    const readyForNextRound = h.roomManager.getSnapshot(record.roomId)!;
     await expect(
       h.roomManager.submitCommand(record.roomId, {
         type: "START_TOURNAMENT",
         actorPlayerId: record.hostPlayerId!,
-        expectedRevision: Number(recoveredRoom.roomRevision),
-        tournamentId: "t2",
+        expectedRevision: Number(readyForNextRound.roomRevision),
+        tournamentId: "t3",
       }),
-    ).resolves.toMatchObject({ state: { status: "IN_GAME", activeTournamentId: "t2" } });
-    expect(h.setRoomStatus).toHaveBeenCalledWith(record.roomId, "FINISHED");
-    expect(h.createRecovered).not.toHaveBeenCalled();
-    expect(h.createRecoveredFresh).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ state: { status: "IN_GAME", activeTournamentId: "t3" } });
+
+    await manager.dispose();
+    await h.roomManager.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
   });
 
   it("commits a validated fallback before starting its runtime", async () => {

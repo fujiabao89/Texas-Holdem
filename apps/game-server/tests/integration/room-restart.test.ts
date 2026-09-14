@@ -51,7 +51,7 @@ async function reservePort(): Promise<number> {
   return address.port;
 }
 
-async function startProcess(database: IntegrationDatabase, port: number): Promise<ServerProcess> {
+async function startProcess(database: IntegrationDatabase, port: number, rotateKey = false): Promise<ServerProcess> {
   const child = spawn(process.execPath, ["--import", "tsx", "src/main.ts"], {
     cwd: SERVER_DIRECTORY,
     env: {
@@ -59,8 +59,9 @@ async function startProcess(database: IntegrationDatabase, port: number): Promis
       NODE_ENV: "test",
       DATABASE_URL: database.url,
       DATABASE_SCHEMA: database.schemaName,
-      TOKEN_HMAC_SECRET: TOKEN_SECRET,
-      TOKEN_HMAC_KEY_ID: "tex51-test",
+      TOKEN_HMAC_SECRET: rotateKey ? "tex54-rotated-restart-hmac-secret-00000001" : TOKEN_SECRET,
+      TOKEN_HMAC_KEY_ID: rotateKey ? "tex54-current" : "tex51-test",
+      TOKEN_HMAC_RETAINED_KEYS: JSON.stringify(rotateKey ? { "tex51-test": TOKEN_SECRET } : {}),
       TEX_TEST_RNG_SEED: "5101",
       GAME_SERVER_RATE_LIMIT_PROFILE: "default",
       HOST: "127.0.0.1",
@@ -263,10 +264,10 @@ describeTestDatabase("TEX-51 production process restart with original player tok
     return record!.lastCommittedSequence;
   }
 
-  async function restart(): Promise<void> {
+  async function restart(rotateKey = false): Promise<void> {
     const oldPid = server!.child.pid;
     await server!.crash();
-    server = await startProcess(database!, port);
+    server = await startProcess(database!, port, rotateKey);
     expect(server.child.pid).not.toBe(oldPid);
   }
 
@@ -341,7 +342,7 @@ describeTestDatabase("TEX-51 production process restart with original player tok
     expect(hostClient.schemaViolations).toEqual([]);
   }, 30_000);
 
-  it("restores a committed hand, authenticates both original players and commits the next hand with private continuous projections", async () => {
+  it.each([false, true])("restores a committed hand with retained-key rotation=%s, authenticates original players and commits the next hand", async (rotateKey) => {
     const host = await createRoom("PlayingHost");
     const guest = await joinRoom(host.roomSnapshot.inviteCode!, "PlayingGuest");
     const hostSeat = await seat(host, 0, guest.roomSnapshot.roomRevision);
@@ -379,7 +380,7 @@ describeTestDatabase("TEX-51 production process restart with original player tok
       participants: { seatIndex: number; chips: number }[];
     };
     expect(committedState.handNumber).toBe(1);
-    await restart();
+    await restart(rotateKey);
     await Promise.all([beforeHost.client.closed, beforeGuest.client.closed]);
 
     const recovered = [await connect(host), await connect(guest)];

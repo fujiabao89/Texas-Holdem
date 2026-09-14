@@ -227,6 +227,7 @@ export async function prepareTournamentRecovery(
       lastWireSequence: Number(fallback.snapshot.sequence),
       committedThroughHand: fallback.state.handNumber,
       engineEventBase: Number(fallback.snapshot.sequence),
+      handId: fallback.snapshot.handId,
       // 还原每玩家剩余 Time Bank（P1-B）；旧快照无 serverTimeBank → 满余额回退。
       timeBank: extractServerTimeBank(fallback.state),
     },

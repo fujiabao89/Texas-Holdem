@@ -49,7 +49,7 @@ const PlayerPublicViewSchema = z.strictObject({
   hasHoleCards: z.boolean(),
   revealedCards: z.array(CardSchema).max(2),
 });
-const RankingViewSchema = z.strictObject({
+export const RankingViewSchema = z.strictObject({
   playerId: OpaqueIdSchema,
   placement: z.strictObject({ from: z.number().int().min(1), to: z.number().int().min(1) }).refine((value) => value.from <= value.to),
   displayOrder: z.number().int().min(1),

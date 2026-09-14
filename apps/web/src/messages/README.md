@@ -7,3 +7,5 @@ Hand History 的 `history.entries.tournamentEndNoChampion` 用于服务端明确
 TEX-38 的 `table.feedback` 统一 Seat 动作、分池结果与服务端牌型的中文显示；`settings` 补充音量、减少动态效果和素材署名。牌型仅映射服务器 category，不运行本地牌型计算。
 
 TEX-44 的 `brand` 命名空间集中首页、品牌导航、开局选择、表单引导与时间单位文案。页面展示不使用协议调试字段作为品牌文案。
+
+TEX-54 只补共享新增赛果错误码的中文映射，确保按 ErrorCode 展示兼容；赛果页面的 HTTP 恢复逻辑仍属后续任务。
