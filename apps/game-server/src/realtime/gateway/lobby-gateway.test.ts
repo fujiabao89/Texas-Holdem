@@ -118,7 +118,9 @@ function setup() {
 }
 
 /** A real TEX-20 runtime behind a controlled Room projection for WS-only routing tests. */
-async function setupTournamentGateway() {
+async function setupTournamentGateway(
+  options: { terminal?: boolean; includeOutsider?: boolean } = {},
+) {
   const clock = createFakeClock({ now: 1_000 });
   const ids = fakeIds(clock);
   const manager = createRoomManager({
@@ -134,6 +136,13 @@ async function setupTournamentGateway() {
     displayName: "Alice",
     displayNameKey: "alice",
   });
+  const outsider = options.includeOutsider
+    ? await manager.joinRoom({
+        inviteCode: host.roomSnapshot.inviteCode!,
+        displayName: "Late member",
+        displayNameKey: "late member",
+      })
+    : null;
   const emittedEvents: GameEventMessage[] = [];
   const emittedClocks: ClockUpdatedPayload[] = [];
   const output: TournamentOutputSink = {
@@ -196,7 +205,9 @@ async function setupTournamentGateway() {
         : null;
     },
     getView(tournamentId) {
-      return tournamentId === "t1" ? executor.getView() : undefined;
+      if (tournamentId !== "t1") return undefined;
+      const view = executor.getView();
+      return options.terminal ? { ...view, status: "FINISHED" as const } : view;
     },
     async setConnection() {},
     async pauseAll() {},
@@ -217,7 +228,9 @@ async function setupTournamentGateway() {
       const snapshot = manager.getSnapshot(roomId);
       return snapshot === undefined
         ? undefined
-        : { ...snapshot, status: "IN_GAME", activeTournamentId: "t1" };
+        : options.terminal
+          ? { ...snapshot, status: "FINISHED", activeTournamentId: null }
+          : { ...snapshot, status: "IN_GAME", activeTournamentId: "t1" };
     },
   };
   const events = createTournamentEventBus();
@@ -241,6 +254,7 @@ async function setupTournamentGateway() {
     manager,
     host,
     member,
+    outsider,
     handler: (socket: FakeSocket) => handler(socket),
     tournaments,
     submitted,
@@ -648,6 +662,54 @@ describe("LobbyGateway", () => {
       socket.sent.filter((message) => (message as { type: string }).type === "GAME_SNAPSHOT"),
     ).toHaveLength(gameSnapshotsBeforeRoomUpdate);
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "ROOM_SNAPSHOT" }));
+  });
+
+  it("只允许历史 Tournament 的原参赛者读取终局快照，拒绝后来加入同房间的成员", async () => {
+    const { host, outsider, handler, tournaments, manager } = await setupTournamentGateway({
+      terminal: true,
+      includeOutsider: true,
+    });
+    expect(outsider).not.toBeNull();
+
+    const outsiderSocket = new FakeSocket();
+    handler(outsiderSocket);
+    authenticate(outsiderSocket, outsider!.roomId, outsider!.playerToken);
+    await flush();
+    outsiderSocket.receive({
+      type: "REQUEST_SNAPSHOT",
+      requestId: "00000000-0000-4000-8000-000000000030",
+      payload: { tournamentId: "t1", lastSequence: "0", reason: "GAP" },
+    });
+    await flush();
+    expect(outsiderSocket.sent).toContainEqual(
+      expect.objectContaining({
+        type: "ERROR",
+        payload: expect.objectContaining({ code: "TOURNAMENT_NOT_ACTIVE" }),
+      }),
+    );
+    expect(
+      outsiderSocket.sent.some((message) => (message as { type: string }).type === "GAME_SNAPSHOT"),
+    ).toBe(false);
+
+    const participantSocket = new FakeSocket();
+    handler(participantSocket);
+    authenticate(participantSocket, host.roomId, host.playerToken);
+    await flush();
+    participantSocket.receive({
+      type: "REQUEST_SNAPSHOT",
+      requestId: "00000000-0000-4000-8000-000000000031",
+      payload: { tournamentId: "t1", lastSequence: "0", reason: "GAP" },
+    });
+    await flush();
+    expect(participantSocket.sent).toContainEqual(
+      expect.objectContaining({
+        type: "GAME_SNAPSHOT",
+        payload: expect.objectContaining({ tournamentId: "t1", reason: "RESYNC" }),
+      }),
+    );
+
+    await tournaments.dispose();
+    await manager.dispose();
   });
 
   it("claims the epoch before awaited CONNECTED so an old close cannot queue a stale disconnect", async () => {

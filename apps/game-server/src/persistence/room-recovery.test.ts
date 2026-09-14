@@ -377,10 +377,12 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
     expect(result.isolated).toEqual([
       { roomId: "r1", tournamentId: "t1", reason: "superseded-tournament" },
     ]);
-    expect(h.roomManager.getSnapshot(record.roomId)).toMatchObject({
+    const recoveredRoom = h.roomManager.getSnapshot(record.roomId)!;
+    expect(recoveredRoom).toMatchObject({
       status: "FINISHED",
       activeTournamentId: null,
     });
+    expect(recoveredRoom.players.every((player) => player.ready)).toBe(true);
     if (roomStatus === "IN_GAME") expect(h.setRoomStatus).toHaveBeenCalledWith(record.roomId, "FINISHED");
     else expect(h.setRoomStatus).not.toHaveBeenCalled();
     expect(manager.getView("t2")).toMatchObject({
@@ -430,6 +432,17 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
     h.clock.advance(1);
     for (let i = 0; i < 10; i++) await Promise.resolve();
     expect(manager.getView("t2")).toBeUndefined();
+
+    const readyForNextRound = h.roomManager.getSnapshot(record.roomId)!;
+    await expect(
+      h.roomManager.submitCommand(record.roomId, {
+        type: "START_TOURNAMENT",
+        actorPlayerId: record.hostPlayerId!,
+        expectedRevision: Number(readyForNextRound.roomRevision),
+        tournamentId: "t3",
+      }),
+    ).resolves.toMatchObject({ state: { status: "IN_GAME", activeTournamentId: "t3" } });
+
     await manager.dispose();
     await h.roomManager.dispose();
     expect(h.clock.pendingTimers()).toBe(0);

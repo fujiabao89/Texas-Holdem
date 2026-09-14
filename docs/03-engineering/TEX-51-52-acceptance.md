@@ -32,6 +32,16 @@ git diff --check
 | 退出及关闭竞争 | `rooms/room-lifecycle-races.test.ts`、`rooms/leave-coordinator.test.ts`、HTTP/WS 测试：末位真人退出先触发关房时仍返回权威最终 Snapshot；最后成功响应不被提前断连吞掉；单订阅者/连接发送失败不阻塞其他解绑；错误缺房不伪装成退出成功 |
 | 卸载后的历史与鉴权 | `tests/integration/terminal-history.test.ts`：真实 PostgreSQL + Room/Tournament/Writer + HTTP，10 分钟卸载后原凭证仍读持久投影；对手未公开底牌/Burn 牌面不泄露；LEFT/CLOSED 凭证返回 401 |
 
+PR #49 审查修正另执行 `room-manager.test.ts`、`room-recovery.test.ts`、`lobby-gateway.test.ts` 定向回归，共 54 项通过；全仓 `pnpm typecheck` 通过。
+
+## PR #49 审查修正
+
+- Greptile：关停不再在 Room+Host 已持久化后丢弃创建结果；`dispose()` 拒绝新创建并等待已准入创建完成凭证交付，再统一卸载新运行时。
+- Codex：FINISHED Room 恢复保持真人 Ready，与未重启终局一致；新增恢复后直接提交 `START_TOURNAMENT` 成功的回归。
+- CodeRabbit：历史终局快照除当前 Room 成员资格外，还必须确认调用者属于目标 Tournament 的锁定参赛者；后来加入同 Room 的成员被拒绝。总评中的文档边界也已澄清为“最终快照/原动作重放可访问，旧赛事件与时钟不向新赛成员广播”。
+- PR Policy：PR 描述已补充精确 `Linear: TEX-52` 元数据。
+- 修正提交推送后回复对应原始行内评论；CodeRabbit 总评/评论不是线程的部分以 PR 顶层评论说明。不会主动启动下一轮 CodeRabbit、Codex、Greptile 或 DeepSeek Harness 审查。
+
 以上短文件路径相对 `apps/game-server/src`，明确写出 `tests/integration` 的路径相对 `apps/game-server`。
 
 ## 有界 soak 观测
