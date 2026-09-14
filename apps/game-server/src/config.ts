@@ -28,16 +28,18 @@ export function parseAppConfig(env: Record<string, string | undefined> = process
   const keyId = env.TOKEN_HMAC_KEY_ID ?? "v1";
   assertKeyId(keyId, "TOKEN_HMAC_KEY_ID");
   const retained = parseRetainedTokenSecrets(env.TOKEN_HMAC_RETAINED_KEYS);
-  if (retained[keyId] !== undefined) throw new AppConfigError("TOKEN_HMAC_RETAINED_KEYS must not redefine TOKEN_HMAC_KEY_ID");
+  if (Object.hasOwn(retained, keyId)) throw new AppConfigError("TOKEN_HMAC_RETAINED_KEYS must not redefine TOKEN_HMAC_KEY_ID");
   const corsAllowedOrigins = (env.CORS_ALLOWED_ORIGINS ?? "")
     .split(",")
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
-  return { token: { secret, keyId, secretsByKeyId: Object.freeze({ ...retained, [keyId]: secret }) }, corsAllowedOrigins };
+  const secretsByKeyId = Object.assign(Object.create(null) as Record<string, string>, retained);
+  secretsByKeyId[keyId] = secret;
+  return { token: { secret, keyId, secretsByKeyId: Object.freeze(secretsByKeyId) }, corsAllowedOrigins };
 }
 
 export function resolveTokenSecret(config: AppConfig, keyId: string): string | undefined {
-  return config.token.secretsByKeyId[keyId];
+  return Object.hasOwn(config.token.secretsByKeyId, keyId) ? config.token.secretsByKeyId[keyId] : undefined;
 }
 
 function parseRetainedTokenSecrets(raw: string | undefined): Record<string, string> {
@@ -48,7 +50,7 @@ function parseRetainedTokenSecrets(raw: string | undefined): Record<string, stri
   if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") throw new AppConfigError("TOKEN_HMAC_RETAINED_KEYS must be a JSON object");
   const entries = Object.entries(parsed);
   if (entries.length > 16) throw new AppConfigError("TOKEN_HMAC_RETAINED_KEYS supports at most 16 keys");
-  const retained: Record<string, string> = {};
+  const retained = Object.create(null) as Record<string, string>;
   for (const [keyId, secret] of entries) {
     assertKeyId(keyId, "TOKEN_HMAC_RETAINED_KEYS key");
     if (typeof secret !== "string" || secret.length < 32) throw new AppConfigError(`TOKEN_HMAC_RETAINED_KEYS secret for ${keyId} must be at least 32 characters`);

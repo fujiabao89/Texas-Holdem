@@ -26,6 +26,27 @@ describe("buildApp", () => {
     expect(() => parseAppConfig({ TOKEN_HMAC_SECRET: "c".repeat(32), TOKEN_HMAC_KEY_ID: "v2", TOKEN_HMAC_RETAINED_KEYS: JSON.stringify({ v2: "p".repeat(32) }) })).toThrow("must not redefine TOKEN_HMAC_KEY_ID");
   });
 
+  it("仅从密钥环自有属性解析 secret，并安全支持原型属性同名 key", () => {
+    const protoSecret = "p".repeat(32);
+    const constructorSecret = "o".repeat(32);
+    const config = parseAppConfig({
+      TOKEN_HMAC_SECRET: "c".repeat(32),
+      TOKEN_HMAC_KEY_ID: "v2",
+      TOKEN_HMAC_RETAINED_KEYS: `{"__proto__":"${protoSecret}","constructor":"${constructorSecret}"}`,
+    });
+
+    expect(Object.getPrototypeOf(config.token.secretsByKeyId)).toBeNull();
+    expect(resolveTokenSecret(config, "__proto__")).toBe(protoSecret);
+    expect(resolveTokenSecret(config, "constructor")).toBe(constructorSecret);
+    expect(resolveTokenSecret(config, "toString")).toBeUndefined();
+
+    const currentConstructor = parseAppConfig({
+      TOKEN_HMAC_SECRET: "n".repeat(32),
+      TOKEN_HMAC_KEY_ID: "constructor",
+    });
+    expect(resolveTokenSecret(currentConstructor, "constructor")).toBe("n".repeat(32));
+  });
+
   it("responds to /health", async () => {
     const app = makeApp();
     const response = await app.inject({ method: "GET", url: "/health" });
