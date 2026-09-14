@@ -14,3 +14,5 @@
 任务的实时状态、评论和依赖以 [Linear 项目](https://linear.app/texas-holdem/project/texas-holdem-70cb976c03d2) 为准；本目录提供稳定的中文任务说明。
 
 - [TEX-44 产品首页与视觉交互升级](https://linear.app/texas-holdem/issue/TEX-44)：用户直接委派 Codex；范围为既有 Web 展示层与产品首页，保留游戏协议和服务端权威边界。分支 `feat/TEX-44-river-and-raise-design`；[验收记录](../03-engineering/TEX-44-acceptance.md)。
+
+- [TEX-45 游戏内牌桌与扑克牌视觉优化](https://linear.app/texas-holdem/issue/TEX-45)：用户直接委派 Codex，仅优化游戏展示，保留动效和音效。基于 TEX-44 已提交版本，分支 `feat/TEX-45-refine-in-game-table-and-cards`；用户追加授权推送并创建 PR，依赖 TEX-44，见 [验收记录](../03-engineering/TEX-45-acceptance.md)。

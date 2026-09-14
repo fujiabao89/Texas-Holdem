@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./landing.css";
 @import "./river-and-raise.css";
+@import "../features/poker-table/poker-table.css";
 
 .table-seat { left: var(--seat-left); top: var(--seat-top); }
 @media (max-width: 639px) {
