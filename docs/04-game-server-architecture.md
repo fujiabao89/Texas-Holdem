@@ -482,7 +482,9 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 
 ## 13. 进程生命周期与崩溃恢复
 
-**TEX-51 完整启动屏障**：先以一致读取重建 Room/ACTIVE 成员/Host/邀请码/凭证，再验证最新 Tournament 的锁定配置、参赛者与手末根。验证成功后预留新 Room revision 号段、完成必要的水位回退/状态协调，先注册 Room 再等待 Tournament 的恢复 START 成功，全部完成才监听。未知 key ID、缺 Host/成员、配置/座位冲突或无可验证根隔离整个 Room；其他 Room 正常服务。仅输出 ID 和固定诊断码。重复屏障调用共享 Promise；已注册 Room 不被覆盖。数据库整体读取失败则拒绝监听。
+启动恢复与运行期鉴权必须使用同一当前/保留 HMAC 密钥解析器；凭证 key ID 在解析器中可用即可恢复，不要求等于当前签发 key。未知/已移除 key 仍隔离。已提交终局根直接注册 FINISHED 只读 Tournament Runtime，保留快照 handId/sequence，Room `activeTournamentId=null`；不执行 START、不重发终局事件、Bundle 或 Room 迁移。该 Runtime 仅安排 §13.2 的保留到期计时，不启动行动/升盲/断线宽限计时。保留期内原身份可用 REQUEST_SNAPSHOT 读取最终视图，到期后按既定持久化接口读取。
+
+**TEX-51 完整启动屏障**：先以一致读取重建 Room/ACTIVE 成员/Host/邀请码/凭证，再验证最新 Tournament 的锁定配置、参赛者与手末根。验证成功后预留新 Room revision 号段、完成必要的水位回退/状态协调，先注册 Room，再等待进行中 Tournament 的恢复 START 或终局只读注册成功，全部完成才监听。未知 key ID、缺 Host/成员、配置/座位冲突或无可验证根隔离整个 Room；其他 Room 正常服务。仅输出 ID 和固定诊断码。重复屏障调用共享 Promise；已注册 Room 不被覆盖。数据库整体读取失败则拒绝监听。
 
 持久 Host 必须仍为 ACTIVE HUMAN；不猜选新 Host。全部连接恢复 DISCONNECTED/未准备；Lobby 座位归空，比赛座位/状态从锁定成员与已提交根重建。最新场由最大 tournamentNo 唯一选定，较旧 IN_GAME 场仅诊断不注册；Room FINISHED 与最新 IN_GAME 可由异步终局提交延迟造成，按验证根协调控制面状态。终局根不重开发牌。完整裁决和 migration/号段边界见 [ADR-0003](./adr/0003-tex-51-room-recovery-authority.md)。
 

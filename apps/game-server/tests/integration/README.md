@@ -22,6 +22,8 @@
 
 ## 运行（本地 PostgreSQL 容器示例）
 
+`room-restart.test.ts` 的进行中比赛恢复按「原密钥 / 轮换并保留旧密钥」两种配置启动真实生产子进程，验证旧凭证认证、私有投影与下一手提交序列。
+
 ```bash
 docker run -d --name tex18-test-postgres -e POSTGRES_PASSWORD=tex18test -p 55432:5432 postgres:16-alpine
 TEX_TEST_DATABASE_URL=postgres://postgres:tex18test@localhost:55432/postgres pnpm test:integration

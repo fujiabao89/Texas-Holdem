@@ -69,6 +69,8 @@ export interface TournamentRecoverInput {
     lastWireSequence: number;
     committedThroughHand: number;
     engineEventBase: number;
+    /** 已提交手的标识；终局恢复保留该标识用于最终 Snapshot。 */
+    handId?: string;
     /** 每玩家剩余 Time Bank（来自快照 serverTimeBank；旧快照无 → 满余额回退）。 */
     timeBank?: Record<string, number>;
   };
@@ -87,7 +89,7 @@ export interface TournamentRecoverFreshInput {
 export interface TournamentManager {
   /** 创建并注册一场 Tournament 的串行执行器；随后投递 START 驱动首手。 */
   create(input: TournamentCreateInput): void;
-  /** 从权威手末快照恢复并注册一场 Tournament（崩溃恢复，docs/04 §13）；随后投递 START 驱动下一手。 */
+  /** 从权威快照恢复；进行中比赛 START 下一手，终局直接注册只读 Runtime。 */
   createRecovered(input: TournamentRecoverInput): void | Promise<void>;
   /** 水位 0 恢复感知重初始化（首手未提交）：标记断开 + 启动宽限，随后投递 START（§13）。 */
   createRecoveredFresh(input: TournamentRecoverFreshInput): void | Promise<void>;
@@ -146,22 +148,22 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
     return completed;
   }
 
+  function retainTerminal(tournamentId: string, executor: TournamentExecutor): void {
+    if (disposed || runtimes.get(tournamentId) !== executor || unloading.has(executor) ||
+      retention.has(tournamentId)) return;
+    const timer = deps.scheduler.setTimeout(() => {
+      if (retention.get(tournamentId)?.executor !== executor) return;
+      void unload(tournamentId, executor);
+    }, retentionMs);
+    retention.set(tournamentId, { executor, timer });
+  }
+
   function makeExecutor(runtime: TournamentRuntimeState): TournamentExecutor {
     const executor = new TournamentExecutor(runtime, {
       ...deps.executorDeps,
       output: deps.output,
       onTerminal(context) {
-        if (
-          !disposed &&
-          runtimes.get(runtime.tournamentId) === executor &&
-          !unloading.has(executor)
-        ) {
-          const timer = deps.scheduler.setTimeout(() => {
-            if (retention.get(runtime.tournamentId)?.executor !== executor) return;
-            void unload(runtime.tournamentId, executor);
-          }, retentionMs);
-          retention.set(runtime.tournamentId, { executor, timer });
-        }
+        retainTerminal(runtime.tournamentId, executor);
         deps.executorDeps.onTerminal?.(context);
       },
     });
@@ -227,6 +229,11 @@ export function createTournamentManager(deps: TournamentManagerDeps): Tournament
         deps,
       );
       const executor = makeExecutor(runtime);
+      if (runtime.status === "FINISHED") {
+        runtimes.set(input.tournamentId, executor);
+        retainTerminal(input.tournamentId, executor);
+        return;
+      }
       await startRecovered(runtime, executor);
     },
 

@@ -274,6 +274,7 @@ async function recoverOnStartup(): Promise<void> {
     roomRepository,
     roomManager,
     tokenKeyId: config.token.keyId,
+    tokenSecretForKeyId: (keyId) => resolveTokenSecret(config, keyId),
     recoveryRepo: createRecoveryRepository(database),
     manager: tournamentManager,
     clock: tournamentClock,

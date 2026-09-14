@@ -27,6 +27,8 @@ export interface RoomRecoveryDeps extends RecoveryPlanDeps {
   readonly roomManager: RoomManager;
   readonly manager: TournamentManager;
   readonly tokenKeyId: string;
+  /** 与认证入口共用；未配置时只接受当前 key，兼容单密钥调用方。 */
+  readonly tokenSecretForKeyId?: (keyId: string) => string | undefined;
   readonly onIsolated?: (context: {
     roomId: string;
     tournamentId?: string;
@@ -138,7 +140,11 @@ async function recoverRooms(deps: RoomRecoveryDeps): Promise<RoomRecoverySummary
     let registered = false;
     const latest = record.tournaments.find((t) => t.tournamentNo === record.tournamentCount);
     try {
-      const base = validateRoom(record, deps.tokenKeyId);
+      const base = validateRoom(record, (keyId) =>
+        deps.tokenSecretForKeyId !== undefined
+          ? deps.tokenSecretForKeyId(keyId) !== undefined
+          : keyId === deps.tokenKeyId,
+      );
       for (const old of record.tournaments) {
         if (old !== latest && old.status === "IN_GAME")
           isolate({
@@ -227,7 +233,7 @@ async function recoverRooms(deps: RoomRecoveryDeps): Promise<RoomRecoverySummary
       };
       deps.roomManager.registerRecovered(state, lease.ceiling);
       registered = true;
-      if (plan !== undefined && status === "IN_GAME") {
+      if (plan !== undefined) {
         if (plan.kind === "recovered") {
           await deps.manager.createRecovered(plan.input);
           recovered.push({
@@ -256,7 +262,7 @@ async function recoverRooms(deps: RoomRecoveryDeps): Promise<RoomRecoverySummary
   return { restoredRooms, skippedRooms, isolated, recovered, reinitialized };
 }
 
-function validateRoom(record: RoomRecoveryRecord, tokenKeyId: string) {
+function validateRoom(record: RoomRecoveryRecord, hasTokenKey: (keyId: string) => boolean) {
   const parsed = TournamentConfigSchema.safeParse(record.configJson);
   requireFact(parsed.success, "invalid-room-config");
   requireFact(
@@ -297,7 +303,7 @@ function validateRoom(record: RoomRecoveryRecord, tokenKeyId: string) {
       requireFact(
         Buffer.isBuffer(member.tokenDigest) &&
           member.tokenDigest.length === 32 &&
-          member.tokenKeyId === tokenKeyId,
+          member.tokenKeyId !== null && hasTokenKey(member.tokenKeyId),
         "unavailable-member-credential",
       );
     } else {

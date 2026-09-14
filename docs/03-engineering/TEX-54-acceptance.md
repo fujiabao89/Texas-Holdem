@@ -48,6 +48,16 @@
 
 ## PR 审查修正
 
+### 2026-09-14：启动恢复 P1 与终局只读恢复
+
+Codex 评论 `3999205462` 与 CodeRabbit 普通评论 `5652186399` 指向同一仍有效问题：启动恢复只比较当前 key ID，导致保留旧密钥仍无法恢复旧房间。现将生产密钥解析器传入恢复屏障，未知/已移除 key 仍在注册前隔离。真实生产子进程测试覆盖旧密钥签发 → 提交一手 → SIGKILL → 新密钥加保留旧密钥重启 → 双玩家原令牌认证 → 下一手连续提交。
+
+另核实并修正用户提供的 diff 外终局问题：已提交 FINISHED 根会创建 FINISHED 只读 Tournament，保留手 ID 和序列，Room `activeTournamentId=null`；没有 START、重复终局通知/写入或业务 timer。真实 Manager + Gateway 测试从新恢复屏障认证原 token 并发送 REQUEST_SNAPSHOT，覆盖控制面 IN_GAME 延迟与已 FINISHED 两种情况，以及保留期到期卸载。
+
+验证：`pnpm exec vitest run --project unit --project rules --project ws` 为 88 文件、869 项通过；隔离 PostgreSQL 下 `pnpm exec vitest run --project integration` 为 12 文件、100 项通过，无跳过；`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过（lint 仅既有 unused room warning）。启动/持久化/Tournament/集成测试 README、架构 §13 与恢复手册同步。已检查，无需更新：扑克规则、前端流程、wire Schema、数据库迁移与部署拓扑均未改变。任务卡同步本轮证据；未主动开启新审查。
+
+合并交接顺序固定为 #49 → #48 → #47：#49 合并后先将最新 main 合入 #48 并推送，再将 #48 base 改为 main，等待完整 CI；#48 合并后再将最新 main 合入 #47 并验证。保留 integration 基线分支。
+
 - Greptile：修正赛果路由错误地用当前 secret 验证所有历史 `token_key_id`；配置、RoomManager、Hand History 与赛果路由共享当前/保留密钥环语义，并增加轮换后旧 token 的真实 PostgreSQL 回归。
 - Codex：修正 WITHDRAWN 玩家存在时可接受名次空洞；协议语义校验改为按非退出人数限定范围并验证完整 `1..N` 占位，增加缺口反例。
 - CodeRabbit：本轮自动审查因仓库条件跳过，没有产生可操作意见，不主动触发下一轮审查。

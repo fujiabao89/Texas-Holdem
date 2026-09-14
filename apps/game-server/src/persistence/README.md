@@ -14,6 +14,8 @@ TEX-52：Writer 在 `enqueue` 复制 Bundle 并保留 Buffer/Date/BigInt，嵌�
 
 `prepareTournamentRecovery` 先返回恢复计划，不注册也不立即回退 DB；整条 Room/身份链验证通过后才提交回退。`recoverActiveTournaments` 保留为比赛级测试/兼容入口，生产启动使用完整 Room 屏障。真实进程重启验收见 `tests/integration/room-restart.test.ts`，数据库迁移及诊断见 [恢复运行手册](../../../../docs/05-operations/room-recovery.md)。
 
+TEX-54 审查修正：启动屏障与 Room/HTTP 鉴权共用当前/保留密钥解析器；未知 key 仍在注册前隔离。已提交终局计划注册 FINISHED 只读 Tournament，保留手 ID/序列，Room 的 `activeTournamentId` 保持 null；不发 START、不重复终局迁移。`room-recovery.test.ts` 覆盖真实 Manager/Gateway 的终局 REQUEST_SNAPSHOT、无写入/事件/业务 timer 与保留到期；真实子进程重启测试覆盖轮换后原令牌继续下一手。
+
 ## 关键设计
 
 - **内存权威不被 DB 回写**：Writer 只消费执行器内存原子提交后的不可变 Bundle；写失败不回滚内存 GameState、不重放 Action（docs/04 §12.1）。
