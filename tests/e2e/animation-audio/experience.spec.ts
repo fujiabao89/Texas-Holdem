@@ -1,5 +1,6 @@
 import { animationTimings } from "../../../apps/web/src/animations/timings";
 import { message } from "../../../apps/web/src/messages/zh-CN";
+import { PRESENTATION_STORAGE_KEYS } from "../../../apps/web/src/state/presentation-preferences";
 import { scanAxeViolations } from "../fixtures/a11y";
 import { expect, test } from "../fixtures/observability";
 import { audioProbe, board, captureTableEvidence, freezeClock, installAudioProbe, installTable, reveal, setVisibility, tableSnapshot } from "./table-fixture";
@@ -7,11 +8,25 @@ import { audioProbe, board, captureTableEvidence, freezeClock, installAudioProbe
 test("TEX-38 键盘调整音量和动态效果，刷新与牌桌音效开关共用持久偏好", async ({ page }, testInfo) => {
   const table = await installTable(page);
   await installAudioProbe(page);
+  // SSR always renders the default enabled value. Waiting for the persisted
+  // disabled value therefore proves that client hydration and event handlers
+  // are ready before this keyboard-only interaction starts.
+  await page.addInitScript(
+    ({ soundEnabledKey, seededKey }) => {
+      if (sessionStorage.getItem(seededKey) === "1") return;
+      localStorage.setItem(soundEnabledKey, "0");
+      sessionStorage.setItem(seededKey, "1");
+    },
+    {
+      soundEnabledKey: PRESENTATION_STORAGE_KEYS.soundEnabled,
+      seededKey: "texas-holdem:e2e:settings-sound-seeded",
+    },
+  );
   await page.goto("/settings");
   const sound = page.getByRole("switch", { name: message("settings.soundSwitchLabel") });
-  await expect(sound).toHaveAttribute("aria-checked", "true");
-  await sound.press("Space");
   await expect(sound).toHaveAttribute("aria-checked", "false");
+  await sound.press("Space");
+  await expect(sound).toHaveAttribute("aria-checked", "true");
   const volume = page.getByRole("slider", { name: message("settings.volumeLabel") });
   await volume.focus();
   await page.keyboard.press("Home");
@@ -23,19 +38,19 @@ test("TEX-38 键盘调整音量和动态效果，刷新与牌桌音效开关共�
   await page.keyboard.press("Enter");
   await expect(motion).toHaveValue("reduce");
   await page.reload();
-  await expect(sound).toHaveAttribute("aria-checked", "false");
+  await expect(sound).toHaveAttribute("aria-checked", "true");
   await expect(volume).toHaveValue("1");
   await expect(motion).toHaveValue("reduce");
   expect(await scanAxeViolations(page, { minImpact: "serious" })).toEqual([]);
   await captureTableEvidence(page, testInfo, "settings");
   await table.open();
   const tableSound = page.getByRole("button", { name: message("table.soundLabel") });
-  await expect(tableSound).toHaveAttribute("aria-pressed", "false");
+  await expect(tableSound).toHaveAttribute("aria-pressed", "true");
   await tableSound.focus();
   await page.keyboard.press("Enter");
-  await expect(tableSound).toHaveAttribute("aria-pressed", "true");
+  await expect(tableSound).toHaveAttribute("aria-pressed", "false");
   await page.goto("/settings");
-  await expect(sound).toHaveAttribute("aria-checked", "true");
+  await expect(sound).toHaveAttribute("aria-checked", "false");
   await expect(volume).toHaveValue("1");
   expect(table.commands.filter(({ type }) => type === "SUBMIT_ACTION")).toEqual([]);
 });
