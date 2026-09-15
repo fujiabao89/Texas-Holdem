@@ -67,6 +67,8 @@ TEX-51：监听前恢复 Room、ACTIVE 身份与最新已提交 Tournament；需
 | `DATABASE_POOL_MAX` / `DATABASE_POOL_IDLE_TIMEOUT_MS` / `DATABASE_POOL_CONNECTION_TIMEOUT_MS` | 否 | 连接池参数覆盖 |
 | `TEX_TEST_DATABASE_URL` | 集成测试 | 测试库连接串；缺省时数据库集成测试受控跳过（TEX-12 约定） |
 
+TEX-53 将权威 D/SB/BB 同步到完整 Snapshot 与逐事件 patch，wire v4 要求前后端同步发布，版本边界见 [ADR-0005](../../docs/adr/0005-tex-53-authoritative-blind-seats.md)。持久化格式与引擎规则不变。
+
 ## TEX-54 持久化赛果
 
 `GET /api/v1/tournaments/{tournamentId}/result` 由生产装配的 `createTournamentResultRepository` 提供，同 Room 有效 HUMAN 成员凭证授权，Runtime 卸载后仍可读。鉴权按每条凭证持久化的 `token_key_id` 从当前/保留密钥环解析；轮换不会把仍开放 Room 的旧 Token 错判失效。共享严格 Schema、错误/保留期/no-store 规则见 [02](../../docs/02-protocol-spec.md) 的 TEX-54 契约。内部终局来源使用直接依赖 `zod` 防御校验，公开 DTO 仍仅在协议包定义；无数据库迁移。真实链路与既有写入边界见 [验收记录](../../docs/03-engineering/TEX-54-acceptance.md)。

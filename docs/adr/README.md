@@ -6,3 +6,4 @@
 - [ADR-0002：Hand History 的无冠军终局表示](./0002-tex-36-championless-history.md)（TEX-36 / PR #30，wire v3）
 - [ADR-0003：Room、身份与 Tournament 的一致恢复](./0003-tex-51-room-recovery-authority.md)（TEX-51）
 - [ADR-0004：TEX-54 持久化赛果读取](./0004-tex-54-persisted-tournament-result.md)（已实施，HTTP增量；既有wire不变）
+- [ADR-0005：Snapshot 中的权威庄位与盲注座位](./0005-tex-53-authoritative-blind-seats.md)（TEX-53，wire v4）

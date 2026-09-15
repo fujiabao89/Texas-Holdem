@@ -39,7 +39,7 @@ export function gameSnapshot(overrides: Partial<GameSnapshot> = {}): GameSnapsho
     tournamentStatus: "RUNNING",
     handPhase: "PREFLOP",
     blindLevel: { index: 0, smallBlind: 5, bigBlind: 10, ante: 0 },
-    dealerSeat: 0,
+    dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1,
     board: [],
     pots: [{ amount: 15, eligiblePlayerIds: ["player-1", "player-2"] }],
     currentActorPlayerId: "player-1",

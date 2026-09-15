@@ -408,6 +408,8 @@ Performance CI 落地事实（2026-09-05，TEX-29）：`ci.yml` 的 `perf-smoke`
 
 规划书是产品意图、非实现事实：本文所有实现类陈述在代码落地前一律视为设计意图（见文首标记）。
 
+TEX-53 增加公开 D/SB/BB 契约回归：协议必填/nullable/范围与 v3 拒绝；2/3/6/10 人、非连续座位、撤回、真实全下淘汰/观战、三手庄位移动与每事件 apply 不变量；INITIAL/RECONNECT/RESYNC/FAST_FORWARD 无历史快照恢复；真实 HTTP/WS 重连、GAP 请求与开手事件对照；生产 Bundle→PostgreSQL→恢复→下一手盲注与 wire 水位+1。覆盖文件、命令与结果见 [TEX-53 验收记录](./03-engineering/TEX-53-acceptance.md)。
+
 ## TEX-54：持久化赛果验收
 
 协议单元测试覆盖严格嵌套白名单、并列组/冠军/撤回语义、未知字段和不安全筹码。真实 PostgreSQL 套件从 TournamentExecutor 生成生产 Commit Bundle，经原子仓储写入后从 result GET 读取，覆盖冠军、同手并列、手内主动退出、无冠军、Room 非参赛成员、多 Tournament 隔离、有效淘汰观战身份、缺失/错误/LEFT/CLOSED/撤销凭证、到期读取、11 类损坏、私密字段隔离和全局限流 no-store。
