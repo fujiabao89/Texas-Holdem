@@ -7,7 +7,7 @@ import type { Card, ErrorCode, GameSnapshot, SubmitAction } from "@texas-holdem/
 
 import { clampWager, quickAmounts, wagerRange, wagerStep, type WagerRange } from "../betting/amounts";
 import { HandHistoryDrawer } from "../hand-history/hand-history-drawer";
-import { errorMessage, formatMessage, message } from "../../messages/zh-CN";
+import { errorMessage, formatMessage, message, type MessageKey } from "../../messages/zh-CN";
 import { useAudioController } from "../../audio/use-audio-controller";
 import { useTableCues } from "../../audio/use-table-cues";
 import { animationTimings, visualTimings } from "../../animations/timings";
@@ -17,7 +17,7 @@ import type { PendingCommand as TransportPendingCommand } from "../../protocol/w
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
 import { actionFeedback, awardedTo, feedbackFlight, potName, publicHandRankName, publicPlayerName, relativeCenter, type Point } from "./event-feedback";
-import { canSubmitTableAction, remainingTimeMs, tableSeats } from "./table-state";
+import { canSubmitTableAction, remainingTimeMs, seatBadges, tableSeatSlots, tableSeats, type SeatBadge } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
 type TerminalError = Extract<ErrorCode, "AUTH_FAILED" | "UNSUPPORTED_PROTOCOL_VERSION" | "SESSION_REPLACED">;
@@ -246,7 +246,8 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
   const playerEvent = overlay !== null && "playerId" in overlay.event.payload && overlay.event.payload.playerId === player.playerId ? overlay : null;
   const eventText = playerEvent === null ? null : actionFeedback(playerEvent.event);
   const departing = playerEvent?.event.type === "PLAYER_ELIMINATED" || playerEvent?.event.type === "PLAYER_WITHDRAWN";
-  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} className="table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 -translate-y-1/2 text-center sm:w-36" aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
+  const badges = seatBadges(game, player.seat);
+  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} data-active={active ? "true" : "false"} className="table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 -translate-y-1/2 text-center sm:w-36" aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
     <div data-seat-cards className={`relative z-10 mx-auto -mb-1 flex min-h-8 justify-center sm:min-h-14 ${playerEvent?.event.type === "PLAYER_FOLDED" ? "opacity-35" : ""}`}>
       {revealCards === null
         ? stagedCardCount === null
@@ -255,9 +256,13 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
         : <HoleCardsReveal cards={revealCards} landedCount={stagedCardCount ?? 2} />}
     </div>
     <div data-seat-chips className={`relative rounded-xl border px-1.5 py-1.5 shadow-lg sm:rounded-2xl sm:px-3 sm:py-2 ${award !== null ? "border-amber-100 bg-[#315d37] ring-2 ring-amber-200" : active ? "border-amber-300 bg-[#315d37] ring-2 ring-amber-300/75" : "border-slate-700 bg-[#203c2e]"} ${departing ? "table-seat-departing" : ""} ${player.pokerStatus === "ELIMINATED" || player.pokerStatus === "WITHDRAWN" ? "opacity-55" : ""}`} style={playerEvent === null ? undefined : { "--feedback-duration": `${playerEvent.durationMs}ms` } as CSSProperties}>
-      {player.seat === game.dealerSeat && <span aria-label={message("table.dealer")} className="absolute -left-2 -top-2 grid h-5 w-5 place-items-center rounded-full border-2 border-white bg-slate-950 text-[9px] font-bold text-white shadow">D</span>}
-      <strong className="block truncate text-[10px] font-semibold text-white sm:text-sm">{player.displayName}</strong>
-      <span className="mt-0.5 block font-mono text-[9px] font-semibold text-emerald-100 sm:text-xs">{player.stack}</span>
+      <span data-seat-name-row className="flex items-center justify-center gap-0.5">
+        {badges.length > 0 && <span data-seat-badges className="flex shrink-0 items-center gap-0.5">
+          {badges.map((badge) => <span data-seat-badge={badge} aria-label={message(seatBadgeLabel[badge])} className={`grid h-4 min-w-4 shrink-0 place-items-center rounded-full border border-white/80 px-0.5 text-[8px] font-bold leading-none text-white shadow-sm sm:h-5 sm:min-w-5 sm:px-1 sm:text-[10px] ${seatBadgeTone[badge]}`} key={badge}>{badge}</span>)}
+        </span>}
+        <strong data-seat-name className="min-w-0 truncate text-[10px] font-semibold text-white sm:text-sm">{player.displayName}</strong>
+      </span>
+      <span data-seat-stack className="mt-0.5 block font-mono text-[9px] font-semibold text-emerald-100 sm:text-xs">{player.stack}</span>
       {award !== null && <span key={overlay?.eventKey} className="table-seat-award absolute -right-2 -top-3 rounded-full border border-amber-100 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-950" style={{ "--feedback-duration": `${animationTimings.winner}ms` } as CSSProperties}>{formatMessage("table.feedback.winnerAmount", { amount: award })}</span>}
     </div>
     {eventText !== null && <span className={`table-action-badge absolute left-1/2 top-full z-50 mt-1 w-max max-w-36 -translate-x-1/2 rounded-full px-2 py-1 text-[9px] font-semibold shadow sm:text-xs ${playerEvent?.event.type === "PLAYER_ALL_IN" ? "bg-amber-200 text-amber-950" : "bg-white text-slate-900"}`} style={{ "--feedback-duration": `${playerEvent?.durationMs ?? 0}ms` } as CSSProperties} key={playerEvent?.eventKey}>{eventText}</span>}
@@ -600,7 +605,6 @@ function suitName(suit: Card["suit"]): string {
     case "SPADES": return message("table.suits.SPADES");
   }
 }
-const seatSlotsByOpponentCount = [[], [0], [8, 2], [8, 0, 2], [8, 0, 2, 7], [8, 0, 2, 3, 7], [8, 9, 0, 1, 3, 7], [8, 9, 0, 1, 2, 3, 7], [6, 7, 8, 9, 1, 2, 3, 4], [0, 1, 2, 3, 4, 6, 7, 8, 9]] as const;
 const tableSeatPositions = [
   { left: "50%", top: "8%" }, { left: "76%", top: "14%" }, { left: "91%", top: "34%" }, { left: "91%", top: "64%" }, { left: "73%", top: "83%" },
   { left: "50%", top: "93%" }, { left: "27%", top: "83%" }, { left: "9%", top: "64%" }, { left: "9%", top: "34%" }, { left: "24%", top: "14%" },
@@ -610,17 +614,9 @@ const actionButtonClass = "rr-action";
 const buttonToneClass: Record<ButtonTone, string> = {
   neutral: "rr-action-neutral", fold: "rr-action-fold", call: "rr-action-call", bet: "rr-action-bet", allIn: "rr-action-allin",
 };
+const seatBadgeTone: Record<SeatBadge, string> = { D: "bg-slate-950", SB: "bg-sky-700", BB: "bg-amber-700" };
+const seatBadgeLabel: Record<SeatBadge, MessageKey> = { D: "table.badges.dealer", SB: "table.badges.smallBlind", BB: "table.badges.bigBlind" };
 
-function tableSeatSlots(game: GameSnapshot): ReadonlyArray<number | null> {
-  const slots = Array<number | null>(10).fill(null);
-  const viewer = game.players.find((player) => player.playerId === game.viewer.playerId);
-  if (viewer === undefined) return slots;
-  slots[viewer.seat] = 5;
-  const opponents = game.players.filter((player) => player.playerId !== viewer.playerId).sort((left, right) => ((left.seat - viewer.seat + 10) % 10) - ((right.seat - viewer.seat + 10) % 10));
-  const availableSlots = seatSlotsByOpponentCount[opponents.length] ?? seatSlotsByOpponentCount[9];
-  opponents.forEach((player, index) => { slots[player.seat] = availableSlots[index] ?? null; });
-  return slots;
-}
 function seatPosition(slot: number): CSSProperties {
   const position = tableSeatPositions[slot] ?? tableSeatPositions[0]!;
   return { "--seat-left": position.left, "--seat-top": position.top } as CSSProperties;
