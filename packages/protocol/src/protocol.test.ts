@@ -61,7 +61,7 @@ const source = {
 };
 
 describe("protocol wire contracts", () => {
-  it.each([1, 2, 3, 5])("rejects wire version %i in both directions", (protocolVersion) => {
+  it.each([1, 2, 3, 4, 6])("rejects wire version %i in both directions", (protocolVersion) => {
     expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion, requestId, payload: { roomId: "room_1", playerToken: "x".repeat(43) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
     expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion, serverTime: 1, payload: { snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "1", ...projectPlayerView(source) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
   });
@@ -310,7 +310,15 @@ describe("protocol wire contracts", () => {
     it("rejects CLOCK_UPDATED when both actionDeadline and showdownDisplayUntil are non-null", () => {
       const msg = {
         type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
-        payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: "alice", actionDeadline: 1_700_000_000_000, timeBankRemainingMs: 60_000, showdownDisplayUntil: showdownUntil },
+        payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: null, actionDeadline: 1_700_000_000_000, timeBankRemainingMs: 60_000, showdownDisplayUntil: showdownUntil },
+      };
+      expect(ServerMessageSchema.safeParse(msg).success).toBe(false);
+    });
+
+    it("rejects CLOCK_UPDATED when showdownDisplayUntil is non-null but currentActorPlayerId is not null", () => {
+      const msg = {
+        type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
+        payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: "alice", actionDeadline: null, timeBankRemainingMs: 60_000, showdownDisplayUntil: showdownUntil },
       };
       expect(ServerMessageSchema.safeParse(msg).success).toBe(false);
     });

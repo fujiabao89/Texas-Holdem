@@ -76,6 +76,9 @@ export const ClockUpdatedPayloadSchema = z.strictObject({
   if (value.actionDeadline !== null && value.showdownDisplayUntil !== null) {
     ctx.addIssue({ code: "custom", message: "actionDeadline and showdownDisplayUntil are mutually exclusive" });
   }
+  if (value.showdownDisplayUntil !== null && value.currentActorPlayerId !== null) {
+    ctx.addIssue({ code: "custom", message: "currentActorPlayerId must be null when showdownDisplayUntil is non-null" });
+  }
 });
 export const ServerMessageSchema = z.discriminatedUnion("type", [
   serverMessage("RECONNECT_RESULT", ReconnectResultSchema),

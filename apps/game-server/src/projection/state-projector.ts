@@ -37,7 +37,7 @@ export interface ProjectionInput {
   readonly seatToPlayer: ReadonlyMap<number, string>;
   /** 当前行动截止线（Epoch ms）；无限时/无行动机会为 null。 */
   readonly actionDeadline: number | null;
-  /** 摊牌展示截止线（Epoch ms）；非摊牌展示阶段为 null。 */
+  /** 摊牌展示截止线（Epoch ms）；非摊牌展示阶段为 null（TEX-58 契约预留，TEX-59 实现运行时调度）。 */
   readonly showdownDisplayUntil?: number | null;
   /** 当前行动者合法动作集合（Engine 输出）；当前 actor 且有限时才有。 */
   readonly currentLegalActions: LegalActions | null;
@@ -112,6 +112,7 @@ export function projectPlayerView(input: ProjectionInput): PlayerView {
     currentActorPlayerId:
       currentActorSeat !== null ? (input.seatToPlayer.get(currentActorSeat) ?? null) : null,
     actionDeadline: input.actionDeadline,
+    // TEX-58: 协议契约与投影字段；运行时展示定时器与手间延迟切换由 TEX-59 实现编排，未启用时默认为 null。
     showdownDisplayUntil: input.showdownDisplayUntil ?? null,
     players,
     viewer: {

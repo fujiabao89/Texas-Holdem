@@ -65,7 +65,7 @@
 
 ### 4.1 Wire 基础约定【规范性决定】
 
-- P0 协议版本为 `4`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 4`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）；v4 在完整视图中必填公开盲注座位（[ADR-0005](./adr/0005-tex-53-authoritative-blind-seats.md)）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。wire `snapshotVersion: 1` 与持久化快照版本独立，本次无存储迁移。
+- P0 协议版本为 `5`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 5`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）；v4 在完整视图中必填公开盲注座位（[ADR-0005](./adr/0005-tex-53-authoritative-blind-seats.md)）；v5 引入牌局展示阶段（`SHOWDOWN_DISPLAY`）与权威行动时钟契约（TEX-58）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。wire `snapshotVersion: 1` 与持久化快照版本独立，本次无存储迁移。
 - 传输格式为 UTF-8 JSON；字段名使用 `lowerCamelCase`，`type`/`code` 等枚举值使用 `UPPER_SNAKE_CASE`。
 - ID 是不透明字符串；客户端不得从 ID 格式推断业务含义。客户端生成的 `requestId`/`actionId` 必须是 UUID v4 或具备等价碰撞强度的值。
 - `sequence` 是无符号 64 位整数，但在 JSON 中编码为十进制字符串（如 `"42"`），避免 JavaScript `number` 精度损失。客户端应用时使用 `BigInt` 或十进制整数库比较。
@@ -311,7 +311,7 @@ type SubmitActionPayload = {
 
 `SHOWDOWN_DISPLAY` 是一个纯展示阶段（wire 可见的 `handPhase` 枚举值），由服务端合成。它**不是** poker-engine 内部相态——`SHOWDOWN → POT_SETTLEMENT` 在引擎中是原子转移，`GameState.phase` 不暴露独立的 showdown 相态（见 [01-engine-spec.md §6](./01-engine-spec.md#6-hand-状态机)）。
 
-**服务端行为**：在最后一个 `POT_AWARDED` 事件发出后，服务端将当前所有连接的 PlayerView 推进到 `SHOWDOWN_DISPLAY` 阶段（通过 Patch 或下一次全量 Snapshot），同时设置 `showdownDisplayUntil = serverTime + showdownDisplayDurationMs`（具体时长由 game-server Scheduler 配置，P0 建议 3–5 秒，动画播放完前不切换）。`HAND_END` 阶段只在 `showdownDisplayUntil` 到期后开始推送；下一手的 `HAND_STARTED` 事件也在窗口结束后才发出。
+**服务端行为**：在最后一个 `POT_AWARDED` 事件发出后，服务端将当前所有连接的 PlayerView 推进到 `SHOWDOWN_DISPLAY` 阶段（通过 Patch 或下一次全量 Snapshot），同时设置 `showdownDisplayUntil = serverTime + showdownDisplayDurationMs`（具体时长由 game-server Scheduler 配置，P0 建议 3–5 秒，动画播放完前不切换）。`HAND_END` 阶段只在 `showdownDisplayUntil` 到期后开始推送；下一手的 `HAND_STARTED` 事件也在窗口结束后才发出。（注：TEX-58 完成展示阶段枚举、快照字段与协议时钟契约定义；`apps/game-server` 中展示定时器调度与手间延迟推进由后续任务 [TEX-59] 落地编排，未启用时 `showdownDisplayUntil` 保持为 `null` 且符合通用 Schema 约束）。
 
 > 提前结算场景（仅剩一名未 Fold 玩家）：服务端**不发送** `SHOWDOWN_STARTED` / `PLAYER_REVEALED`，`handPhase` 直接从 `RIVER`（或更早的街道）进入 `HAND_END`，`showdownDisplayUntil` 始终为 null。
 

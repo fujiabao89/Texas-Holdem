@@ -165,7 +165,7 @@ test("ClockUpdated 的权威 Time Bank 余额会收起操作按钮", async ({ pa
     socket.onMessage((raw) => {
       if ((JSON.parse(raw.toString()) as { type: string }).type !== "AUTHENTICATE") return;
       socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
-      socket.send(JSON.stringify({ type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 55_000, timeBankRemainingMs: 0 } }));
+      socket.send(JSON.stringify({ type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 55_000, timeBankRemainingMs: 0, showdownDisplayUntil: null } }));
     });
   });
   await page.goto("/room/room-1/table");
