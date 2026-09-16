@@ -28,17 +28,28 @@
 | `pnpm lint` | 通过（4 tasks successful） |
 | `pnpm --filter @texas-holdem/web build` | 通过 |
 | `pnpm test:unit` | 75 files / 697 tests passed |
-| `pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout` | 69 passed |
-| `pnpm test:e2e`（全量） | 113 passed + 1 失败（见"已知边界"） |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout` | 71 passed |
+| `pnpm test:e2e`（全量） | 112 passed + 4 失败，全部为 `create-room/brand-experience.spec.ts` 的既有并发 flaky（见"已知边界"） |
 
 ## 各目标视口验收证据
 
 `tests/e2e/table-layout/single-viewport.spec.ts` 以 WS 投影夹具在真实浏览器中按 **5 视口 × 2/3/6/10 人桌** 矩阵断言：行动时无纵向/横向页面滚动；行动区、牌桌、公共牌与底池完整落在视口内；行动区不遮挡公共牌、底池与任何座位；各 Seat 卡片矩形互不相交；行动区随行动权出现与消失且不改变牌桌几何；手机金额面板的快捷额、Slider、±、精确输入、返回与提交全部在视口内可达，全下两步可完成。
 
-本地证据截图（`fullPage`，页面本身不滚动故等于视口大小）生成于 `output/playwright/`，沿用 TEX-38 的既有约定、**不纳入版本控制**——`output/` 未被 `.gitignore` 忽略，因此运行后 `git status` 会显示 `?? output/`；该目录在本次工作前已存有 TEX-38 的 6 张截图，本次新增下列 6 张，共 12 个未跟踪文件：
+本地证据截图（`fullPage`，页面本身不滚动故等于视口大小）生成于 `output/playwright/`，沿用 TEX-38 的既有约定、不纳入版本控制。TEX-46 已在 `.gitignore` 补上根目录规则 `/output/`，该目录因此不再出现在 `git status`，截图仍保留在本地。该目录在本次工作前已存有 TEX-38 的 6 张截图，本次新增下列 6 张：
 
 - `TEX-46-360x800-10p.png`、`TEX-46-390x844-10p.png`、`TEX-46-768x1024-10p.png`、`TEX-46-1366x768-10p.png`、`TEX-46-1920x1080-10p.png`：十人桌行动中。
 - `TEX-46-390x844-wager.png`：手机金额面板展开（三行布局）。
+
+## 首轮验收意见的处理（2026-09-16）
+
+首轮验收结论为"暂不通过"，提出两条 P2 与两条交付一致性问题，均已修正：
+
+- **P2-1 精确金额模式产生面板内部滚动**（`poker-table.css`）：原实现只隐藏快捷额行，却把整个"返回操作 / 精确输入开关 / 金额输出 / 精确输入框"容器移到第一行，输入框并未一对一替换快捷额行，实测 390×844 下面板 `clientHeight` 174 / `scrollHeight` 244，Slider 与提交按钮被裁切。修正为：精确输入框成为金额面板的**独立网格项**（`.table-exact-amount`），独占快捷额所在的第一行，快捷额行在展开时隐藏；金额输出移入第二行滑杆行右侧；校验错误文案改为输入框旁的同行小字（`<label>` 内 `<span role="alert">`），不再新增行。手机金额面板因此严格保持三行。
+- **P2-2 回归测试没有进入精确金额状态**（`single-viewport.spec.ts`）：原断言只比较控件底边与 `window.innerHeight`，未进入精确输入、也未检查面板底边或 `scrollHeight`，缺陷可漏过。新增两个视口（360×800、390×844）的用例：打开精确输入、填写合法金额，断言 `panel.scrollHeight <= panel.clientHeight + 1`、页面无滚动、面板内每个可见控件矩形完整位于面板矩形内且在视口内；另增用例验证可"返回操作"回到主操作行，并验证精确草稿在提交时被采用（`RAISE raiseTo: 42`）。全下两步与命令内容仍由 `tests/e2e/betting/table.spec.ts` 覆盖。
+- **验收记录哈希**：不再记录与文档同处一个提交的自身哈希，改以分支 HEAD 为准。
+- **工作区卫生**：测试文件的 Prettier 归一化已提交；`output/` 已由 `.gitignore` 的 `/output/` 规则忽略；`apps/web/next-env.d.ts` 被 `next dev` 自动改写的内容已恢复，未进入提交。
+
+修正后的验证：`pnpm typecheck` / `pnpm lint` 通过，`pnpm test:unit` 697 passed，`pnpm exec playwright test … table-layout` 71 passed。
 
 ## 未运行项与已知边界
 

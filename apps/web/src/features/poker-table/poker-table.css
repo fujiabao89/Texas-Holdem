@@ -236,7 +236,7 @@
 .rr-table-page .table-wager-editor { background: #f0f2e7; }
 /* The back button only exists where the wager panel replaces the primary row. */
 .rr-table-page .table-wager-back { display: none; }
-.rr-table-page .table-wager-editor output { margin-left: auto; font-size: 24px; font-variant-numeric: tabular-nums; }
+.rr-table-page .table-wager-editor output { margin-left: auto; font-size: 20px; font-variant-numeric: tabular-nums; }
 .rr-table-page .table-wager-editor input { min-width: 0; max-width: 100%; }
 .rr-table-page .rr-action-allin { background: #f7e7db; border-color: #d5af91; color: #934024; }
 .rr-table-page .rr-action-allin:hover:not(:disabled) { background: #f0d9c7; }
@@ -342,10 +342,11 @@
   .rr-table-page:has([data-seat="5"]) .table-player-stack { margin-top: 0; font-size: 10px; gap: 2px; }
   .rr-table-page:has([data-seat="5"]) .table-chip { width: 7px; height: 7px; }
   .rr-table-page:has([data-seat="5"]) [data-seat-chips] + div { margin-top: 0; }
-  /* The phone wager panel is fixed at three rows — shortcuts, amount, then the
-     back/submit pair — so every legal control stays inside the reserved strip.
-     Opening the exact-amount field reuses the shortcut row rather than adding
-     a fourth row. */
+  /* The phone wager panel is exactly three rows — shortcuts, the amount row,
+     then back/exact next to submit — so every control stays inside the
+     reserved strip with no panel-level scrolling. The exact-amount field is a
+     grid item of its own: it occupies the shortcut row one-for-one, so opening
+     it swaps content instead of stacking a fourth row. */
   .rr-table-page .table-wager-editor {
     grid-template-columns: 1fr auto;
     grid-auto-rows: minmax(44px, auto);
@@ -353,14 +354,30 @@
     padding: 4px;
   }
   .rr-table-page .table-wager-editor > p { display: none; }
-  .rr-table-page .table-wager-editor > div:nth-of-type(1) {
+  .rr-table-page .table-quick-amounts {
     grid-area: 1 / 1 / 2 / -1;
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .rr-table-page .table-wager-editor > div:nth-of-type(2) { grid-area: 2 / 1 / 3 / -1; }
-  .rr-table-page .table-wager-editor > div:nth-of-type(3) { grid-area: 3 / 1 / 4 / 2; }
-  .rr-table-page .table-wager-editor > button { grid-area: 3 / 2 / 4 / 3; }
-  .rr-table-page .table-wager-editor:has(input[inputmode="numeric"]) > div:nth-of-type(1) { display: none; }
-  .rr-table-page .table-wager-editor:has(input[inputmode="numeric"]) > div:nth-of-type(3) { grid-area: 1 / 1 / 2 / -1; }
-  .rr-table-page .table-wager-editor:has(input[inputmode="numeric"]) > button { grid-area: 3 / 1 / 4 / -1; }
+  .rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
+  .rr-table-page .table-wager-meta { grid-area: 3 / 1 / 4 / 2; }
+  .rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 2 / 4 / 3; }
+  .rr-table-page .table-exact-amount {
+    grid-area: 1 / 1 / 2 / -1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  /* The field keeps its accessible name, but the visible text is the value. */
+  .rr-table-page .table-exact-amount > span:first-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .rr-table-page .table-exact-amount > input { flex: 1; min-width: 0; }
+  .rr-table-page .table-exact-error { font-size: 10px; white-space: nowrap; }
+  .rr-table-page .table-wager-output { font-size: 16px; }
+  .rr-table-page .table-wager-editor:has(.table-exact-amount) .table-quick-amounts { display: none; }
 }

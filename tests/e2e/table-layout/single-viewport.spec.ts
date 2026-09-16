@@ -118,13 +118,19 @@ async function seedTableSession(page: Page): Promise<void> {
   );
 }
 
-async function openTable(page: Page, playerCount: number): Promise<(payload: unknown) => void> {
+async function openTable(
+  page: Page,
+  playerCount: number,
+  commands?: unknown[],
+): Promise<(payload: unknown) => void> {
   let push: ((payload: unknown) => void) | undefined;
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     push = (payload) => socket.send(JSON.stringify(payload));
     socket.onMessage((raw) => {
-      if ((JSON.parse(raw.toString()) as { type: string }).type !== "AUTHENTICATE") return;
+      const incoming = JSON.parse(raw.toString()) as { type: string };
+      commands?.push(incoming);
+      if (incoming.type !== "AUTHENTICATE") return;
       socket.send(
         JSON.stringify({
           type: "RECONNECT_RESULT",
@@ -381,43 +387,111 @@ test.describe("按需行动区", () => {
     await expect(page.getByRole("button", { name: "使用延时" })).toHaveCount(0);
   });
 
-  test("单视口内可从行动区打开金额面板、回到操作并提交全下两步", async ({ page }) => {
+  for (const viewport of [
+    { name: "360x800", width: 360, height: 800 },
+    { name: "390x844", width: 390, height: 844 },
+  ] as const) {
+    test(`${viewport.name} 精确金额模式既不滚动页面也不滚动面板`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await openTable(page, 6);
+
+      await page.getByRole("button", { name: "加注" }).click();
+      await page.getByRole("button", { name: "输入精确金额" }).click();
+      const field = page.getByRole("textbox", { name: "输入精确下注额" });
+      await expect(field).toBeVisible();
+      await field.fill("42");
+
+      // 面板不得内部溢出：所有可见控件的矩形必须完整位于面板矩形内。
+      const measured = await page.evaluate(() => {
+        const panel = document.querySelector(".rr-betting-panel");
+        if (panel === null) throw new Error("missing wager panel");
+        const panelRect = panel.getBoundingClientRect();
+        const controls = Array.from(panel.querySelectorAll("button, input, output"))
+          .filter((element) => {
+            const style = getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden") return false;
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          })
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              name: element.getAttribute("aria-label") ?? element.textContent ?? element.tagName,
+              top: rect.top,
+              bottom: rect.bottom,
+              left: rect.left,
+              right: rect.right,
+            };
+          });
+        return {
+          panelScrollHeight: panel.scrollHeight,
+          panelClientHeight: panel.clientHeight,
+          panel: {
+            top: panelRect.top,
+            bottom: panelRect.bottom,
+            left: panelRect.left,
+            right: panelRect.right,
+          },
+          documentScrollHeight: document.documentElement.scrollHeight,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+          controls,
+        };
+      });
+
+      expect(measured.panelScrollHeight, "精确金额面板不得内部滚动").toBeLessThanOrEqual(
+        measured.panelClientHeight + 1,
+      );
+      expect(measured.documentScrollHeight, "页面不得滚动").toBeLessThanOrEqual(
+        measured.viewportHeight + 1,
+      );
+      expect(measured.controls.length, "面板内必须有可见控件").toBeGreaterThan(0);
+      for (const control of measured.controls) {
+        expect(control.top, `${control.name} 必须完整位于面板内`).toBeGreaterThanOrEqual(
+          measured.panel.top - 1,
+        );
+        expect(control.bottom, `${control.name} 必须完整位于面板内`).toBeLessThanOrEqual(
+          measured.panel.bottom + 1,
+        );
+        expect(control.left, `${control.name} 必须完整位于面板内`).toBeGreaterThanOrEqual(
+          measured.panel.left - 1,
+        );
+        expect(control.right, `${control.name} 必须完整位于面板内`).toBeLessThanOrEqual(
+          measured.panel.right + 1,
+        );
+        expect(control.bottom, `${control.name} 必须完整位于视口内`).toBeLessThanOrEqual(
+          measured.viewportHeight + 1,
+        );
+      }
+    });
+  }
+
+  test("精确金额可返回主操作行，并可提交", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await openTable(page, 6);
+    const commands: { type: string; payload?: { action?: { type: string; raiseTo?: number } } }[] =
+      [];
+    await openTable(page, 6, commands);
     const panel = page.locator(".rr-betting-panel");
 
+    // 打开精确输入后仍可退回主操作行。
     await page.getByRole("button", { name: "加注" }).click();
-    await expect(panel).toHaveAttribute("data-wager-open", "true");
-
-    // 金额面板内的每个控件都必须完整落在视口内，且不引入页面滚动。
-    const controls = await page.evaluate(() => ({
-      scrollHeight: document.documentElement.scrollHeight,
-      innerHeight: window.innerHeight,
-      bottoms: Array.from(
-        document.querySelectorAll(
-          ".table-wager-editor input, .table-wager-editor .rr-action, .table-wager-back",
-        ),
-      ).map((element) => ({
-        name: element.getAttribute("aria-label") ?? element.textContent ?? "?",
-        bottom: element.getBoundingClientRect().bottom,
-      })),
-    }));
-    expect(controls.scrollHeight, "打开金额面板不得引入页面滚动").toBeLessThanOrEqual(
-      controls.innerHeight + 1,
-    );
-    for (const control of controls.bottoms) {
-      expect(control.bottom, `${control.name} 必须完整落在视口内`).toBeLessThanOrEqual(
-        controls.innerHeight + 1,
-      );
-    }
-
-    await page.getByRole("slider", { name: "下注总额" }).press("End");
-    await expect(page.getByRole("button", { name: "确认加注至 990" })).toBeVisible();
+    await page.getByRole("button", { name: "输入精确金额" }).click();
+    await expect(page.getByRole("textbox", { name: "输入精确下注额" })).toBeVisible();
     await page.getByRole("button", { name: "返回操作" }).click();
-
     await expect(panel).toHaveAttribute("data-wager-open", "false");
     await expect(page.getByRole("button", { name: "全下至 1000" })).toBeEnabled();
-    await page.getByRole("button", { name: "全下至 1000" }).click();
-    await expect(page.getByRole("button", { name: "再次点击确认全下至 1000" })).toBeVisible();
+
+    // 重新进入并把仍聚焦的合法草稿在当前交互中提交。
+    await page.getByRole("button", { name: "加注" }).click();
+    await page.getByRole("button", { name: "输入精确金额" }).click();
+    await page.getByRole("textbox", { name: "输入精确下注额" }).fill("42");
+    // 按钮文案跟随滑杆值，精确草稿在提交时被采用（TEX-25 既有契约）。
+    await page.getByRole("button", { name: /确认加注至/ }).click();
+    await expect
+      .poll(() => commands.filter(({ type }) => type === "SUBMIT_ACTION").length)
+      .toBe(1);
+    expect(commands.find(({ type }) => type === "SUBMIT_ACTION")).toMatchObject({
+      payload: { action: { type: "RAISE", raiseTo: 42 } },
+    });
   });
 });
