@@ -38,7 +38,17 @@ export const CardSchema = z.strictObject({
 
 export const ActionSourceSchema = z.enum(["HUMAN_SOCKET", "BOT_CONTROLLER", "SYSTEM_TIMER"]);
 export const StreetSchema = z.enum(["PREFLOP", "FLOP", "TURN", "RIVER"]);
-export const HandPhaseSchema = z.enum(["PREFLOP", "FLOP", "TURN", "RIVER", "HAND_END"]);
+/**
+ * Wire-visible hand phase emitted by the server in PlayerView / GameSnapshot.
+ *
+ * SHOWDOWN_DISPLAY is a server-synthesised display phase that is NOT a poker-engine
+ * rule phase. It is emitted after POT_AWARDED events and before the next HAND_STARTED,
+ * so that clients know to hold the showdown animation window open.
+ * actionDeadline and currentActorPlayerId are null during SHOWDOWN_DISPLAY.
+ * The server transitions the view to HAND_END (or the next hand's phase) only after
+ * the showdownDisplayUntil timestamp has elapsed or the room moves on.
+ */
+export const HandPhaseSchema = z.enum(["PREFLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN_DISPLAY", "HAND_END"]);
 export const PokerStatusSchema = z.enum(["ACTIVE", "EXIT_PENDING", "WITHDRAWN", "ELIMINATED"]);
 export const TournamentStatusSchema = z.enum(["RUNNING", "FINISHED"]);
 export const HandRankSchema = z.strictObject({
@@ -104,6 +114,8 @@ export type RequestId = z.infer<typeof RequestIdSchema>;
 export type ActionId = z.infer<typeof ActionIdSchema>;
 export type DecimalSequence = z.infer<typeof DecimalSequenceSchema>;
 export type Card = z.infer<typeof CardSchema>;
+export type HandPhase = z.infer<typeof HandPhaseSchema>;
+export type HandRank = z.infer<typeof HandRankSchema>;
 export type TournamentConfig = z.infer<typeof TournamentConfigSchema>;
 export type LegalActions = z.infer<typeof LegalActionsSchema>;
 

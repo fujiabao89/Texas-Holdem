@@ -44,6 +44,7 @@ export function gameSnapshot(overrides: Partial<GameSnapshot> = {}): GameSnapsho
     pots: [{ amount: 15, eligiblePlayerIds: ["player-1", "player-2"] }],
     currentActorPlayerId: "player-1",
     actionDeadline: 10_000,
+    showdownDisplayUntil: null,
     players: [
       { playerId: "player-1", displayName: "玩家甲", seat: 0, stack: 990, streetBet: 10, totalCommitted: 10, pokerStatus: "ACTIVE", hasHoleCards: true, revealedCards: [] },
       { playerId: "player-2", displayName: "玩家乙", seat: 1, stack: 995, streetBet: 5, totalCommitted: 5, pokerStatus: "ACTIVE", hasHoleCards: true, revealedCards: [] },

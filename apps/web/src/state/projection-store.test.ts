@@ -157,13 +157,13 @@ describe("ProjectionStore", () => {
     const store = new ProjectionStore();
     store.acceptGameSnapshot(gameSnapshot(), 10);
     const before = store.getSnapshot().game;
-    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 20_000, timeBankRemainingMs: 30_000 }, 11);
-    expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: 20_000, timeBankRemainingMs: 30_000 });
+    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 20_000, timeBankRemainingMs: 30_000, showdownDisplayUntil: null }, 11);
+    expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: 20_000, timeBankRemainingMs: 30_000, showdownDisplayUntil: null });
     expect(store.getSnapshot().game).toBe(before);
 
-    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-2", actionDeadline: 99_000, timeBankRemainingMs: 0 }, 12);
-    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 99_000, timeBankRemainingMs: 0 }, 9);
-    expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: 20_000, timeBankRemainingMs: 30_000 });
+    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-2", actionDeadline: 99_000, timeBankRemainingMs: 0, showdownDisplayUntil: null }, 12);
+    store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 99_000, timeBankRemainingMs: 0, showdownDisplayUntil: null }, 9);
+    expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: 20_000, timeBankRemainingMs: 30_000, showdownDisplayUntil: null });
   });
 });
 

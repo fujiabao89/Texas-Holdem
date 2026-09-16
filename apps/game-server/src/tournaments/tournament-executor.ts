@@ -490,6 +490,7 @@ export class TournamentExecutor {
       currentActorPlayerId: command.playerId,
       actionDeadline: newDeadline,
       timeBankRemainingMs: consumed.secondsRemaining * 1000,
+      showdownDisplayUntil: null,
     });
     const result: CommandResultPayload = {
       requestId,

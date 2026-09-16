@@ -656,6 +656,7 @@ describe("LobbyGateway", () => {
         actorSeat === null ? null : (runtimeView.seatToPlayer.get(actorSeat) ?? null),
       actionDeadline: runtimeView.actionDeadline,
       timeBankRemainingMs: runtimeView.timeBankRemainingMs.get(host.playerId) ?? 0,
+      showdownDisplayUntil: null,
     });
     expect(socket.sent).toContainEqual(
       expect.objectContaining({

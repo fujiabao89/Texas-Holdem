@@ -64,6 +64,18 @@ export const ClockUpdatedPayloadSchema = z.strictObject({
   currentActorPlayerId: OpaqueIdSchema.nullable(),
   actionDeadline: EpochMillisecondsSchema.nullable(),
   timeBankRemainingMs: SafeIntegerSchema,
+  /**
+   * Mirrors PlayerView.showdownDisplayUntil. Non-null only during SHOWDOWN_DISPLAY;
+   * always null when actionDeadline is non-null (the two are mutually exclusive).
+   * Clients apply the same filtering rules as for PlayerView.showdownDisplayUntil:
+   * only update the display window when tournamentId + handId match and the new value
+   * is later than the current one.
+   */
+  showdownDisplayUntil: EpochMillisecondsSchema.nullable(),
+}).superRefine((value, ctx) => {
+  if (value.actionDeadline !== null && value.showdownDisplayUntil !== null) {
+    ctx.addIssue({ code: "custom", message: "actionDeadline and showdownDisplayUntil are mutually exclusive" });
+  }
 });
 export const ServerMessageSchema = z.discriminatedUnion("type", [
   serverMessage("RECONNECT_RESULT", ReconnectResultSchema),
