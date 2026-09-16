@@ -67,9 +67,9 @@ export const ClockUpdatedPayloadSchema = z.strictObject({
   /**
    * Mirrors PlayerView.showdownDisplayUntil. Non-null only during SHOWDOWN_DISPLAY;
    * always null when actionDeadline is non-null (the two are mutually exclusive).
-   * Clients apply the same filtering rules as for PlayerView.showdownDisplayUntil:
-   * only update the display window when tournamentId + handId match and the new value
-   * is later than the current one.
+   * Clients apply standard CLOCK_UPDATED filtering rules (02 §8.4): only accept when
+   * tournamentId + handId + currentActorPlayerId match current canonical game state,
+   * and the message envelope serverTime is not older than the latest accepted clock/snapshot.
    */
   showdownDisplayUntil: EpochMillisecondsSchema.nullable(),
 }).superRefine((value, ctx) => {

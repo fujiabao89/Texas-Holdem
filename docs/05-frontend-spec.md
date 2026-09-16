@@ -120,7 +120,7 @@ apps/web/
 | --- | --- | --- | --- |
 | 牌局规范态 | 当前 `PlayerView` 的客户端镜像：座位、筹码、底牌（仅本人）、公共牌、Pot、行动权、`LegalActions` | 独立 store（非组件状态）【设计意图】 | **唯一**：`GAME_SNAPSHOT` 覆盖 + 已通过 Schema 校验的连续 `GAME_EVENT` 应用（[02](./02-protocol-spec.md) §6） |
 | 房间规范态 | 当前 `RoomSnapshot`：成员、座位、Ready、连接状态、房主与配置 | 独立 store | **唯一**：按 `roomRevision` 接受较新的 `ROOM_SNAPSHOT` |
-| 计时展示态 | `currentActorPlayerId`、`actionDeadline`、`timeBankRemainingMs`、最近一次已接受消息的 `serverTime` | 独立轻量状态 | `GAME_SNAPSHOT` 初始化；匹配当前行动机会且较新的 `CLOCK_UPDATED` 更新（§5.2） |
+| 计时展示态 | `currentActorPlayerId`、`actionDeadline`、`timeBankRemainingMs`、`showdownDisplayUntil`、最近一次已接受消息的 `serverTime` | 独立轻量状态 | `GAME_SNAPSHOT` 初始化；匹配当前行动/展示机会且较新的 `CLOCK_UPDATED` 更新（§5.2） |
 | 动画展示态 | 当前屏幕正在展示的牌、筹码位移、Reveal/Highlight Overlay 与队列游标 | AnimationQueue 管理的 presentation model | 仅由已接受 Event 派生；不得作为提交 Action 或判断合法性的依据（§9） |
 | 纯 UI 状态 | 下注金额草稿、待提交命令、面板开合、音效开关 | Jotai（《总规划》§6） | 仅组件交互与命令生命周期 |
 | 派生展示模型 | Seat 旋转坐标、倒计时剩余、金额格式、按钮可见性 | 由以上状态派生 | 无独立写入 |
@@ -141,7 +141,7 @@ apps/web/
 - `packages/protocol` 必须导出以 `event.type` 为判别字段的 `ProjectedGameEvent` 联合类型、每种 Payload 的运行时 Schema 与 `GameSnapshot` Schema；前端不得针对 `payload: object` 手写类型断言。Schema 不通过、未知 Event 或 reducer 无法穷尽处理时，不应用该消息并以 `INVALID_EVENT` 请求 Snapshot。
 - reducer 必须是纯函数并对联合类型做穷尽检查，按 [02](./02-protocol-spec.md) §6.3/§9.2 应用 `PlayerViewPatch`；每个 Event 的测试至少断言 `apply(before, patch) == after`、重复 sequence 无副作用、缺序触发重同步。具体 wire 字段只在 02 / `packages/protocol` 定义，本文不复制第二套 Payload 契约。
 
-`CLOCK_UPDATED` 是明确的旁路消息，不属于 Game Event，也不推进 `sequence`。客户端只在 `tournamentId`、`handId`、`currentActorPlayerId` 与当前牌局规范态一致，且消息信封 `serverTime` 不早于最近一次已接受的 Clock/Snapshot 时应用；否则丢弃。其 `timeBankRemainingMs` 始终是当前接收者的余额，即使行动者是其他玩家。它只允许修改计时展示态，不能修改筹码、行动权或 `LegalActions`。新的 `GAME_SNAPSHOT` 总是重置这条计时旁路的基线。
+`CLOCK_UPDATED` 是明确的旁路消息，不属于 Game Event，也不推进 `sequence`。客户端只在 `tournamentId`、`handId`、`currentActorPlayerId` 与当前牌局规范态一致，且消息信封 `serverTime` 不早于最近一次已接受的 Clock/Snapshot 时应用；否则丢弃。其 `timeBankRemainingMs` 始终是当前接收者的余额，即使行动者是其他玩家。处于 `SHOWDOWN_DISPLAY` 阶段时，`actionDeadline` 为 `null`，`showdownDisplayUntil` 非 `null`，客户端在此窗口内持续展示摊牌结果而不展示行动计时器；常规行动时段则相反，`actionDeadline` 与 `showdownDisplayUntil` 严格互斥（见 [02](./02-protocol-spec.md) §8.4）。它只允许修改计时展示态，不能修改筹码、行动权或 `LegalActions`。新的 `GAME_SNAPSHOT` 总是重置这条计时旁路的基线。
 
 ### 5.3 Transport Client 不变量
 
@@ -436,9 +436,9 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 
 ### 11.1 计时展示（权威在服务端）
 
-- `actionDeadline` 与 `timeBankRemainingMs` 由 server 更新并出现在 Snapshot/`CLOCK_UPDATED`（[02](./02-protocol-spec.md) §8.2/§9.2）；客户端倒计时**仅展示**（《总规划》§3.2）。
-- 当前行动者高亮 + 倒计时（《区块1-5 v0.1》§5.10）。
-- **本地倒计时归零不触发任何自动动作或状态变更**：Auto Check/Auto Fold 由服务端 Scheduler 以 `SYSTEM_TIMER` 源 Action 产生（《总规划》§3.1），前端等待事件。
+- `actionDeadline`、`timeBankRemainingMs` 与 `showdownDisplayUntil` 由 server 更新并出现在 Snapshot/`CLOCK_UPDATED`（[02](./02-protocol-spec.md) §8.2/§8.4/§9.2）；客户端倒计时**仅展示**（《总规划》§3.2）。
+- 当前行动者高亮 + 倒计时（《区块1-5 v0.1》§5.10）；处于 `SHOWDOWN_DISPLAY` 阶段时，行动倒计时不展示，客户端在 `showdownDisplayUntil` 窗口内持续呈现摊牌、比牌与分池结果高亮。
+- **本地倒计时归零不触发任何自动动作或状态变更**：Auto Check/Auto Fold 由服务端 Scheduler 以 `SYSTEM_TIMER` 源 Action 产生（《总规划》§3.1），前端等待事件；摊牌展示窗口到期亦由服务端推送下一手事件或快照，客户端不自行切相。
 - 每次接受带 `serverTime` 的服务端消息时记录锚点 `{ serverTimeAtReceipt, performanceNowAtReceipt }`；展示用 `estimatedServerNow = serverTimeAtReceipt + (performance.now() - performanceNowAtReceipt)`，剩余时间为 `max(0, actionDeadline - estimatedServerNow)`。新锚点不得让同一行动机会的倒计时回跳变长；只有接受到更大的 `actionDeadline`（例如合法使用 Time Bank）才允许增加显示。页面从后台恢复后立即使用最新锚点重算并触发重连/同步检查。
 - 该估算包含单向网络延迟，只服务于 UX；归零不发送 Action、不判定超时，最终裁决仍由服务端单调时钟完成。
 

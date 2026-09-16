@@ -165,6 +165,65 @@ describe("ProjectionStore", () => {
     store.acceptClockUpdated({ tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 99_000, timeBankRemainingMs: 0, showdownDisplayUntil: null }, 9);
     expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: 20_000, timeBankRemainingMs: 30_000, showdownDisplayUntil: null });
   });
+
+  it("accepts only a current, non-stale display clock during SHOWDOWN_DISPLAY without changing game state", () => {
+    const store = new ProjectionStore();
+    const showdownSnap = gameSnapshot({
+      handPhase: "SHOWDOWN_DISPLAY",
+      currentActorPlayerId: null,
+      actionDeadline: null,
+      showdownDisplayUntil: 30_000,
+      viewer: { ...gameSnapshot().viewer, legalActions: null },
+    });
+    store.acceptGameSnapshot(showdownSnap, 10);
+    const before = store.getSnapshot().game;
+    expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: null, showdownDisplayUntil: 30_000 });
+
+    // Accepts matching, newer CLOCK_UPDATED for showdown display
+    store.acceptClockUpdated({
+      tournamentId: "tournament-1",
+      handId: "hand-1",
+      currentActorPlayerId: null,
+      actionDeadline: null,
+      timeBankRemainingMs: 60_000,
+      showdownDisplayUntil: 35_000,
+    }, 11);
+    expect(store.getSnapshot().clock).toMatchObject({ actionDeadline: null, showdownDisplayUntil: 35_000, serverTime: 11 });
+    expect(store.getSnapshot().game).toBe(before);
+
+    // Rejects mismatched handId
+    store.acceptClockUpdated({
+      tournamentId: "tournament-1",
+      handId: "hand-2",
+      currentActorPlayerId: null,
+      actionDeadline: null,
+      timeBankRemainingMs: 60_000,
+      showdownDisplayUntil: 40_000,
+    }, 12);
+    expect(store.getSnapshot().clock?.showdownDisplayUntil).toBe(35_000);
+
+    // Rejects mismatched currentActorPlayerId (should be null during SHOWDOWN_DISPLAY)
+    store.acceptClockUpdated({
+      tournamentId: "tournament-1",
+      handId: "hand-1",
+      currentActorPlayerId: "player-1",
+      actionDeadline: null,
+      timeBankRemainingMs: 60_000,
+      showdownDisplayUntil: 40_000,
+    }, 12);
+    expect(store.getSnapshot().clock?.showdownDisplayUntil).toBe(35_000);
+
+    // Rejects stale clock update (serverTime 9 < 11)
+    store.acceptClockUpdated({
+      tournamentId: "tournament-1",
+      handId: "hand-1",
+      currentActorPlayerId: null,
+      actionDeadline: null,
+      timeBankRemainingMs: 60_000,
+      showdownDisplayUntil: 40_000,
+    }, 9);
+    expect(store.getSnapshot().clock?.showdownDisplayUntil).toBe(35_000);
+  });
 });
 
 describe("ProjectionStore current-hand event buffer", () => {

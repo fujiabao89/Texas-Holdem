@@ -432,7 +432,7 @@ type GameSnapshot = {
 
 `HandPhase` 字段记录服务端当前合成的展示阶段；`SHOWDOWN_DISPLAY` 是一个纯展示阶段，不对应任何 poker-engine 内部相态。详见 §8.4。
 
-`CLOCK_UPDATED.timeBankRemainingMs` 指当前 actor 使用后的余额；客户端只有在消息的 `tournamentId + handId + currentActorPlayerId` 与当前视图一致时才应用。它不得改变筹码、行动权、牌面或 `legalActions`。
+`CLOCK_UPDATED.timeBankRemainingMs` 是**接收者本人**的余额（不论当前行动者是谁，与 §8.2/§8.4 一致）；客户端只有在消息的 `tournamentId + handId + currentActorPlayerId` 与当前牌局规范态一致，且消息信封 `serverTime` 不早于最近已接受时钟/快照时才应用。它不得改变筹码、行动权、牌面或 `legalActions`。
 
 `PlayerViewPatch` 与上述 GameSnapshot 的牌局视图字段同构，但所有字段均可选；`players` 是以 `playerId` 为键的局部 upsert 数组，其余数组一旦出现就整体替换。字段缺失表示“不变”，显式 `null` 表示“清空”（仅允许在声明为 nullable 的字段）。服务端必须令 `apply(previousView, patch)` 与该 sequence 对应的服务端投影逐字段相等。客户端若遇到未知 Patch 字段、找不到被更新的玩家、类型不符或无法满足该等式所需的不变量，按 §6.4 请求完整 Snapshot。
 

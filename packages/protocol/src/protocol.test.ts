@@ -293,7 +293,7 @@ describe("protocol wire contracts", () => {
 
     it("accepts CLOCK_UPDATED with showdownDisplayUntil and no actionDeadline", () => {
       const msg = {
-        type: "CLOCK_UPDATED", protocolVersion: 1, serverTime: 1,
+        type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
         payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: null, actionDeadline: null, timeBankRemainingMs: 60_000, showdownDisplayUntil: showdownUntil },
       };
       expect(ServerMessageSchema.safeParse(msg).success).toBe(true);
@@ -301,7 +301,7 @@ describe("protocol wire contracts", () => {
 
     it("accepts CLOCK_UPDATED with actionDeadline and null showdownDisplayUntil", () => {
       const msg = {
-        type: "CLOCK_UPDATED", protocolVersion: 1, serverTime: 1,
+        type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
         payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: "alice", actionDeadline: 1_700_000_000_000, timeBankRemainingMs: 60_000, showdownDisplayUntil: null },
       };
       expect(ServerMessageSchema.safeParse(msg).success).toBe(true);
@@ -309,7 +309,7 @@ describe("protocol wire contracts", () => {
 
     it("rejects CLOCK_UPDATED when both actionDeadline and showdownDisplayUntil are non-null", () => {
       const msg = {
-        type: "CLOCK_UPDATED", protocolVersion: 1, serverTime: 1,
+        type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
         payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: "alice", actionDeadline: 1_700_000_000_000, timeBankRemainingMs: 60_000, showdownDisplayUntil: showdownUntil },
       };
       expect(ServerMessageSchema.safeParse(msg).success).toBe(false);
