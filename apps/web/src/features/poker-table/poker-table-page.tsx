@@ -20,6 +20,9 @@ import { actionFeedback, awardedTo, feedbackFlight, potName, publicHandRankName,
 import { canSubmitTableAction, remainingTimeMs, tableSeats } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
+// The viewer Seat is pinned to this slot and anchored by its bottom edge, so the
+// card never spills past the felt into the action dock (docs/05 §7.5 TEX-46).
+const VIEWER_SEAT_SLOT = 5;
 type TerminalError = Extract<ErrorCode, "AUTH_FAILED" | "UNSUPPORTED_PROTOCOL_VERSION" | "SESSION_REPLACED">;
 
 export function PokerTablePage({ roomId }: { readonly roomId: string }) {
@@ -135,7 +138,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const seatSlots = tableSeatSlots(game);
 
   return <TableFrame reducedMotion={presentation.reducedMotion}>
-    <header className="rr-table-header mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm sm:px-5">
+    <header className="rr-table-header mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 shadow-sm sm:px-4">
       <div className="table-heading"><span className="table-heading-mark" aria-hidden="true">♠</span><div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="table-subtitle">{message("table.gameType")}<span aria-hidden="true"> · </span>{formatMessage("table.blinds", { small: canonicalGame.blindLevel.smallBlind, big: canonicalGame.blindLevel.bigBlind })}</p></div></div>
       <div className="flex flex-wrap items-center gap-2">
         <button className={buttonClass} onClick={() => setHistoryOpen(true)} ref={historyButtonRef} type="button">{message("history.open")}</button>
@@ -149,9 +152,9 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         <Link className="ml-2 underline" href="/">{message("spectator.exit")}</Link>
       </p>
     )}
-    <section className="table-stage relative mx-auto w-full max-w-[1240px] pb-10 pt-[4.5rem] sm:pb-16 sm:pt-[5.5rem]" aria-label={message("table.title")}>
+    <section className="table-stage relative mx-auto w-full" aria-label={message("table.title")}>
       <DealerDeck onElement={setDeckElement} />
-      <div ref={setTableElement} data-presentation-mode={presentation.mode} className="rr-table-felt table-presentation relative mx-auto aspect-[0.56/1] w-full rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:aspect-[1.72/1] sm:border-[18px]">
+      <div ref={setTableElement} data-presentation-mode={presentation.mode} className="rr-table-felt table-presentation relative mx-auto rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:border-[18px]">
         <div aria-hidden="true" className="table-stitch absolute inset-[4%] rounded-[46%] border border-emerald-300/25 bg-[radial-gradient(ellipse_at_center,rgba(20,148,111,0.28),transparent_65%)]" />
         <p aria-hidden="true" className="table-watermark absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none whitespace-nowrap font-serif text-3xl font-semibold tracking-[0.2em] text-emerald-200/10 sm:text-6xl">TEXAS HOLD&apos;EM</p>
         <div className="table-center-info absolute left-1/2 top-[31%] z-20 flex -translate-x-1/2 items-center gap-2 text-center sm:top-[34%]">
@@ -174,22 +177,28 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         </div>
         {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} tableElement={tableElement} deckElement={deckElement} key={presentation.overlay.eventKey} />}
       </div>
+      {legal !== null && <div className="table-action-dock">
+        <BettingControls game={canonicalGame} legal={legal} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankRemainingMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === canonicalGame.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); setAllInConfirmSequence(null); }} onChooseAmount={chooseAmount} onExactChange={(value) => { setExactAmount(value); setAllInConfirmSequence(null); }} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? canonicalGame.sequence : null)} onUseTimeBank={() => { const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: canonicalGame.tournamentId, expectedSequence: canonicalGame.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />
+      </div>}
+      <div className="table-post-hand mx-auto w-full max-w-3xl">
+        <HandOutcomeSummary events={presentation.outcomeEvents} game={game} />
+        {canonicalGame.tournamentStatus === "FINISHED" && <RankingSummary game={canonicalGame} />}
+        {canonicalGame.tournamentStatus === "FINISHED" && (
+          <Link className="mx-auto mt-2 block w-fit rounded-xl bg-emerald-700 px-4 py-2 text-center text-sm font-bold text-white shadow-sm hover:bg-emerald-800" href={`/room/${roomId}/result/${canonicalGame.tournamentId}`}>{message("result.view")}</Link>
+        )}
+      </div>
     </section>
-    <section className="table-clock-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-center shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus hasActor={canonicalGame.currentActorPlayerId !== null} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${canonicalGame.handId}:${canonicalGame.currentActorPlayerId ?? "none"}`} /></section>
-    {state.actionsDisabled && <p className="rounded bg-amber-50 p-3 text-sm" role="status">{message("table.syncing")}</p>}
-    {presentation.notice === "SYNCED" && <p className="mx-auto w-full max-w-3xl rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm" role="status">{message("table.progressSynced")}</p>}
-    {connectionState !== "CONNECTED" && <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm" role="status" aria-live="polite">{message("table.reconnectingNotice")}</p>}
-    {ownPokerStatus(state.room, canonicalGame.viewer.playerId) === "EXIT_PENDING" && <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm" role="status">{message("table.exitPendingNotice")}</p>}
-    {ownPokerStatus(state.room, canonicalGame.viewer.playerId) === "WITHDRAWN" && <p className="rounded border border-slate-200 bg-slate-50 p-3 text-sm" role="status">{message("table.withdrawnNotice")}</p>}
-    {legal !== null && <BettingControls game={canonicalGame} legal={legal} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankRemainingMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === canonicalGame.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); setAllInConfirmSequence(null); }} onChooseAmount={chooseAmount} onExactChange={(value) => { setExactAmount(value); setAllInConfirmSequence(null); }} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? canonicalGame.sequence : null)} onUseTimeBank={() => { const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: canonicalGame.tournamentId, expectedSequence: canonicalGame.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />}
-    {hasPendingCommand && <p aria-live="polite" className="text-sm text-neutral-600">{message("table.actionPending")}</p>}
-    {feedback !== null && <p role="status" aria-live="polite" className="rounded border border-neutral-300 bg-neutral-50 p-3 text-sm">{feedback}</p>}
-    {retryCommand !== null && <button className={buttonClass} disabled={connectionState !== "CONNECTED" || hasPendingCommand} onClick={retry}>{message("table.retry")}</button>}
-    <HandOutcomeSummary events={presentation.outcomeEvents} game={game} />
-    {canonicalGame.tournamentStatus === "FINISHED" && <RankingSummary game={canonicalGame} />}
-    {canonicalGame.tournamentStatus === "FINISHED" && (
-      <Link className="mx-auto w-fit rounded-xl bg-emerald-700 px-4 py-2 text-center text-sm font-bold text-white shadow-sm hover:bg-emerald-800" href={`/room/${roomId}/result/${canonicalGame.tournamentId}`}>{message("result.view")}</Link>
-    )}
+    <section className="table-clock-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-center text-xs shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus hasActor={canonicalGame.currentActorPlayerId !== null} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${canonicalGame.handId}:${canonicalGame.currentActorPlayerId ?? "none"}`} /></section>
+    <div className="table-notices mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-amber-900">
+      {state.actionsDisabled && <span className="rounded bg-amber-50 px-2 py-1" role="status">{message("table.syncing")}</span>}
+      {presentation.notice === "SYNCED" && <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-900" role="status">{message("table.progressSynced")}</span>}
+      {connectionState !== "CONNECTED" && <span className="rounded bg-amber-50 px-2 py-1" role="status" aria-live="polite">{message("table.reconnectingNotice")}</span>}
+      {ownPokerStatus(state.room, canonicalGame.viewer.playerId) === "EXIT_PENDING" && <span className="rounded bg-amber-50 px-2 py-1" role="status">{message("table.exitPendingNotice")}</span>}
+      {ownPokerStatus(state.room, canonicalGame.viewer.playerId) === "WITHDRAWN" && <span className="rounded bg-slate-100 px-2 py-1 text-slate-700" role="status">{message("table.withdrawnNotice")}</span>}
+      {hasPendingCommand && <span className="text-neutral-600" aria-live="polite">{message("table.actionPending")}</span>}
+      {feedback !== null && <span className="rounded bg-neutral-100 px-2 py-1 text-neutral-700" role="status" aria-live="polite">{feedback}</span>}
+      {retryCommand !== null && <button className={buttonClass} disabled={connectionState !== "CONNECTED" || hasPendingCommand} onClick={retry}>{message("table.retry")}</button>}
+    </div>
     {historyOpen && <HandHistoryDrawer key={canonicalGame.tournamentId} roomId={roomId} tournamentId={canonicalGame.tournamentId} onClose={() => setHistoryOpen(false)} />}
   </TableFrame>;
 }
@@ -210,9 +219,9 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
     }
     onAction(currentRange.kind === "BET" ? { type: "BET", betTo: submittedAmount } : { type: "RAISE", raiseTo: submittedAmount });
   };
-  return <section className="rr-betting-panel table-controls-enter relative z-20 mx-auto -mt-1 grid w-full max-w-xl gap-3 rounded-3xl border border-white/80 bg-white/95 p-3 shadow-[0_16px_35px_rgba(15,23,42,0.16)] backdrop-blur sm:p-4" aria-labelledby="actions-heading">
+  return <section data-wager-open={currentRange !== null} className="rr-betting-panel table-controls-enter relative z-20 grid w-full gap-2" aria-labelledby="actions-heading">
     <div className="table-action-heading"><h2 id="actions-heading">{message("betting.actions")}</h2><span>{message("table.yourTurn")}</span></div>
-    <div className="table-primary-actions grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="table-primary-actions grid grid-cols-3 gap-2 sm:grid-cols-4">
       {legal.canFold && <ActionButton tone="fold" label={message("betting.fold")} onClick={() => onAction({ type: "FOLD" })} />}
       {legal.canCheck && <ActionButton tone="call" label={message("betting.check")} onClick={() => onAction({ type: "CHECK" })} />}
       {legal.canCall && <ActionButton tone="call" label={formatMessage("betting.call", { amount: legal.callAmount })} onClick={() => onAction({ type: "CALL" })} />}
@@ -225,7 +234,7 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
       <p className="text-sm text-slate-600">{formatMessage("betting.range", { min: currentRange.min, max: currentRange.max })}</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{quick.map((item) => <ActionButton key={item.label} tone="neutral" label={`${item.label} · ${item.amount}`} onClick={() => onChooseAmount(item.amount, currentRange.kind)} />)}</div>
       <div className="flex items-center gap-2"><ActionButton tone="neutral" label="−" ariaLabel={message("betting.decrease")} onClick={() => onChooseAmount(displayedAmount - step, currentRange.kind)} /><input className="w-full accent-emerald-700" type="range" aria-label={message("betting.amount")} min={currentRange.min} max={currentRange.max} step={step} value={displayedAmount} onChange={(event) => onChooseAmount(Number(event.target.value), currentRange.kind)} /><ActionButton tone="neutral" label="+" ariaLabel={message("betting.increase")} onClick={() => onChooseAmount(displayedAmount + step, currentRange.kind)} /></div>
-      <div className="flex flex-wrap items-center gap-2"><button className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" onClick={onToggleExact}>{message("betting.openExactInput")}</button><output aria-live="polite" className="font-semibold text-slate-950">{displayedAmount}</output>{showExactInput && <label className="grid gap-1 text-sm">{message("betting.amountInput")}<input className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2" inputMode="numeric" value={exactAmount} onChange={(event) => onExactChange(event.target.value)} onBlur={() => { if (exactValid) onChooseAmount(exactNumber, currentRange.kind, false); }} /></label>}</div>
+      <div className="flex flex-wrap items-center gap-2"><button className="table-wager-back min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" onClick={() => onSelectMode(null)} type="button">{message("betting.backToActions")}</button><button className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" onClick={onToggleExact}>{message("betting.openExactInput")}</button><output aria-live="polite" className="font-semibold text-slate-950">{displayedAmount}</output>{showExactInput && <label className="grid gap-1 text-sm">{message("betting.amountInput")}<input className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2" inputMode="numeric" value={exactAmount} onChange={(event) => onExactChange(event.target.value)} onBlur={() => { if (exactValid) onChooseAmount(exactNumber, currentRange.kind, false); }} /></label>}</div>
       {showExactInput && !exactValid && exactAmount !== "" && <p className="text-sm text-red-700" role="alert">{message("betting.invalidAmount")}</p>}
       <ActionButton tone="bet" label={currentRange.kind === "BET" ? formatMessage("betting.submitBet", { amount: displayedAmount }) : formatMessage("betting.submitRaise", { amount: displayedAmount })} disabled={showExactInput && !exactValid} onClick={submitAmount} />
     </div>}
@@ -246,7 +255,7 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
   const playerEvent = overlay !== null && "playerId" in overlay.event.payload && overlay.event.payload.playerId === player.playerId ? overlay : null;
   const eventText = playerEvent === null ? null : actionFeedback(playerEvent.event);
   const departing = playerEvent?.event.type === "PLAYER_ELIMINATED" || playerEvent?.event.type === "PLAYER_WITHDRAWN";
-  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} data-viewer={viewer} data-active={active} className="table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 -translate-y-1/2 text-center sm:w-36" aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
+  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} data-viewer={viewer} data-active={active} className={`table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 text-center sm:w-36 ${slot === VIEWER_SEAT_SLOT ? "-translate-y-full" : "-translate-y-1/2"}`} aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
     <div data-seat-cards className={`relative z-10 mx-auto -mb-1 flex min-h-8 justify-center sm:min-h-14 ${playerEvent?.event.type === "PLAYER_FOLDED" ? "opacity-35" : ""}`}>
       {revealCards === null
         ? stagedCardCount === null
@@ -509,7 +518,7 @@ function BackCardFlight({ from, to, durationMs, kind }: { readonly from: Point; 
 }
 
 function DealerDeck({ onElement }: { readonly onElement: (element: HTMLDivElement | null) => void }) {
-  return <div ref={onElement} className="pointer-events-none absolute left-4 top-1 z-40 h-14 w-10 sm:left-6 sm:top-2 sm:h-16 sm:w-11" aria-label={message("table.deck")}>
+  return <div ref={onElement} className="table-deck pointer-events-none absolute left-4 top-1 z-40 h-14 w-10 sm:left-6 sm:top-2 sm:h-16 sm:w-11" aria-label={message("table.deck")}>
     <span className="absolute inset-0 translate-x-2 translate-y-2 rotate-[5deg] rounded-[0.45rem] border border-[#dce5c9]/40 bg-[#24462f] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
     <span className="absolute inset-0 translate-x-1 translate-y-1 rotate-[2deg] rounded-[0.45rem] border border-[#dce5c9]/60 bg-[#2b5036] shadow-[0_3px_7px_rgba(15,23,42,0.24)]" />
     <CardBack variant="seat" className="!absolute inset-0 !h-full !w-full" />
@@ -566,7 +575,7 @@ function isProjectedBestCard(bestFiveCards: readonly Card[], candidate: Card): b
 function RankingSummary({ game }: { readonly game: GameSnapshot }) { const players = new Map(game.players.map((player) => [player.playerId, player.displayName])); return <section aria-labelledby="rankings-heading" className="mx-auto w-full max-w-xl rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><h2 id="rankings-heading" className="font-semibold">{message("table.tournamentFinished")}</h2><ol className="mt-2 list-decimal pl-5">{game.rankings.map((ranking) => <li key={ranking.playerId}>{players.get(ranking.playerId) ?? message("table.player")} · {formatMessage("table.rank", { position: ranking.placement.from })}</li>)}</ol></section>; }
 type ButtonTone = "neutral" | "fold" | "call" | "bet" | "allIn";
 function ActionButton({ label, onClick, disabled = false, ariaLabel, tone = "neutral" }: { readonly label: string; readonly onClick: () => void; readonly disabled?: boolean; readonly ariaLabel?: string; readonly tone?: ButtonTone }) { return <button aria-label={ariaLabel} className={`${actionButtonClass} ${buttonToneClass[tone]}`} disabled={disabled} onClick={onClick}>{label}</button>; }
-function TableFrame({ children, reducedMotion = false }: { readonly children: ReactNode; readonly reducedMotion?: boolean }) { return <main data-reduced-motion={reducedMotion} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-4 bg-[#f7faf8] p-3 text-slate-900 sm:gap-5 sm:p-6">{children}</main>; }
+function TableFrame({ children, reducedMotion = false }: { readonly children: ReactNode; readonly reducedMotion?: boolean }) { return <main data-reduced-motion={reducedMotion} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-2 overflow-hidden bg-[#f7faf8] p-2 text-slate-900 sm:gap-3 sm:p-4">{children}</main>; }
 const tableMotionStyle = {
   "--board-flight-duration": `${visualTimings.boardFlight}ms`,
   "--board-flip-duration": `${visualTimings.boardFlip}ms`,
@@ -618,7 +627,7 @@ function tableSeatSlots(game: GameSnapshot): ReadonlyArray<number | null> {
   const slots = Array<number | null>(10).fill(null);
   const viewer = game.players.find((player) => player.playerId === game.viewer.playerId);
   if (viewer === undefined) return slots;
-  slots[viewer.seat] = 5;
+  slots[viewer.seat] = VIEWER_SEAT_SLOT;
   const opponents = game.players.filter((player) => player.playerId !== viewer.playerId).sort((left, right) => ((left.seat - viewer.seat + 10) % 10) - ((right.seat - viewer.seat + 10) % 10));
   const availableSlots = seatSlotsByOpponentCount[opponents.length] ?? seatSlotsByOpponentCount[9];
   opponents.forEach((player, index) => { slots[player.seat] = availableSlots[index] ?? null; });

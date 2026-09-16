@@ -332,6 +332,7 @@ export const zhCN = {
     amount: "下注总额",
     amountInput: "输入精确下注额",
     openExactInput: "输入精确金额",
+    backToActions: "返回操作",
     decrease: "减少下注额",
     increase: "增加下注额",
     minimum: "最小 {amount}",
