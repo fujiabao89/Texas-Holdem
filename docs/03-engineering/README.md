@@ -25,3 +25,4 @@ DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它�
 
 - [TEX-53-acceptance.md](./TEX-53-acceptance.md)：权威庄位/盲注座位、wire v4、恢复和多客户端一致性验证。
 - [TEX-54-acceptance.md](./TEX-54-acceptance.md)：持久化赛果读取的协议/真实PostgreSQL/授权隐私验收与既有终局写入边界。
+- [TEX-55-acceptance.md](./TEX-55-acceptance.md)：赛果页权威HTTP接口恢复、刷新与直接访问、未认证降级、多轮隔离与E2E验证。

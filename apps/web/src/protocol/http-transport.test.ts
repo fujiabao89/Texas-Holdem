@@ -173,4 +173,86 @@ describe("HttpTransport hand history endpoints", () => {
     expect(result.ok).toBe(true);
     expect(calls).toEqual(["https://example.test/api/v1/tournaments/tournament-1/hands/hand-1"]);
   });
+
+  it("requests authoritative tournament result by tournament id with auth token", async () => {
+    const tokenStore = new PlayerTokenStore();
+    tokenStore.save("room-1", TOKEN, "player-1");
+    let sentAuth: string | null = null;
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore,
+      createUuid: () => UUID,
+      fetchFn: async (_input, init) => {
+        sentAuth = (init?.headers as Headers)?.get("Authorization") ?? null;
+        return new Response(
+          JSON.stringify({
+            data: {
+              tournamentId: "tournament-1",
+              status: "FINISHED",
+              championPlayerId: "player-1",
+              rankings: [
+                { playerId: "player-1", placement: { from: 1, to: 1 }, displayOrder: 1 },
+                { playerId: "player-2", placement: { from: 2, to: 2 }, displayOrder: 1 },
+              ],
+              players: [
+                { playerId: "player-1", displayName: "Alice", seat: 0, kind: "HUMAN", pokerStatus: "ACTIVE", finalStack: 4000 },
+                { playerId: "player-2", displayName: "Bob", seat: 1, kind: "HUMAN", pokerStatus: "ELIMINATED", finalStack: 0 },
+              ],
+              finishedAt: 1700000000000,
+            },
+          }),
+          { status: 200 },
+        );
+      },
+    });
+
+    const result = await transport.getTournamentResult("tournament-1", "room-1");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.data.tournamentId).toBe("tournament-1");
+      expect(result.data.data.championPlayerId).toBe("player-1");
+    }
+    expect(sentAuth).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("clears matching rejected token on AUTH_FAILED error", async () => {
+    const tokenStore = new PlayerTokenStore();
+    tokenStore.save("room-1", TOKEN, "player-1");
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore,
+      createUuid: () => UUID,
+      fetchFn: async () => new Response(
+        JSON.stringify({ error: { code: "AUTH_FAILED", message: "token invalid", retryable: false, traceId: "t-1" } }),
+        { status: 401 },
+      ),
+    });
+
+    const result = await transport.getTournamentResult("tournament-1", "room-1");
+    expect(result.ok).toBe(false);
+    expect(tokenStore.get("room-1")).toBeNull();
+  });
+
+  it("does not clear token on AUTH_FAILED if token was updated concurrently", async () => {
+    const tokenStore = new PlayerTokenStore();
+    tokenStore.save("room-1", TOKEN, "player-1");
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore,
+      createUuid: () => UUID,
+      fetchFn: async () => {
+        // Simulate concurrent update of token before response returns
+        tokenStore.save("room-1", "new-updated-token-123", "player-1");
+        return new Response(
+          JSON.stringify({ error: { code: "AUTH_FAILED", message: "token invalid", retryable: false, traceId: "t-1" } }),
+          { status: 401 },
+        );
+      },
+    });
+
+    const result = await transport.getTournamentResult("tournament-1", "room-1");
+    expect(result.ok).toBe(false);
+    // Preserves the new token!
+    expect(tokenStore.get("room-1")).toBe("new-updated-token-123");
+  });
 });

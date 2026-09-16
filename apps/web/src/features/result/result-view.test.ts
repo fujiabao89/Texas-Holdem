@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { gameSnapshot, roomSnapshot } from "../../testing-fixtures";
-import { canPlayAgain, resultAvailableFor, resultRows, resultSnapshotUnreachable } from "./result-view";
+import { canPlayAgain, resultAvailableFor, resultChampion, resultRows, resultSnapshotUnreachable } from "./result-view";
 
 const finishedGame = gameSnapshot({
   tournamentStatus: "FINISHED",
@@ -47,6 +47,58 @@ describe("resultRows", () => {
       rankings: [{ playerId: "player-gone", placement: { from: 1, to: 1 }, displayOrder: 1 }],
     });
     expect(resultRows(orphan)[0]).toMatchObject({ displayName: "player-gone", finalChips: 0, champion: true });
+  });
+
+  describe("with TournamentResult (TEX-54 / TEX-55)", () => {
+    const authoritativeResult = {
+      tournamentId: "t-1",
+      status: "FINISHED" as const,
+      championPlayerId: "player-2",
+      players: [
+        { playerId: "player-1", displayName: "玩家甲", seat: 0, kind: "HUMAN" as const, pokerStatus: "ELIMINATED" as const, finalStack: 0 },
+        { playerId: "player-2", displayName: "玩家乙", seat: 1, kind: "HUMAN" as const, pokerStatus: "ACTIVE" as const, finalStack: 3000 },
+        { playerId: "player-3", displayName: "玩家丙", seat: 2, kind: "HUMAN" as const, pokerStatus: "WITHDRAWN" as const, finalStack: 0 },
+      ],
+      rankings: [
+        { playerId: "player-2", placement: { from: 1, to: 1 }, displayOrder: 1 },
+        { playerId: "player-1", placement: { from: 2, to: 2 }, displayOrder: 1 },
+      ],
+      finishedAt: 1700000000000,
+    };
+
+    it("maps finalStack and marks championPlayerId accurately", () => {
+      const rows = resultRows(authoritativeResult);
+      expect(rows.map((r) => r.playerId)).toEqual(["player-2", "player-1"]);
+      expect(rows[0]).toMatchObject({ playerId: "player-2", champion: true, finalChips: 3000, place: 1, tied: false });
+      expect(rows[1]).toMatchObject({ playerId: "player-1", champion: false, finalChips: 0, place: 2, tied: false });
+
+      const champ = resultChampion(authoritativeResult);
+      expect(champ).toEqual({ hasChampion: true, playerId: "player-2", displayName: "玩家乙", finalChips: 3000 });
+    });
+
+    it("respects championless finish without inventing a champion (ADR-0002)", () => {
+      const championlessResult = {
+        tournamentId: "t-2",
+        status: "FINISHED" as const,
+        championPlayerId: null,
+        players: [
+          { playerId: "player-1", displayName: "玩家甲", seat: 0, kind: "HUMAN" as const, pokerStatus: "WITHDRAWN" as const, finalStack: 0 },
+          { playerId: "player-2", displayName: "玩家乙", seat: 1, kind: "HUMAN" as const, pokerStatus: "WITHDRAWN" as const, finalStack: 0 },
+        ],
+        rankings: [
+          { playerId: "player-1", placement: { from: 1, to: 2 }, displayOrder: 1 },
+          { playerId: "player-2", placement: { from: 1, to: 2 }, displayOrder: 2 },
+        ],
+        finishedAt: 1700000000000,
+      };
+
+      const rows = resultRows(championlessResult);
+      expect(rows.every((r) => !r.champion)).toBe(true);
+      expect(rows.every((r) => r.tied && r.place === 1)).toBe(true);
+
+      const champ = resultChampion(championlessResult);
+      expect(champ).toEqual({ hasChampion: false, playerId: null, displayName: null, finalChips: 0 });
+    });
   });
 });
 

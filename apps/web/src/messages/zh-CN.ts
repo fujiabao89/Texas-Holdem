@@ -143,6 +143,10 @@ export const zhCN = {
     snapshotUnavailable: "当前连接无法获取该比赛的结果快照，请返回房间后从牌桌重新进入。",
     tiedRank: "并列第 {position} 名",
     view: "查看比赛结果",
+    noChampion: "比赛结束，无冠军",
+    retry: "重试",
+    loadFailed: "获取比赛结果失败",
+    backToTable: "前往牌桌",
   },
   history: {
     open: "牌局记录",

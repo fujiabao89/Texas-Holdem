@@ -53,4 +53,19 @@ describe("PlayerTokenStore", () => {
     restored.clear("room-1", "AUTH_FAILED");
     expect(new PlayerTokenStore(storage).get("room-1")).toBeNull();
   });
+
+  it("clears token only if matches, preventing race condition erasure", () => {
+    const store = new PlayerTokenStore(new FakeStorage());
+    store.save("room-1", "token-old", "player-1");
+
+    // Mismatched token does not clear
+    const clearedWrong = store.clearIfMatches("room-1", "token-different", "AUTH_FAILED");
+    expect(clearedWrong).toBe(false);
+    expect(store.get("room-1")).toBe("token-old");
+
+    // Matching token clears
+    const clearedRight = store.clearIfMatches("room-1", "token-old", "AUTH_FAILED");
+    expect(clearedRight).toBe(true);
+    expect(store.get("room-1")).toBeNull();
+  });
 });

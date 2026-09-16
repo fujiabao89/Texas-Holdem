@@ -60,6 +60,16 @@ export class PlayerTokenStore {
       this.storage = undefined;
     }
   }
+
+  /**
+   * Clears credentials only if the current stored token matches the rejected token.
+   * Prevents late responses from erasing freshly updated credentials (TEX-34 / TEX-55).
+   */
+  clearIfMatches(roomId: string, token: string, reason: TokenClearReason): boolean {
+    if (this.get(roomId) !== token) return false;
+    this.clear(roomId, reason);
+    return true;
+  }
 }
 
 function storageKey(roomId: string): string {
