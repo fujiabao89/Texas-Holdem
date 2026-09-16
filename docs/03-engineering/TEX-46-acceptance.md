@@ -1,6 +1,6 @@
 # TEX-46 单视口牌桌与按需行动区优化
 
-用户于 2026-09-16 直接委派实现，要求完成后不推送、先给出报告。[Linear TEX-46](https://linear.app/texas-holdem/issue/TEX-46/tex-46-单视口牌桌与按需行动区优化)；分支 `feat/TEX-46-single-viewport-table-and-action-panel`（`51d13c0b`），工作目录 `C:/Users/34026/Texas-Holdem-TEX-46`。**截至本记录，改动仅本地提交，未推送、未创建 PR、未发布。**
+用户于 2026-09-16 直接委派实现，要求完成后不推送、先给出报告。[Linear TEX-46](https://linear.app/texas-holdem/issue/TEX-46/tex-46-单视口牌桌与按需行动区优化)；分支 `feat/TEX-46-single-viewport-table-and-action-panel`，工作目录 `C:/Users/34026/Texas-Holdem-TEX-46`。**截至本记录，改动仅本地提交，未推送、未创建 PR、未发布。**（本记录与实现同处一个提交，故不在此记录该提交自身的哈希——它以分支 `feat/TEX-46-single-viewport-table-and-action-panel` 的 HEAD 为准。）
 
 ## 基线与依赖
 
@@ -35,7 +35,7 @@
 
 `tests/e2e/table-layout/single-viewport.spec.ts` 以 WS 投影夹具在真实浏览器中按 **5 视口 × 2/3/6/10 人桌** 矩阵断言：行动时无纵向/横向页面滚动；行动区、牌桌、公共牌与底池完整落在视口内；行动区不遮挡公共牌、底池与任何座位；各 Seat 卡片矩形互不相交；行动区随行动权出现与消失且不改变牌桌几何；手机金额面板的快捷额、Slider、±、精确输入、返回与提交全部在视口内可达，全下两步可完成。
 
-本地证据截图（`fullPage`，页面本身不滚动故等于视口大小）生成于 `output/playwright/`，沿用 TEX-38 的既有约定、不纳入版本控制：
+本地证据截图（`fullPage`，页面本身不滚动故等于视口大小）生成于 `output/playwright/`，沿用 TEX-38 的既有约定、**不纳入版本控制**——`output/` 未被 `.gitignore` 忽略，因此运行后 `git status` 会显示 `?? output/`；该目录在本次工作前已存有 TEX-38 的 6 张截图，本次新增下列 6 张，共 12 个未跟踪文件：
 
 - `TEX-46-360x800-10p.png`、`TEX-46-390x844-10p.png`、`TEX-46-768x1024-10p.png`、`TEX-46-1366x768-10p.png`、`TEX-46-1920x1080-10p.png`：十人桌行动中。
 - `TEX-46-390x844-wager.png`：手机金额面板展开（三行布局）。
