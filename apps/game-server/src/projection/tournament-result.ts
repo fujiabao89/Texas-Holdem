@@ -126,4 +126,3 @@ export function compactPublicStandings<T extends CompactableStanding>(
   }
   return standings.map((standing) => compact.get(standing.seatIndex)!);
 }
-
