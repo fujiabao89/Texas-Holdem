@@ -234,12 +234,8 @@
 .rr-table-page .table-primary-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .rr-table-page .table-primary-actions > .rr-action-neutral { padding: 6px; min-height: 44px; background: #f1f3e8; font-size: 12px; }
 .rr-table-page .table-wager-editor { background: #f0f2e7; }
-/* The wager panel replaces the primary row instead of stacking, so the dock never
-   exceeds --dock-reserve. This holds at every width, not only on phones. */
-.rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
 /* The back button only exists where the wager panel replaces the primary row. */
 .rr-table-page .table-wager-back { display: none; }
-.rr-table-page [data-wager-open="true"] .table-wager-back { display: inline-flex; }
 .rr-table-page .table-wager-editor output { margin-left: auto; font-size: 20px; font-variant-numeric: tabular-nums; }
 .rr-table-page .table-wager-editor input { min-width: 0; max-width: 100%; }
 .rr-table-page .rr-action-allin { background: #f7e7db; border-color: #d5af91; color: #934024; }
@@ -306,6 +302,11 @@
   .rr-table-page .table-card-seal { font-size: 10px; }
   .rr-table-page .rr-betting-panel { padding: 10px; gap: 6px; }
   .rr-table-page .table-primary-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* The wager panel replaces the primary row instead of stacking, so the dock
+     never exceeds --dock-reserve. Phone only: the desktop all-in confirmation
+     button lives in the primary row, so hiding it would break that flow. */
+  .rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
+  .rr-table-page .table-wager-back { display: inline-flex; }
   .rr-table-page .rr-action { min-height: 44px; padding: 8px 6px; font-size: 12px; }
   /* Phone action dock keeps only submittable controls: the heading becomes
      screen-reader-only so the panel fits the reserved strip. */

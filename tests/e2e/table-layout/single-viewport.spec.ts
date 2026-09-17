@@ -93,6 +93,7 @@ function gameSnapshot(seats: readonly number[]) {
     ],
     currentActorPlayerId: "player-1",
     actionDeadline: 50_000,
+    showdownDisplayUntil: null,
     players: seats.map((seat, index) => ({
       playerId: `player-${index + 1}`,
       displayName: `玩家${index + 1}`,

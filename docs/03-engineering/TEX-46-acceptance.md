@@ -51,6 +51,16 @@
 
 修正后的验证：`pnpm typecheck` / `pnpm lint` 通过，`pnpm test:unit` 697 passed，`pnpm exec playwright test … table-layout` 71 passed。
 
+## 合并 main 后的 CI 修复（2026-09-17）
+
+远端分支合入 `main`（含 TEX-58/PR #54，wire v5）后 CI `e2e` 失败。根因：TEX-58 为 `GameSnapshot` 新增必填字段 `showdownDisplayUntil`（`handPhase !== "SHOWDOWN_DISPLAY"` 时必须为 `null`），本套件的投影夹具未同步，投影校验失败后牌桌停在加载态、行动区永不渲染。与先前"同步 wire v4 座位盲注字段"属同类问题。
+
+已在 `tests/e2e/table-layout/single-viewport.spec.ts` 的 `gameSnapshot` 补 `showdownDisplayUntil: null`；table-layout 套件恢复全绿。
+
+## PR #56 审查意见处置
+
+Codex / CodeRabbit / Greptile 的 9 条意见逐项核验与处置见 [TEX-46-findings-ledger.md](./TEX-46-findings-ledger.md)。
+
 ## 未运行项与已知边界
 
 - **交付状态（2026-09-17 更新）**：已推送并创建 PR [#56](https://github.com/fujiabao89/Texas-Holdem/pull/56)，目标分支 `main`（分支已 rebase 到 `main@5567e4fb`）。CI 已在该分支运行，`quality`、`e2e`、`e2e-real`、`perf-smoke`、CodeQL、`branch-and-pr-policy`、`repository-hygiene`、`workflow-lint` 全部通过。上一条「未推送、未创建 PR、CI 未运行过」仅适用于 2026-09-16 记录成文时点。
