@@ -10,7 +10,7 @@
   - 房主的“再来一局”经 `startTournament` 流程创建新 Tournament，不复用旧牌局状态。
 - `result-view.ts` — 纯展示模型：
   - `resultRows`：统一适配 `GameSnapshot` 与 `TournamentResult`，按权威名次起点 `placement.from` 结合组内 `displayOrder` 稳定呈现（UI 绝不主观重排），正确呈现并列名次区间与最终筹码。
-  - `resultChampion`：提取冠军信息，严格遵循 ADR-0002 支持无冠军终局（`championPlayerId: null`），不主观捏造冠军；`GameSnapshot` 路径严格基于唯一 `ACTIVE` 玩家与其第 1 名权威记录识别冠军，两通道展示严格一致。
+  - `resultChampion`：提取冠军信息，严格遵循 ADR-0002 支持无冠军终局（`championPlayerId: null`），不主观捏造冠军；`GameSnapshot` 路径基于唯一无争议第一名（`placement.from === 1 && placement.to === 1 && displayOrder === 1`）识别冠军并排除 `WITHDRAWN` 玩家，在并列第一时稳定返回无冠军，两通道展示严格一致。
   - `canPlayAgain`：房主且房间处于 `FINISHED` 或 `LOBBY` 状态（`IN_GAME` 与 `CLOSED` 期间严格为 `false`）。
 
 排名、名次（含并列区间）与最终筹码全部来自服务端，客户端严禁计算或重排赛果。

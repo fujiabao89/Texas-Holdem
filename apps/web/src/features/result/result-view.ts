@@ -32,17 +32,17 @@ function sortRankings<T extends { readonly placement: { readonly from: number };
 }
 
 function snapshotChampionPlayerId(snapshot: GameSnapshot): string | null {
-  const activePlayers = snapshot.players.filter((p) => p.pokerStatus === "ACTIVE");
-  if (activePlayers.length !== 1) return null;
-  const candidate = activePlayers[0]!;
-  const isFirstRanked = snapshot.rankings.some(
+  const soloFirst = snapshot.rankings.filter(
     (ranking) =>
-      ranking.playerId === candidate.playerId &&
       ranking.placement.from === 1 &&
       ranking.placement.to === 1 &&
       ranking.displayOrder === 1,
   );
-  return isFirstRanked ? candidate.playerId : null;
+  if (soloFirst.length !== 1) return null;
+  const candidateId = soloFirst[0]!.playerId;
+  const player = snapshot.players.find((p) => p.playerId === candidateId);
+  if (!player || player.pokerStatus === "WITHDRAWN") return null;
+  return candidateId;
 }
 
 /** Rows in server-authoritative placement and display order; UI never re-sorts placements. */

@@ -125,7 +125,7 @@ test.describe("TEX-55 赛果页刷新与直接访问", () => {
     await anonPage.goto(resultUrl);
     // 无凭证应提示身份失效并引导重新加入
     await expect(anonPage.getByText("未找到此房间的身份凭证，请重新加入。")).toBeVisible({ timeout: 30_000 });
-    await expect(anonPage.getByRole("link", { name: "加入房间" })).toBeVisible();
+    await expect(anonPage.getByRole("link", { name: "加入私人房间" })).toBeVisible();
     await anonPage.close();
     await anonymousContext.close();
 
