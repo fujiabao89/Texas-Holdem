@@ -1,4 +1,4 @@
-import type { HandHistoryDetailResponse, HandHistoryListResponse } from "@texas-holdem/protocol";
+import type { HandHistoryDetailResponse, HandHistoryListResponse, HandPhase } from "@texas-holdem/protocol";
 
 /** Protocol item shape, derived from the wire schema without re-declaring it. */
 export type HandHistoryItem = HandHistoryListResponse["data"]["items"][number];
@@ -85,7 +85,7 @@ export function canLoadMore(state: HandHistoryListState): boolean {
  * be presented as "in progress" anymore. A `null` phase means no active hand.
  */
 export function currentHandInProgress(
-  handPhase: "PREFLOP" | "FLOP" | "TURN" | "RIVER" | "HAND_END" | null,
+  handPhase: HandPhase | null,
   bufferedEventCount: number,
 ): boolean {
   return bufferedEventCount > 0 && handPhase !== null && handPhase !== "HAND_END";
