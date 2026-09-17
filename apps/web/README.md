@@ -35,6 +35,8 @@ pnpm --filter @texas-holdem/web typecheck  # tsc --noEmit
 
 TEX-44 接入 River & Raise 产品首页，并统一暖白、深绿、陶橙视觉、表单分组、按钮和路由反馈。`SiteChrome` 位于既有 Provider 内但在页面外，入场动画不重置根 Provider；连接仍由既有房间 hook 按路由管理。系统/设备减少动态效果覆盖新展示层。运行与验收见 [TEX-44 记录](../../docs/03-engineering/TEX-44-acceptance.md)。
 
+TEX-45 优化游戏内牌桌、牌面、牌背、座位和下注面板；静态样式集中于 `src/features/poker-table/poker-table.css`。动画和声音沿用 TEX-38；本地验收与未发布边界见 [TEX-45](../../docs/03-engineering/TEX-45-acceptance.md)。
+
 TEX-53 随共享 wire v4 补齐 Snapshot 夹具并验证投影存储在重连、重同步、Fast Forward 和跨手事件中保留权威 D/SB/BB；本任务未增加牌桌座位标识 UI。
 
 TEX-47 将座位视觉映射固定为服务端 `seatIndex`：本人始终位于下方中央槽位，其他 Seat 按相对座位顺时针偏移映射到固定槽位，同一桌内不随入座人数、行动者、筹码、连接状态、弃牌、全下、淘汰或重渲染重排仍在桌的 Seat；D/SB/BB 徽标只消费 Snapshot 的 `dealerSeat/smallBlindSeat/bigBlindSeat`（TEX-53），Heads-Up 的 D=SB 在同一 Seat 并排显示，当前行动者只做高亮不改座位位置。验收与 E2E 见 [座位稳定性套件](../../tests/e2e/seats/README.md)。
