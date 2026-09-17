@@ -23,6 +23,8 @@ DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它�
 
 - [TEX-44-acceptance.md](./TEX-44-acceptance.md)：产品首页、全站品牌交互、移动端/键盘/动态偏好与既有牌桌回归证据。
 
+- [TEX-45 牌桌与扑克牌视觉验收](./TEX-45-acceptance.md)：静态样式、响应式与既有游戏交互回归，TEX-44 后续 PR 交付。
+- [TEX-45-findings-ledger.md](./TEX-45-findings-ledger.md)：PR #46 的 Codex、CodeRabbit 与 Greptile 审查意见逐项核验、定级和处置记录。
 - [TEX-53-acceptance.md](./TEX-53-acceptance.md)：权威庄位/盲注座位、wire v4、恢复和多客户端一致性验证。
 - [TEX-54-acceptance.md](./TEX-54-acceptance.md)：持久化赛果读取的协议/真实PostgreSQL/授权隐私验收与既有终局写入边界。
 - [TEX-55-acceptance.md](./TEX-55-acceptance.md)：赛果页权威HTTP接口恢复、刷新与直接访问、未认证降级、多轮隔离与E2E验证。
