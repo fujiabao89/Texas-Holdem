@@ -67,12 +67,14 @@ describe("WebSocketTransport", () => {
   });
 
   it("rejects an unsupported version and unknown fields without accepting state", () => {
-    const { socket, store, states, transport } = setup();
-    transport.connect("room-1", "a".repeat(43));
-    socket.open();
-    socket.receive({ type: "GAME_SNAPSHOT", protocolVersion: 3, serverTime: 1, payload: gameSnapshot() });
-    expect(states).toContain("STOPPED");
-    expect(store.getSnapshot().game).toBeNull();
+    for (const unsupportedVersion of [3, 4] as const) {
+      const { socket, store, states, transport } = setup();
+      transport.connect("room-1", "a".repeat(43));
+      socket.open();
+      socket.receive({ type: "GAME_SNAPSHOT", protocolVersion: unsupportedVersion, serverTime: 1, payload: gameSnapshot() });
+      expect(states).toContain("STOPPED");
+      expect(store.getSnapshot().game).toBeNull();
+    }
 
     for (const privateField of [{ deck: [] }, { burnCard: { rank: "2", suit: "CLUBS" } }, { playerToken: "a".repeat(43) }]) {
       const second = setup();

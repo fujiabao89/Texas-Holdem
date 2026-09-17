@@ -656,6 +656,7 @@ describe("LobbyGateway", () => {
         actorSeat === null ? null : (runtimeView.seatToPlayer.get(actorSeat) ?? null),
       actionDeadline: runtimeView.actionDeadline,
       timeBankRemainingMs: runtimeView.timeBankRemainingMs.get(host.playerId) ?? 0,
+      showdownDisplayUntil: null,
     });
     expect(socket.sent).toContainEqual(
       expect.objectContaining({
@@ -1074,22 +1075,24 @@ describe("LobbyGateway", () => {
     clock.advance(5_000);
     expect(timedOut.closeCodes).toContain(4003);
 
-    const incompatible = new FakeSocket();
-    handler(incompatible);
-    incompatible.receive({
-      type: "AUTHENTICATE",
-      protocolVersion: 3,
-      requestId: "00000000-0000-4000-8000-000000000010",
-      payload: { roomId: session.roomId, playerToken: session.playerToken },
-    });
-    await flush();
-    expect(incompatible.sent).toContainEqual(
-      expect.objectContaining({
-        type: "ERROR",
-        payload: expect.objectContaining({ code: "UNSUPPORTED_PROTOCOL_VERSION" }),
-      }),
-    );
-    expect(incompatible.closeCodes).toContain(4000);
+    for (const oldVersion of [3, 4]) {
+      const incompatible = new FakeSocket();
+      handler(incompatible);
+      incompatible.receive({
+        type: "AUTHENTICATE",
+        protocolVersion: oldVersion,
+        requestId: "00000000-0000-4000-8000-000000000010",
+        payload: { roomId: session.roomId, playerToken: session.playerToken },
+      });
+      await flush();
+      expect(incompatible.sent).toContainEqual(
+        expect.objectContaining({
+          type: "ERROR",
+          payload: expect.objectContaining({ code: "UNSUPPORTED_PROTOCOL_VERSION" }),
+        }),
+      );
+      expect(incompatible.closeCodes).toContain(4000);
+    }
 
     const invalidToken = new FakeSocket();
     handler(invalidToken);

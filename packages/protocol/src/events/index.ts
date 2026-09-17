@@ -64,6 +64,21 @@ export const ClockUpdatedPayloadSchema = z.strictObject({
   currentActorPlayerId: OpaqueIdSchema.nullable(),
   actionDeadline: EpochMillisecondsSchema.nullable(),
   timeBankRemainingMs: SafeIntegerSchema,
+  /**
+   * Mirrors PlayerView.showdownDisplayUntil. Non-null only during SHOWDOWN_DISPLAY;
+   * always null when actionDeadline is non-null (the two are mutually exclusive).
+   * Clients apply standard CLOCK_UPDATED filtering rules (02 §8.4): only accept when
+   * tournamentId + handId + currentActorPlayerId match current canonical game state,
+   * and the message envelope serverTime is not older than the latest accepted clock/snapshot.
+   */
+  showdownDisplayUntil: EpochMillisecondsSchema.nullable(),
+}).superRefine((value, ctx) => {
+  if (value.actionDeadline !== null && value.showdownDisplayUntil !== null) {
+    ctx.addIssue({ code: "custom", message: "actionDeadline and showdownDisplayUntil are mutually exclusive" });
+  }
+  if (value.showdownDisplayUntil !== null && value.currentActorPlayerId !== null) {
+    ctx.addIssue({ code: "custom", message: "currentActorPlayerId must be null when showdownDisplayUntil is non-null" });
+  }
 });
 export const ServerMessageSchema = z.discriminatedUnion("type", [
   serverMessage("RECONNECT_RESULT", ReconnectResultSchema),
