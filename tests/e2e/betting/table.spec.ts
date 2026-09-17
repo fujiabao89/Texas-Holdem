@@ -62,6 +62,41 @@ test("牌桌由 WS 权威投影驱动，键盘提交跟注后等待 Event 状态
   expect(await criticalViolations(page)).toEqual([]);
 });
 
+test("不限时行动状态只通过独立实时区域播报", async ({ page }) => {
+  let send: ((message: unknown) => void) | undefined;
+  await seedTableSession(page);
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    send = (message) => socket.send(JSON.stringify(message));
+    socket.onMessage((raw) => {
+      if ((JSON.parse(raw.toString()) as { type: string }).type !== "AUTHENTICATE") return;
+      socket.send(JSON.stringify({
+        type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
+        payload: {
+          connectionId: "connection-1", resumed: true, tookOver: false,
+          roomSnapshot: { ...roomSnapshot, config: { ...roomSnapshot.config, actionTime: "UNLIMITED", timeBank: 0 } },
+          gameSnapshot: gameSnapshot({ currentActorPlayerId: null, actionDeadline: null, viewer: { ...gameSnapshot().viewer, legalActions: null } }),
+        },
+      }));
+    });
+  });
+  await page.goto("/room/room-1/table");
+  const clock = page.getByRole("region", { name: "延时储备" });
+  const visibleStatus = clock.locator(":scope > p");
+  const liveStatus = clock.locator('[role="status"][aria-live="polite"]');
+  await expect(visibleStatus).toHaveText(message("table.waiting"));
+  await expect(visibleStatus).not.toHaveAttribute("aria-live");
+  await expect(liveStatus).toHaveText("");
+
+  send!({ type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: {
+    tournamentId: "tournament-1", sequence: "2", handId: "hand-1",
+    event: { type: "FLOP_DEALT", payload: { cards: gameSnapshot().board } },
+    patch: { currentActorPlayerId: "player-1", actionDeadline: null },
+  } });
+
+  await expect(visibleStatus).toHaveText(message("table.unlimitedTime"));
+  await expect(liveStatus).toHaveText(message("table.unlimitedTime"));
+});
+
 test("全下需要第二次确认，且不会伪装成普通下注", async ({ page }) => {
   const submitted: unknown[] = [];
   await seedTableSession(page);
