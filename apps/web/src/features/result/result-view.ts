@@ -41,7 +41,7 @@ function snapshotChampionPlayerId(snapshot: GameSnapshot): string | null {
   if (soloFirst.length !== 1) return null;
   const candidateId = soloFirst[0]!.playerId;
   const player = snapshot.players.find((p) => p.playerId === candidateId);
-  if (!player || player.pokerStatus === "WITHDRAWN") return null;
+  if (!player || player.pokerStatus !== "ACTIVE") return null;
   return candidateId;
 }
 

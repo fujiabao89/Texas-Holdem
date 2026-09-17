@@ -48,6 +48,24 @@ describe("resultRows", () => {
     expect(champ).toEqual({ hasChampion: false, playerId: null, displayName: null, finalChips: 0 });
   });
 
+  it("does not invent a champion for a solo 1-1 ranked player who is ELIMINATED (championless finish)", () => {
+    const eliminatedFirst = gameSnapshot({
+      tournamentStatus: "FINISHED",
+      players: [
+        { playerId: "player-eliminated", displayName: "已淘汰玩家", seat: 0, stack: 0, streetBet: 0, totalCommitted: 0, pokerStatus: "ELIMINATED", hasHoleCards: false, revealedCards: [] },
+        { playerId: "player-withdrawn-1", displayName: "离场玩家1", seat: 1, stack: 0, streetBet: 0, totalCommitted: 0, pokerStatus: "WITHDRAWN", hasHoleCards: false, revealedCards: [] },
+        { playerId: "player-withdrawn-2", displayName: "离场玩家2", seat: 2, stack: 0, streetBet: 0, totalCommitted: 0, pokerStatus: "WITHDRAWN", hasHoleCards: false, revealedCards: [] },
+      ],
+      rankings: [
+        { playerId: "player-eliminated", placement: { from: 1, to: 1 }, displayOrder: 1 },
+      ],
+    });
+    const rows = resultRows(eliminatedFirst);
+    expect(rows[0]).toMatchObject({ playerId: "player-eliminated", place: 1, champion: false });
+    const champ = resultChampion(eliminatedFirst);
+    expect(champ).toEqual({ hasChampion: false, playerId: null, displayName: null, finalChips: 0 });
+  });
+
   it("sorts rankings by placement.from then displayOrder, preventing subsequent ranks from interleaving into tie groups", () => {
     const game = gameSnapshot({
       tournamentStatus: "FINISHED",

@@ -52,8 +52,19 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
   const room = state.room;
   const game = state.game;
 
+  // Adjust state during render when route parameters change
+  const [prevParams, setPrevParams] = useState({ roomId, tournamentId });
+  if (prevParams.roomId !== roomId || prevParams.tournamentId !== tournamentId) {
+    setPrevParams({ roomId, tournamentId });
+    setError(null);
+  }
+
   // Matching snapshot from live projection (if present and FINISHED)
   const matchingSnapshot = resultAvailableFor(game, tournamentId) ? game : null;
+  if (matchingSnapshot && !recoveredResults[tournamentId]) {
+    setRecoveredResults((prev) => ({ ...prev, [tournamentId]: matchingSnapshot }));
+  }
+
   const activeResult = recoveredResults[tournamentId] ?? matchingSnapshot;
 
   // Authoritative HTTP recovery when no in-memory snapshot exists
@@ -108,7 +119,7 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
     );
   }
 
-  if (error !== null) {
+  if (error !== null && activeResult === null) {
     const isAuthError = error.code === "AUTH_FAILED" || error.code === "AUTH_REQUIRED";
     const isNotFinished = error.code === "TOURNAMENT_NOT_FINISHED";
     const isRetryable = error.retryable || error.code === "TOURNAMENT_RESULT_INCOMPLETE" || error.code === "RATE_LIMITED";
