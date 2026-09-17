@@ -33,15 +33,15 @@ test("Heads-up 的 D=SB 同座显示，弃牌与跨手盲注移动不改变座�
   await expect(page.locator("[data-seat-badge]")).toHaveCount(3);
 
   table.event(
-    { type: "PLAYER_FOLDED", payload: { playerId: "player-2", seat: 1, source: "HUMAN_SOCKET" } },
-    { currentActorPlayerId: "player-2", players: [{ playerId: "player-2", hasHoleCards: false }] },
+    { type: "PLAYER_FOLDED", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET" } },
+    { handPhase: "HAND_END", currentActorPlayerId: null, players: [{ playerId: "player-1", hasHoleCards: false }] },
   );
-  await expect(page.locator('[data-seat="1"][data-active="true"]')).toHaveCount(1);
+  await expect(page.locator('[data-active="true"]')).toHaveCount(0);
   expect(await seatSlots(page)).toEqual(before);
 
   table.event(
     { type: "HAND_STARTED", payload: { handNumber: 2, dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0, blindLevel: 0 } },
-    { handId: "hand-2", handPhase: "PREFLOP", dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0, board: [] },
+    { handId: "hand-2", handPhase: "PREFLOP", dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0, board: [], currentActorPlayerId: "player-2", players: [{ playerId: "player-1", hasHoleCards: true }, { playerId: "player-2", hasHoleCards: true }] },
   );
   await expect(badge(page, 1, "D")).toHaveCount(1);
   await expect(badge(page, 1, "SB")).toHaveCount(1);
@@ -63,9 +63,15 @@ test("6 人桌按相对 seatIndex 顺时针固定映射，行动者切换与淘�
 
   table.event(
     { type: "PLAYER_CHECKED", payload: { playerId: "player-5", seat: 4, source: "HUMAN_SOCKET" } },
-    { currentActorPlayerId: "player-2", players: [{ playerId: "player-6", pokerStatus: "ELIMINATED", stack: 0 }] },
+    { currentActorPlayerId: "player-2" },
   );
   await expect(page.locator('[data-seat="1"][data-active="true"]')).toHaveCount(1);
+  expect(await seatSlots(page)).toEqual(before);
+
+  table.event(
+    { type: "PLAYER_ELIMINATED", payload: { playerId: "player-6", finishPosition: 6, tied: false } },
+    { handPhase: "HAND_END", currentActorPlayerId: null, players: [{ playerId: "player-6", pokerStatus: "ELIMINATED", stack: 0, hasHoleCards: false }] },
+  );
   await expect(badge(page, 1, "D")).toBeVisible();
   await expect(page.locator('[data-seat="5"] [data-seat-name]')).toBeVisible();
   expect(await seatSlots(page)).toEqual(before);
@@ -151,7 +157,7 @@ test("跨手 Dealer 与盲注移动后座位映射保持完全一致", async ({ 
 
   table.event(
     { type: "HAND_STARTED", payload: { handNumber: 2, dealerSeat: 1, smallBlindSeat: 2, bigBlindSeat: 3, blindLevel: 0 } },
-    { handId: "hand-2", handPhase: "PREFLOP", dealerSeat: 1, smallBlindSeat: 2, bigBlindSeat: 3, board: [] },
+    { handId: "hand-2", handPhase: "PREFLOP", dealerSeat: 1, smallBlindSeat: 2, bigBlindSeat: 3, board: [], currentActorPlayerId: "player-5" },
   );
   await expect(badge(page, 1, "D")).toHaveCount(1);
   await expect(badge(page, 2, "SB")).toHaveCount(1);
