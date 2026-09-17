@@ -65,7 +65,7 @@
 
 ### 4.1 Wire 基础约定【规范性决定】
 
-- P0 协议版本为 `4`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 4`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）；v4 在完整视图中必填公开盲注座位（[ADR-0005](./adr/0005-tex-53-authoritative-blind-seats.md)）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。wire `snapshotVersion: 1` 与持久化快照版本独立，本次无存储迁移。
+- P0 协议版本为 `5`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 5`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）；v4 在完整视图中必填公开盲注座位（[ADR-0005](./adr/0005-tex-53-authoritative-blind-seats.md)）；v5 引入牌局展示阶段（`SHOWDOWN_DISPLAY`）与权威行动时钟契约（TEX-58）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。wire `snapshotVersion: 1` 与持久化快照版本独立，本次无存储迁移。
 - 传输格式为 UTF-8 JSON；字段名使用 `lowerCamelCase`，`type`/`code` 等枚举值使用 `UPPER_SNAKE_CASE`。
 - ID 是不透明字符串；客户端不得从 ID 格式推断业务含义。客户端生成的 `requestId`/`actionId` 必须是 UUID v4 或具备等价碰撞强度的值。
 - `sequence` 是无符号 64 位整数，但在 JSON 中编码为十进制字符串（如 `"42"`），避免 JavaScript `number` 精度损失。客户端应用时使用 `BigInt` 或十进制整数库比较。
@@ -102,7 +102,7 @@ TEX-36 读取约束：重复的 `limit` / `cursor` 返回 `400 INVALID_MESSAGE`�
    ```json
    {
      "type": "AUTHENTICATE",
-     "protocolVersion": 4,
+     "protocolVersion": 5,
      "requestId": "uuid",
      "payload": { "roomId": "opaque-id", "playerToken": "secret" }
    }
@@ -158,7 +158,7 @@ type ClientCommand<TType extends string, TPayload> = {
 ```ts
 type ServerMessage<TType extends string, TPayload> = {
   type: TType;
-  protocolVersion: 4;
+  protocolVersion: 5;
   serverTime: number;
   payload: TPayload;
 };
@@ -273,7 +273,7 @@ type SubmitActionPayload = {
 | `ROOM_SNAPSHOT` | Lobby 全量投影；携带递增 `roomRevision`，替代含糊的 `ROOM_UPDATED` 增量 | 《区块6-10 v0.2》§7.7 |
 | `GAME_SNAPSHOT` | 首次进入、重连、缺序、过期或 Fast Forward 后的完整 `PlayerView` | 《区块6-10 v0.2》§10.8 |
 | `GAME_EVENT` | §6.3 信封；事件类型一一对应 01 §14，不再引入 `PLAYER_ACTION/CARD_DEALT` 等第二套聚合名 | 《区块6-10 v0.2》§7.7 |
-| `CLOCK_UPDATED` | `{ tournamentId, handId, currentActorPlayerId, actionDeadline, timeBankRemainingMs }`；`timeBankRemainingMs` 是**接收者本人**的余额，其他字段描述公开行动机会；只更新计时显示，不占用 Game Event sequence | Time Bank / 权威计时 |
+| `CLOCK_UPDATED` | `{ tournamentId, handId, currentActorPlayerId, actionDeadline, timeBankRemainingMs, showdownDisplayUntil }`；`timeBankRemainingMs` 是**接收者本人**的余额；`actionDeadline` 与 `showdownDisplayUntil` 互斥（不得同时非 null）；只更新计时与展示窗口，不占用 Game Event sequence。详见 §8.4 | Time Bank / 权威计时 / 摊牌展示 |
 | `COMMAND_RESULT` | `{ requestId, actionId?, status, duplicate, appliedSequence?, error? }`；`status` 为 `APPLIED/REJECTED` | 幂等与关联 |
 | `RESYNC_REQUIRED` | 服务端无法保证该连接事件连续时，要求客户端请求/接受 Snapshot；不得附带私密内部状态 | Fast Forward |
 | `SESSION_REPLACED` | 新设备接管后发给旧连接，随后旧连接关闭 | 多设备接管 |
@@ -304,6 +304,60 @@ type SubmitActionPayload = {
 | `TOURNAMENT_FINISHED` | `{ winnerPlayerId, rankings }`；`winnerPlayerId: null` 明确表示无冠军，此时排名可为空或仅含已淘汰者；有冠军时 ID 非空且排名至少一项 |
 
 自动 Check/Fold 不引入第二套 Event 名：仍发送 `PLAYER_CHECKED`/`PLAYER_FOLDED`，并令 `source=SYSTEM_TIMER`。P1 Bot 同理使用普通动作事件且 `source=BOT_CONTROLLER`。
+
+### 8.4 摊牌展示阶段与权威行动时钟契约【TEX-58 · 规范性决定】
+
+#### 8.4.1 SHOWDOWN_DISPLAY 展示阶段
+
+`SHOWDOWN_DISPLAY` 是一个纯展示阶段（wire 可见的 `handPhase` 枚举值），由服务端合成。它**不是** poker-engine 内部相态——`SHOWDOWN → POT_SETTLEMENT` 在引擎中是原子转移，`GameState.phase` 不暴露独立的 showdown 相态（见 [01-engine-spec.md §6](./01-engine-spec.md#6-hand-状态机)）。
+
+**服务端行为**：在最后一个 `POT_AWARDED` 事件发出后，服务端将当前所有连接的 PlayerView 推进到 `SHOWDOWN_DISPLAY` 阶段（通过 Patch 或下一次全量 Snapshot），同时设置 `showdownDisplayUntil = serverTime + showdownDisplayDurationMs`（具体时长由 game-server Scheduler 配置，P0 建议 3–5 秒，动画播放完前不切换）。`HAND_END` 阶段只在 `showdownDisplayUntil` 到期后开始推送；下一手的 `HAND_STARTED` 事件也在窗口结束后才发出。（注：TEX-58 完成展示阶段枚举、快照字段与协议时钟契约定义；`apps/game-server` 中展示定时器调度与手间延迟推进由后续任务 [TEX-59] 落地编排，未启用时 `showdownDisplayUntil` 保持为 `null` 且符合通用 Schema 约束）。
+
+> 提前结算场景（仅剩一名未 Fold 玩家）：服务端**不发送** `SHOWDOWN_STARTED` / `PLAYER_REVEALED`，`handPhase` 直接从 `RIVER`（或更早的街道）进入 `HAND_END`，`showdownDisplayUntil` 始终为 null。
+
+**强制不变量**（`packages/protocol` 的 Schema 强制执行）：
+
+| 条件 | 要求 |
+| --- | --- |
+| `handPhase === "SHOWDOWN_DISPLAY"` | `showdownDisplayUntil` 必须非 null |
+| `handPhase !== "SHOWDOWN_DISPLAY"` | `showdownDisplayUntil` 必须为 null |
+| `handPhase === "SHOWDOWN_DISPLAY"` | `currentActorPlayerId` 必须为 null |
+| `handPhase === "SHOWDOWN_DISPLAY"` | `actionDeadline` 必须为 null |
+
+**客户端义务**：
+
+- 进入 `SHOWDOWN_DISPLAY` 后，客户端 SHOULD 在 `showdownDisplayUntil` 到期前持续展示摊牌结果（底牌、牌型、Pot 归属高亮）。
+- 客户端 MUST NOT 根据 `showdownDisplayUntil` 的超时自行推进游戏状态；服务端负责推送 `HAND_END` Patch 或下一手 Snapshot。
+- `SHOWDOWN_DISPLAY` 期间不展示行动计时器，不等待任何玩家输入。
+
+#### 8.4.2 权威行动时钟（CLOCK_UPDATED）
+
+```ts
+type ClockUpdatedPayload = {
+  tournamentId: string;
+  handId: string | null;
+  currentActorPlayerId: string | null;
+  actionDeadline: number | null;    // epoch ms；UTC
+  timeBankRemainingMs: number;      // 接收者本人的 Time Bank 余额
+  showdownDisplayUntil: number | null; // epoch ms；UTC
+};
+```
+
+**发送时机**：
+
+- **正常行动时钟**：当前 actor 使用 `USE_TIME_BANK` 成功后，发送 `CLOCK_UPDATED`，其中 `actionDeadline` 延长后非 null，`showdownDisplayUntil` 为 null。
+- **纯计时延长**：因 `USE_TIME_BANK` 或服务端内部延长时发送；不推进 Game Event sequence。
+- **进入 SHOWDOWN_DISPLAY**：服务端在推送展示阶段 Patch 时，同时可发送 `CLOCK_UPDATED`，其中 `actionDeadline` 为 null，`showdownDisplayUntil` 非 null，作为展示窗口的权威截止点补充（客户端已经从 Patch 获得该值，此消息仅作冗余确认）。
+- **SHOWDOWN_DISPLAY 期间**：不发送带 `actionDeadline` 非 null 的 `CLOCK_UPDATED`。
+
+**互斥约束**（`packages/protocol` 的 Schema 强制执行）：`actionDeadline` 与 `showdownDisplayUntil` 不得同时非 null。
+
+**客户端应用规则**：
+
+1. 只有在 `tournamentId + handId + currentActorPlayerId` 与当前牌局规范态完全吻合，且消息信封 `serverTime` 不早于最近已接受的 Clock / Snapshot 时才应用。
+2. 仅更新计时展示态（倒计时、`timeBankRemainingMs` 显示、摊牌展示窗口）；不修改筹码、行动权、公共牌、`legalActions` 或任何规范态字段。
+3. `timeBankRemainingMs` 始终是**接收者本人**的余额，不论当前行动者是谁。
+4. `GAME_SNAPSHOT` 到达时，客户端必须重置计时旁路基线，以 Snapshot 中的 `actionDeadline` / `showdownDisplayUntil` 为准。
 
 ## 9. Snapshot 与投影契约（`PlayerView` / `BotView`）
 
@@ -340,6 +394,8 @@ type RoomSnapshot = {
 ### 9.2 GameSnapshot / PlayerView【规范性决定】
 
 ```ts
+type HandPhase = "PREFLOP" | "FLOP" | "TURN" | "RIVER" | "SHOWDOWN_DISPLAY" | "HAND_END";
+
 type GameSnapshot = {
   snapshotVersion: 1;
   reason: "INITIAL" | "RECONNECT" | "RESYNC" | "FAST_FORWARD" | "STALE_ACTION";
@@ -356,6 +412,8 @@ type GameSnapshot = {
   pots: Array<{ amount: number; eligiblePlayerIds: string[] }>;
   currentActorPlayerId: string | null;
   actionDeadline: number | null;
+  /** Non-null only when handPhase === "SHOWDOWN_DISPLAY". See §8.4. */
+  showdownDisplayUntil: number | null;
   players: PlayerPublicView[];
   viewer: {
     playerId: string;
@@ -372,7 +430,9 @@ type GameSnapshot = {
 
 `smallBlindSeat` / `bigBlindSeat` 必填且为 0–9 或 `null`，直接读取 Engine 当前手 `sbSeat/bbSeat`，无手时为 `null`。已结算但仍保留该手时，保留本手盲注座位；`dealerSeat` 有手时读取该手庄位，无手时保留 Tournament 庄位语义。Heads-Up 的 D=SB，不按客户端玩家顺序、当前筹码或存活状态重算。三个座位在 `HAND_STARTED` 的 patch 随新手一起更新，INITIAL / RECONNECT / RESYNC / FAST_FORWARD / STALE_ACTION 与持久化恢复均经同一投影得到相同值。三者为公开信息，PlayerView、BotView 与淘汰观战视角一致。
 
-`CLOCK_UPDATED.timeBankRemainingMs` 指当前 actor 使用后的余额；客户端只有在消息的 `tournamentId + handId + currentActorPlayerId` 与当前视图一致时才应用。它不得改变筹码、行动权、牌面或 `legalActions`。
+`HandPhase` 字段记录服务端当前合成的展示阶段；`SHOWDOWN_DISPLAY` 是一个纯展示阶段，不对应任何 poker-engine 内部相态。详见 §8.4。
+
+`CLOCK_UPDATED.timeBankRemainingMs` 是**接收者本人**的余额（不论当前行动者是谁，与 §8.2/§8.4 一致）；客户端只有在消息的 `tournamentId + handId + currentActorPlayerId` 与当前牌局规范态一致，且消息信封 `serverTime` 不早于最近已接受时钟/快照时才应用。它不得改变筹码、行动权、牌面或 `legalActions`。
 
 `PlayerViewPatch` 与上述 GameSnapshot 的牌局视图字段同构，但所有字段均可选；`players` 是以 `playerId` 为键的局部 upsert 数组，其余数组一旦出现就整体替换。字段缺失表示“不变”，显式 `null` 表示“清空”（仅允许在声明为 nullable 的字段）。服务端必须令 `apply(previousView, patch)` 与该 sequence 对应的服务端投影逐字段相等。客户端若遇到未知 Patch 字段、找不到被更新的玩家、类型不符或无法满足该等式所需的不变量，按 §6.4 请求完整 Snapshot。
 
@@ -504,6 +564,8 @@ HTTP 推荐映射：Schema 400、认证 401、权限 403、不存在 404、冲�
 | 投影完整性 | 任何投递给接收者的 Payload 不含其无权获得的信息（字段级） | 《总规划》§5.3/§9.1；《区块6-10 v0.2》§9.13 |
 | 单活跃连接 | 一个 `playerToken` 至多一个活跃控制连接 | 《区块6-10 v0.2》§7.17 |
 | 计时权威 | 服务器时钟是唯一计时权威；客户端倒计时仅展示 | 《总规划》§3.2；《区块6-10 v0.2》§7.14 |
+| 摊牌展示阶段互斥 | `handPhase === "SHOWDOWN_DISPLAY"` 时 `showdownDisplayUntil` 非 null 且 `currentActorPlayerId`/`actionDeadline` 为 null；其余相态时 `showdownDisplayUntil` 必须为 null | §8.4；`packages/protocol` Schema 强制执行 |
+| 时钟字段互斥 | `actionDeadline` 与 `showdownDisplayUntil` 不得同时非 null（CLOCK_UPDATED 与 PlayerView 均适用） | §8.4 |
 | 回执非状态 | `COMMAND_RESULT` 不作为客户端状态转移输入；Snapshot/Event 才是状态来源 | §7.3 |
 
 校验位置：重复 `actionId`/缺失 sequence/过期 Action 的行为见 [06-testing-strategy.md](./06-testing-strategy.md) §6 WebSocket 测试项；投影完整性见 06 §7 字段级测试（《总规划》§9.1；《区块6-10 v0.2》§9.13）。

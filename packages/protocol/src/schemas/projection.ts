@@ -30,7 +30,7 @@ const ProjectableViewerSchema = z.strictObject({
 export const ProjectableGameSourceSchema = z.strictObject({
   handId: OpaqueIdSchema.nullable(),
   tournamentStatus: z.enum(["RUNNING", "FINISHED"]),
-  handPhase: z.enum(["PREFLOP", "FLOP", "TURN", "RIVER", "HAND_END"]).nullable(),
+  handPhase: z.enum(["PREFLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN_DISPLAY", "HAND_END"]).nullable(),
   blindLevel: z.strictObject({ index: z.number().int().min(0), smallBlind: SafeIntegerSchema, bigBlind: SafeIntegerSchema, ante: SafeIntegerSchema }),
   dealerSeat: SeatSchema.nullable(),
   smallBlindSeat: SeatSchema.nullable(),
@@ -39,6 +39,8 @@ export const ProjectableGameSourceSchema = z.strictObject({
   pots: z.array(z.strictObject({ amount: SafeIntegerSchema, eligiblePlayerIds: z.array(OpaqueIdSchema).min(1).max(10) })).max(10),
   currentActorPlayerId: OpaqueIdSchema.nullable(),
   actionDeadline: SafeIntegerSchema.nullable(),
+  /** Server-synthesised showdown display window; passed through unchanged to PlayerView. */
+  showdownDisplayUntil: SafeIntegerSchema.nullable(),
   players: z.array(ProjectablePlayerSchema).max(10),
   viewer: ProjectableViewerSchema,
   rankings: z.array(z.strictObject({ playerId: OpaqueIdSchema, placement: z.strictObject({ from: z.number().int().min(1), to: z.number().int().min(1) }), displayOrder: z.number().int().min(1) })).max(10),
@@ -61,6 +63,7 @@ export function projectPlayerView(sourceInput: z.infer<typeof ProjectableGameSou
     pots: source.pots,
     currentActorPlayerId: source.currentActorPlayerId,
     actionDeadline: source.actionDeadline,
+    showdownDisplayUntil: source.showdownDisplayUntil,
     players: source.players.map(({ privateHoleCards: _privateHoleCards, ...player }) => player),
     viewer: {
       playerId: source.viewer.playerId,

@@ -279,6 +279,7 @@ function applyPatch(
     pots: patch.pots ?? previous.pots,
     currentActorPlayerId: patch.currentActorPlayerId !== undefined ? patch.currentActorPlayerId : previous.currentActorPlayerId,
     actionDeadline: patch.actionDeadline !== undefined ? patch.actionDeadline : previous.actionDeadline,
+    showdownDisplayUntil: patch.showdownDisplayUntil !== undefined ? patch.showdownDisplayUntil : previous.showdownDisplayUntil,
     players: (patch.players ?? previous.players) as ReturnType<typeof projectPlayerView>["players"],
     viewer: { ...previous.viewer, ...patch.viewer } as ReturnType<typeof projectPlayerView>["viewer"],
     rankings: patch.rankings ?? previous.rankings,
