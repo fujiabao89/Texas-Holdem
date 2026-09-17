@@ -258,7 +258,7 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
     <div data-seat-chips className={`relative rounded-xl border px-1.5 py-1.5 shadow-lg sm:rounded-2xl sm:px-3 sm:py-2 ${award !== null ? "border-amber-100 bg-[#315d37] ring-2 ring-amber-200" : active ? "border-amber-300 bg-[#315d37] ring-2 ring-amber-300/75" : "border-slate-700 bg-[#203c2e]"} ${departing ? "table-seat-departing" : ""} ${player.pokerStatus === "ELIMINATED" || player.pokerStatus === "WITHDRAWN" ? "opacity-55" : ""}`} style={playerEvent === null ? undefined : { "--feedback-duration": `${playerEvent.durationMs}ms` } as CSSProperties}>
       <span data-seat-name-row className="flex items-center justify-center gap-0.5">
         {badges.length > 0 && <span data-seat-badges className="flex shrink-0 items-center gap-0.5">
-          {badges.map((badge) => <span data-seat-badge={badge} aria-label={message(seatBadgeLabel[badge])} className={`grid h-4 min-w-4 shrink-0 place-items-center rounded-full border border-white/80 px-0.5 text-[8px] font-bold leading-none text-white shadow-sm sm:h-5 sm:min-w-5 sm:px-1 sm:text-[10px] ${seatBadgeTone[badge]}`} key={badge}>{badge}</span>)}
+          {badges.map((badge) => <span data-seat-badge={badge} role="img" aria-label={message(seatBadgeLabel[badge])} className={`grid h-4 min-w-4 shrink-0 place-items-center rounded-full border border-white/80 px-0.5 text-[8px] font-bold leading-none text-white shadow-sm sm:h-5 sm:min-w-5 sm:px-1 sm:text-[10px] ${seatBadgeTone[badge]}`} key={badge}>{badge}</span>)}
         </span>}
         <strong data-seat-name className="min-w-0 truncate text-[10px] font-semibold text-white sm:text-sm">{player.displayName}</strong>
       </span>

@@ -14,15 +14,22 @@ function badge(page: Page, seat: number, kind: "D" | "SB" | "BB") {
   return page.locator(`[data-seat="${seat}"] [data-seat-badge="${kind}"]`);
 }
 
+/** The Latin text is decorative; assistive tech must receive the Chinese role name. */
+async function expectBadgeName(page: Page, seat: number, kind: "D" | "SB" | "BB", accessibleName: string): Promise<void> {
+  const locator = badge(page, seat, kind);
+  await expect(locator).toHaveRole("img");
+  await expect(locator).toHaveAccessibleName(accessibleName);
+}
+
 test("Heads-up 的 D=SB 同座显示，弃牌与跨手盲注移动不改变座位位置", async ({ page }) => {
   const table = await installSeatTable(page, seatTableSnapshot({ playerCount: 2, viewerSeat: 0, dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1, currentActorSeat: 0 }));
   await table.open();
   const before = await seatSlots(page);
   expect(before).toEqual({ "0": "5", "1": "6" });
 
-  await expect(badge(page, 0, "D")).toHaveAttribute("aria-label", message("table.badges.dealer"));
-  await expect(badge(page, 0, "SB")).toHaveAttribute("aria-label", message("table.badges.smallBlind"));
-  await expect(badge(page, 1, "BB")).toHaveAttribute("aria-label", message("table.badges.bigBlind"));
+  await expectBadgeName(page, 0, "D", message("table.badges.dealer"));
+  await expectBadgeName(page, 0, "SB", message("table.badges.smallBlind"));
+  await expectBadgeName(page, 1, "BB", message("table.badges.bigBlind"));
   await expect(page.locator("[data-seat-badge]")).toHaveCount(3);
 
   table.event(
