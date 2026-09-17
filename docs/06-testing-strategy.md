@@ -231,7 +231,7 @@ AI 接入边界见 04 §14（AI 只能选择 Engine 合法 Action）；成本与
 - 前端验收标准表的权威在 [05](./05-frontend-spec.md) §16（下注无键盘、All-in 两步、动画剧本、响应式矩阵、重连、信息隔离），本文不重述。
 - 动画与音效为人工验收：Showdown 剧本（Reveal → Best Five → 牌型 → Winner → Pot）是重点场景（《区块6-10 v0.2》§9.17）。
 - E2E 使用稳定的角色/语义定位和专用测试 API 构造状态；不得依赖 CSS class、固定文案或大量点击把比赛随机推进到目标状态。测试 API 仅在测试环境启用且必须通过正常 Engine 入口提交 Fixture。
-- 每个页面和关键 Dialog 运行 axe-core 自动扫描；创建/加入/Ready/下注/离开主流程另以纯键盘执行，并断言焦点进入/返回、可见焦点、可访问名称、`aria-live` 节制与 Reduced Motion 下相同业务终态。自动扫描通过不替代真实键盘、读屏抽查和颜色对比人工验收。（扫描前等待文档 complete 且 SSR `<title>` 就绪，规避 WebKit 冷启动的 document-title 竞态误报。）
+- 每个页面和关键 Dialog 运行 axe-core 自动扫描；创建/加入/Ready/下注/离开主流程另以纯键盘执行，并断言焦点进入/返回、可见焦点、可访问名称、`aria-live` 节制与 Reduced Motion 下相同业务终态。自动扫描通过不替代真实键盘、读屏抽查和颜色对比人工验收。（共享扫描入口先等待文档 complete、SSR `<title>` 就绪和 `.rr-route-enter` 自身的进入动画结束，再检查最终呈现状态；等待超时不吞掉实际 axe 违规。）
 - 失败时自动保留浏览器 Trace、截图、视频、Console、Network/WS 摘要与服务端关联 `runId`；任何未处理 Console Error、Page Error、请求 5xx 均使测试失败，明确列入白名单者除外。（页面导航/关闭导致的 WS CONNECTING 中断为固有浏览器传输噪声，Firefox/Chromium/WebKit 各有其文案，由 observability fixture 默认白名单豁免；其余诊断仍强制门禁。）
 - Release 人工验收须记录候选版本、设备/OS/浏览器版本、场景、验收人、时间和证据链接；“可接受”不能只有口头结论。设备矩阵见 §9.1。
 
