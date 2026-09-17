@@ -46,6 +46,7 @@ export function seatTableSnapshot(options: SeatSnapshotOptions): GameSnapshot {
     dealerSeat: options.dealerSeat ?? 0,
     smallBlindSeat: options.smallBlindSeat ?? 0,
     bigBlindSeat: options.bigBlindSeat ?? 1,
+    showdownDisplayUntil: null,
     board: [],
     pots: [{ amount: 15, eligiblePlayerIds: players.map((player) => player.playerId) }],
     currentActorPlayerId: `player-${(options.currentActorSeat ?? options.viewerSeat ?? 0) + 1}`,
