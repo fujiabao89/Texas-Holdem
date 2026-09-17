@@ -6,7 +6,7 @@ TEX-38 的 `event-feedback.ts` 只映射公开事件为中文动作/金额/牌�
 
 牌桌状态投影、2–10 Seat 布局、公共牌、底池、行动者、可见底牌及终局排名展示（TEX-25）。视觉层为暖白页面中的深绿色椭圆牌桌：本人始终位于下方，公共牌与底池居中，其他已入座玩家环绕，操作区以暖白悬浮面板呈现。明牌采用项目化的标准扑克样式：真实牌宽高比、四角牌值和花色、2–10 的牌点阵列、A 的居中大花色；底牌则使用深绿花纹牌背。组件只消费 `ProjectionStore` 的权威 Snapshot/Event/Clock 镜像；私有牌只读取 `viewer.holeCards`，其他玩家只显示已投影公开牌或牌背。
 
-`table-state.ts` 保持为可测的纯展示准入逻辑：没有当前行动、连续投影、有效连接或存在 pending 命令时不展示操作区。它不计算筹码、合法性或胜负。
+`table-state.ts` 保持为可测的纯展示准入逻辑：没有当前行动、连续投影、有效连接或存在 pending 命令时不展示操作区。它不计算筹码、合法性或胜负。TEX-47 后它还导出座位映射与徽标的纯函数：`tableSeatSlots` 把本人固定在视觉槽位 5（下方中央），其他 Seat 按 `(seat - viewerSeat + 10) % 10` 的顺时针偏移映射到固定槽位；`seatBadges` 只读取权威 `dealerSeat/smallBlindSeat/bigBlindSeat`，Heads-Up 的 D=SB 在同一 Seat 并排显示。同一桌的映射不随人数、行动者、筹码、连接、弃牌/全下/淘汰/撤回、昵称或重渲染变化；徽标内联在昵称行：桌面端不增加座位高度，移动端昵称行最多增加约 1px，且不遮挡昵称、筹码或底牌。回归：`pnpm exec vitest run --project unit apps/web/src/features/poker-table` 与 [座位稳定性 E2E](../../../../../tests/e2e/seats/README.md)。
 
 TEX-26/TEX-27 合并时，顶部历史按钮和音效开关共用一个控件组，连接状态只渲染一次；牌桌容器及其 Deck/定位 ref 也只保留一套。TEX-27 的历史抽屉、淘汰观战提示和赛果入口读取 canonical，关闭历史后焦点返回按钮；倒计时的行动机会 key 同样读取 canonical，不随动画积压延迟切换。
 

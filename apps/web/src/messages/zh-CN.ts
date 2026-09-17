@@ -290,6 +290,7 @@ export const zhCN = {
     player: "玩家",
     seat: "座位",
     dealer: "庄",
+    badges: { dealer: "庄家", smallBlind: "小盲", bigBlind: "大盲" },
     folded: "已弃牌",
     allIn: "全下",
     eliminated: "已淘汰",
