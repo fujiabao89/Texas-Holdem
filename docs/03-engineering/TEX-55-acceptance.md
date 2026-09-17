@@ -67,7 +67,7 @@
 | 全局代码类型检查 | `pnpm typecheck` | 全部包与测试通过，0 errors |
 | 全局代码风格检查 | `pnpm lint` | 通过，无新增警告 |
 | Next.js 与 Monorepo 生产构建 | `pnpm build` | 4 个 Package 全部构建成功 |
-| 真实链路 Playwright E2E 语法与场景规范 | `tests/e2e/real/result-recovery.spec.ts` | 已更新并通过静态检查 |
+| 真实链路 Playwright E2E 套件规范 | `tests/e2e/real/result-recovery.spec.ts` | 用例完成重构，通过类型检查与 Playwright 发现；待具备 `TEX_TEST_DATABASE_URL` 的真实数据库环境中运行并记录矩阵后正式宣告闭合 F-3 |
 | Git 差异规范检查 | `git diff --check` | 通过 |
 
 ---
@@ -76,4 +76,6 @@
 
 - 本任务在独立工作区 `C:\Users\34026\Texas-Holdem-TEX-55` 完成，新建分支 `feat/TEX-55-tournament-results-refresh-and-direct-access`。
 - 遵循用户指令：**未执行 `git push`**。
+- 审查意见闭环：已处置全部 4 个 P1 问题（无冠军快路径、全局排序键、错配凭证保护、E2E 规范契约）与 2 个 P2 缺口（`canPlayAgain` 状态门禁、全量文档与测试策略同步）。
+- 边界说明：原 F-3（赛果刷新/直达可达性）已交付完整的客户端双通道恢复流与 Playwright 真实用例；待配置 `TEX_TEST_DATABASE_URL` 运行真实 E2E 套件后正式宣告闭合。
 - 文档同步：已同步更新 `apps/web/src/features/result/README.md`、`apps/web/README.md`、`apps/web/src/protocol/README.md`、`tests/e2e/README.md`、`docs/06-testing-strategy.md`、`docs/05-frontend-spec.md`、`docs/03-engineering/README.md` 与本验收记录。
