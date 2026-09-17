@@ -16,6 +16,7 @@
 - [TEX-26-findings-ledger.md](./TEX-26-findings-ledger.md)：TEX-26 PR 的审查意见逐项核验、main/TEX-27 合并冲突与验证处置记录。
 - [TEX-28-findings-ledger.md](./TEX-28-findings-ledger.md)：TEX-28 联调 E2E/安全测试工程执行中发现并处置的生产缺陷与修复记录（F-1~F-7）。
 - [TEX-36-findings-ledger.md](./TEX-36-findings-ledger.md)：PR #30 的 Codex、CodeRabbit、Greptile 意见核验、去重、定级与处置证据。
+- [TEX-47-findings-ledger.md](./TEX-47-findings-ledger.md)：PR #55 的人工验收、Codex、CodeRabbit、Greptile 与 Copilot/Qodo 意见逐项核验、定级与处置记录。
 
 处理 GitHub Pull Request 审查意见时，须按 `AGENTS.md` 的“Pull Request 审查意见闭环”要求：完成修改、验证、提交并推送后，在对应的原始审查评论线程回复 `已修正`。
 
