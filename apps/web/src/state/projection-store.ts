@@ -40,6 +40,7 @@ export interface ClockProjection {
   readonly currentActorPlayerId: string | null;
   readonly actionDeadline: number | null;
   readonly timeBankRemainingMs: number;
+  readonly showdownDisplayUntil: number | null;
   readonly serverTime: number;
 }
 
@@ -208,6 +209,7 @@ function clockFromSnapshot(snapshot: GameSnapshot, serverTime: number): ClockPro
     currentActorPlayerId: snapshot.currentActorPlayerId,
     actionDeadline: snapshot.actionDeadline,
     timeBankRemainingMs: snapshot.viewer.timeBankRemainingMs,
+    showdownDisplayUntil: snapshot.showdownDisplayUntil,
     serverTime,
   };
 }

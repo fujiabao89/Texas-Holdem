@@ -51,6 +51,7 @@ const source = {
   pots: [{ amount: 15, eligiblePlayerIds: ["alice", "bob"] }],
   currentActorPlayerId: "alice",
   actionDeadline: 1_700_000_000_000,
+  showdownDisplayUntil: null,
   players: [
     { playerId: "alice", displayName: "Alice", seat: 0, stack: 995, streetBet: 5, totalCommitted: 5, pokerStatus: "ACTIVE" as const, hasHoleCards: true, revealedCards: [], privateHoleCards: [aliceCard, aliceCard] },
     { playerId: "bob", displayName: "Bobby", seat: 1, stack: 990, streetBet: 10, totalCommitted: 10, pokerStatus: "ACTIVE" as const, hasHoleCards: true, revealedCards: [], privateHoleCards: [bobCard, bobCard] },
@@ -60,7 +61,7 @@ const source = {
 };
 
 describe("protocol wire contracts", () => {
-  it.each([1, 2, 3, 5])("rejects wire version %i in both directions", (protocolVersion) => {
+  it.each([1, 2, 3, 4, 6])("rejects wire version %i in both directions", (protocolVersion) => {
     expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion, requestId, payload: { roomId: "room_1", playerToken: "x".repeat(43) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
     expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion, serverTime: 1, payload: { snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "1", ...projectPlayerView(source) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
   });
@@ -241,5 +242,122 @@ describe("protocol wire contracts", () => {
     expect(after.players.find((player) => player.playerId === "alice")?.stack).toBe(990);
     expect(() => applyPlayerViewPatch(before, { players: [{ playerId: "mallory", stack: 1 }] })).toThrow("unknown player");
     expect(ServerMessageSchema.safeParse({ type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { tournamentId: "tournament_1", sequence: "1", handId: "hand_1", event: { type: "BURN_CARD", payload: { street: "FLOP", card: aliceCard } }, patch: {} } }).success).toBe(false);
+  });
+
+  describe("TEX-58: showdown display phase and authoritative action clock contract", () => {
+    const showdownUntil = 1_700_000_005_000;
+    const showdownSource = {
+      ...source,
+      handPhase: "SHOWDOWN_DISPLAY" as const,
+      currentActorPlayerId: null,
+      actionDeadline: null,
+      showdownDisplayUntil: showdownUntil,
+      viewer: { ...source.viewer, legalActions: null },
+    };
+
+    it("accepts a valid SHOWDOWN_DISPLAY snapshot with showdownDisplayUntil set", () => {
+      const view = projectPlayerView(showdownSource);
+      expect(view.handPhase).toBe("SHOWDOWN_DISPLAY");
+      expect(view.showdownDisplayUntil).toBe(showdownUntil);
+      expect(view.currentActorPlayerId).toBeNull();
+      expect(view.actionDeadline).toBeNull();
+    });
+
+    it("rejects SHOWDOWN_DISPLAY when showdownDisplayUntil is null", () => {
+      // projectPlayerView calls PlayerViewSchema.parse internally, which throws on invariant violations
+      expect(() => projectPlayerView({ ...showdownSource, showdownDisplayUntil: null })).toThrow(
+        "showdownDisplayUntil must be non-null during SHOWDOWN_DISPLAY",
+      );
+    });
+
+    it("rejects non-SHOWDOWN_DISPLAY phase when showdownDisplayUntil is non-null", () => {
+      expect(PlayerViewSchema.safeParse({
+        ...projectPlayerView(source),
+        showdownDisplayUntil: showdownUntil,
+      }).success).toBe(false);
+    });
+
+    it("rejects SHOWDOWN_DISPLAY when currentActorPlayerId is non-null", () => {
+      expect(PlayerViewSchema.safeParse({
+        ...projectPlayerView(showdownSource),
+        currentActorPlayerId: "alice",
+      }).success).toBe(false);
+    });
+
+    it("rejects SHOWDOWN_DISPLAY when actionDeadline is non-null", () => {
+      expect(PlayerViewSchema.safeParse({
+        ...projectPlayerView(showdownSource),
+        actionDeadline: 1_700_000_000_000,
+      }).success).toBe(false);
+    });
+
+    it("accepts CLOCK_UPDATED with showdownDisplayUntil and no actionDeadline", () => {
+      const msg = {
+        type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
+        payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: null, actionDeadline: null, timeBankRemainingMs: 60_000, showdownDisplayUntil: showdownUntil },
+      };
+      expect(ServerMessageSchema.safeParse(msg).success).toBe(true);
+    });
+
+    it("accepts CLOCK_UPDATED with actionDeadline and null showdownDisplayUntil", () => {
+      const msg = {
+        type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
+        payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: "alice", actionDeadline: 1_700_000_000_000, timeBankRemainingMs: 60_000, showdownDisplayUntil: null },
+      };
+      expect(ServerMessageSchema.safeParse(msg).success).toBe(true);
+    });
+
+    it("rejects CLOCK_UPDATED when both actionDeadline and showdownDisplayUntil are non-null", () => {
+      const msg = {
+        type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
+        payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: null, actionDeadline: 1_700_000_000_000, timeBankRemainingMs: 60_000, showdownDisplayUntil: showdownUntil },
+      };
+      expect(ServerMessageSchema.safeParse(msg).success).toBe(false);
+    });
+
+    it("rejects CLOCK_UPDATED when showdownDisplayUntil is non-null but currentActorPlayerId is not null", () => {
+      const msg = {
+        type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
+        payload: { tournamentId: "tournament_1", handId: "hand_1", currentActorPlayerId: "alice", actionDeadline: null, timeBankRemainingMs: 60_000, showdownDisplayUntil: showdownUntil },
+      };
+      expect(ServerMessageSchema.safeParse(msg).success).toBe(false);
+    });
+
+    it("applies showdownDisplayUntil via PlayerViewPatch", () => {
+      const before = projectPlayerView(source);
+      const patched = applyPlayerViewPatch(before, {
+        handPhase: "SHOWDOWN_DISPLAY",
+        currentActorPlayerId: null,
+        actionDeadline: null,
+        showdownDisplayUntil: showdownUntil,
+        viewer: { legalActions: null },
+      });
+      expect(patched.handPhase).toBe("SHOWDOWN_DISPLAY");
+      expect(patched.showdownDisplayUntil).toBe(showdownUntil);
+    });
+
+    it("clears showdownDisplayUntil via null patch when transitioning to HAND_END", () => {
+      const showdownView = projectPlayerView(showdownSource);
+      const cleared = applyPlayerViewPatch(showdownView, { handPhase: "HAND_END", showdownDisplayUntil: null });
+      expect(cleared.handPhase).toBe("HAND_END");
+      expect(cleared.showdownDisplayUntil).toBeNull();
+    });
+
+    it("GameSnapshot accepts SHOWDOWN_DISPLAY with correct invariants", () => {
+      const snap = GameSnapshotSchema.safeParse({
+        snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "5",
+        ...projectPlayerView(showdownSource),
+      });
+      expect(snap.success).toBe(true);
+      if (snap.success) {
+        expect(snap.data.handPhase).toBe("SHOWDOWN_DISPLAY");
+        expect(snap.data.showdownDisplayUntil).toBe(showdownUntil);
+      }
+    });
+
+    it("showdownDisplayUntil is absent from normal PREFLOP source and not in serialised payload", () => {
+      const view = projectPlayerView(source);
+      expect(view.showdownDisplayUntil).toBeNull();
+    });
   });
 });
