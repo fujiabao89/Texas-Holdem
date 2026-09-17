@@ -52,6 +52,6 @@ TEX-44 在 [create-room/](./create-room/README.md) 增加品牌首页键盘开�
 - 轮到本人行动时页面无纵向、横向滚动，行动区、牌桌、公共牌与底池完整落在视口内，且行动区不遮挡公共牌与底池；
 - 各 Seat 卡片矩形互不相交（`data-seat` 只存在于已入座座位，测量前等待整圈座位渲染完成）；
 - 行动区随行动权出现与消失，且不改变牌桌几何；
-- 手机金额面板的快捷额、Slider、±、精确输入、返回与提交全部在视口内可达，全下两步可完成。
+- 手机金额面板的快捷额、Slider、±、精确输入、返回与提交全部在视口内可达，全下按钮在行动区内可达（两步全下与 `ALL_IN` 信封由 `betting/table.spec.ts` 覆盖）。
 
 运行：`pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout`。该套件只验证受控投影下的前端布局，不替代真实 game-server/PostgreSQL 联调，也不替代 docs/06 §9.1 的实机发布验收。

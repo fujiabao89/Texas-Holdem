@@ -136,8 +136,12 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const game = presentation.game ?? canonicalGame;
 
   const seatSlots = tableSeatSlots(game);
+  // Density follows the occupied-seat count: physical Seats may be non-contiguous
+  // (the room lets a player CHANGE_SEAT into any free Seat), so keying the
+  // crowded layout on seat numbers would pick the wrong geometry.
+  const occupiedSeats = game.players.filter((player) => player.seat >= 0 && player.seat < 10).length;
 
-  return <TableFrame reducedMotion={presentation.reducedMotion}>
+  return <TableFrame reducedMotion={presentation.reducedMotion} density={seatDensity(occupiedSeats)}>
     <header className="rr-table-header mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 shadow-sm sm:px-4">
       <div className="table-heading"><span className="table-heading-mark" aria-hidden="true">♠</span><div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="table-subtitle">{message("table.gameType")}<span aria-hidden="true"> · </span>{formatMessage("table.blinds", { small: canonicalGame.blindLevel.smallBlind, big: canonicalGame.blindLevel.bigBlind })}</p></div></div>
       <div className="flex flex-wrap items-center gap-2">
@@ -575,7 +579,14 @@ function isProjectedBestCard(bestFiveCards: readonly Card[], candidate: Card): b
 function RankingSummary({ game }: { readonly game: GameSnapshot }) { const players = new Map(game.players.map((player) => [player.playerId, player.displayName])); return <section aria-labelledby="rankings-heading" className="mx-auto w-full max-w-xl rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><h2 id="rankings-heading" className="font-semibold">{message("table.tournamentFinished")}</h2><ol className="mt-2 list-decimal pl-5">{game.rankings.map((ranking) => <li key={ranking.playerId}>{players.get(ranking.playerId) ?? message("table.player")} · {formatMessage("table.rank", { position: ranking.placement.from })}</li>)}</ol></section>; }
 type ButtonTone = "neutral" | "fold" | "call" | "bet" | "allIn";
 function ActionButton({ label, onClick, disabled = false, ariaLabel, tone = "neutral" }: { readonly label: string; readonly onClick: () => void; readonly disabled?: boolean; readonly ariaLabel?: string; readonly tone?: ButtonTone }) { return <button aria-label={ariaLabel} className={`${actionButtonClass} ${buttonToneClass[tone]}`} disabled={disabled} onClick={onClick}>{label}</button>; }
-function TableFrame({ children, reducedMotion = false }: { readonly children: ReactNode; readonly reducedMotion?: boolean }) { return <main data-reduced-motion={reducedMotion} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-2 overflow-hidden bg-[#f7faf8] p-2 text-slate-900 sm:gap-3 sm:p-4">{children}</main>; }
+/** Seat density is derived from the occupied-seat count alone. Physical Seats may
+    be non-contiguous, so the crowded layout must never be keyed on seat numbers. */
+function seatDensity(occupiedSeats: number): "compact" | "stacked" | undefined {
+  if (occupiedSeats >= 8) return "stacked";
+  if (occupiedSeats >= 6) return "compact";
+  return undefined;
+}
+function TableFrame({ children, reducedMotion = false, density }: { readonly children: ReactNode; readonly reducedMotion?: boolean; readonly density?: "compact" | "stacked" }) { return <main data-reduced-motion={reducedMotion} data-seat-density={density} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-2 overflow-hidden bg-[#f7faf8] p-2 text-slate-900 sm:gap-3 sm:p-4">{children}</main>; }
 const tableMotionStyle = {
   "--board-flight-duration": `${visualTimings.boardFlight}ms`,
   "--board-flip-duration": `${visualTimings.boardFlip}ms`,

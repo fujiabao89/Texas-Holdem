@@ -231,29 +231,35 @@
 .rr-table-page .table-action-heading { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #4f5f4d; }
 .rr-table-page .table-action-heading h2 { font-weight: 600; }
 .rr-table-page .table-action-heading > span { color: #3b623e; }
-.rr-table-page .table-primary-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: 1/-1; padding: 6px; min-height: 44px; background: #f1f3e8; font-size: 12px; }
+.rr-table-page .table-primary-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.rr-table-page .table-primary-actions > .rr-action-neutral { padding: 6px; min-height: 44px; background: #f1f3e8; font-size: 12px; }
 .rr-table-page .table-wager-editor { background: #f0f2e7; }
+/* The wager panel replaces the primary row instead of stacking, so the dock never
+   exceeds --dock-reserve. This holds at every width, not only on phones. */
+.rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
 /* The back button only exists where the wager panel replaces the primary row. */
 .rr-table-page .table-wager-back { display: none; }
+.rr-table-page [data-wager-open="true"] .table-wager-back { display: inline-flex; }
 .rr-table-page .table-wager-editor output { margin-left: auto; font-size: 20px; font-variant-numeric: tabular-nums; }
 .rr-table-page .table-wager-editor input { min-width: 0; max-width: 100%; }
 .rr-table-page .rr-action-allin { background: #f7e7db; border-color: #d5af91; color: #934024; }
 .rr-table-page .rr-action-allin:hover:not(:disabled) { background: #f0d9c7; }
 @media (min-width: 640px) {
+  /* Fit the tallest dock state — heading plus the three-row wager editor — so
+     every projected control stays reachable without a nested scroll. */
   .rr-table-page { padding: 16px; gap: 12px; }
   /* The one-viewport felt is shorter than the TEX-45 scroll layout, so an
      eight-plus handed table compresses the Seat card and pulls the upper flank
      Seats inwards; no two Seat rectangles may intersect (docs/05 §7.5/§16). */
-  .rr-table-page:has([data-seat="5"]) .table-seat { width: 112px; }
-  .rr-table-page:has([data-seat="5"]) [data-seat-cards] { min-height: 40px; }
-  .rr-table-page:has([data-seat="5"]) [data-seat-chips] { padding: 3px 6px; }
-  .rr-table-page:has([data-seat="5"]) .table-player-name { font-size: 11px; line-height: 1.4; }
-  .rr-table-page:has([data-seat="5"]) .table-player-stack { margin-top: 0; font-size: 12px; }
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="1"] { left: 70%; }
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="9"] { left: 30%; }
-  .rr-table-page:has([data-seat="5"]) [data-seat-slot="3"],
-  .rr-table-page:has([data-seat="5"]) [data-seat-slot="7"] { top: 70%; }
+  .rr-table-page[data-seat-density] .table-seat { width: 112px; }
+  .rr-table-page[data-seat-density] [data-seat-cards] { min-height: 40px; }
+  .rr-table-page[data-seat-density] [data-seat-chips] { padding: 3px 6px; }
+  .rr-table-page[data-seat-density] .table-player-name { font-size: 11px; line-height: 1.4; }
+  .rr-table-page[data-seat-density] .table-player-stack { margin-top: 0; font-size: 12px; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="1"] { left: 70%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="9"] { left: 30%; }
+  .rr-table-page[data-seat-density] [data-seat-slot="3"],
+  .rr-table-page[data-seat-density] [data-seat-slot="7"] { top: 70%; }
 }
 @media (min-width: 640px) and (max-width: 1000px) {
   .rr-table-page .table-watermark { display: none; }
@@ -313,35 +319,31 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  /* The wager panel replaces the primary row instead of stacking, so the dock
-     never exceeds --dock-reserve. */
-  .rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
-  .rr-table-page .table-wager-back { display: inline-flex; }
   /* The phone felt is narrow, so the deck shrinks into the top-left arc and the
      two upper Seats move inwards to keep their rectangles clear of it. */
   .rr-table-page .table-deck { left: 4px; top: 2px; height: 40px; width: 28px; }
   /* Eight-plus Seats reuse five vertical bands on the shorter phone felt, so no
      two Seat rectangles intersect (docs/05 §7.5/§16). */
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="1"],
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="9"] { top: 13%; }
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="2"],
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="8"] { top: 37%; }
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="3"],
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="7"] { top: 61%; }
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="4"],
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="6"] { top: 85%; }
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="4"] { left: 74%; }
-  .rr-table-page:has([data-seat="7"]) [data-seat-slot="6"] { left: 26%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="1"],
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="9"] { top: 13%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="2"],
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="8"] { top: 37%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="3"],
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="7"] { top: 61%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="4"],
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { top: 85%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="4"] { left: 74%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { left: 26%; }
   /* A crowded phone table compresses each Seat card; docs/05 §7.5 allows the
-     10-player phone layout to shorten names and stacks. `data-seat` only exists
-     for occupied Seats, so this matches 6+ handed tables. */
-  .rr-table-page:has([data-seat="5"]) .table-seat { width: 62px; }
-  .rr-table-page:has([data-seat="5"]) [data-seat-cards] { min-height: 26px; }
-  .rr-table-page:has([data-seat="5"]) [data-seat-chips] { padding: 2px 3px; }
-  .rr-table-page:has([data-seat="5"]) .table-player-name { font-size: 9px; line-height: 1.3; }
-  .rr-table-page:has([data-seat="5"]) .table-player-stack { margin-top: 0; font-size: 10px; gap: 2px; }
-  .rr-table-page:has([data-seat="5"]) .table-chip { width: 7px; height: 7px; }
-  .rr-table-page:has([data-seat="5"]) [data-seat-chips] + div { margin-top: 0; }
+     10-player phone layout to shorten names and stacks. Density comes from the
+     occupied-seat count, so a sparse six-handed table compresses too. */
+  .rr-table-page[data-seat-density] .table-seat { width: 62px; }
+  .rr-table-page[data-seat-density] [data-seat-cards] { min-height: 26px; }
+  .rr-table-page[data-seat-density] [data-seat-chips] { padding: 2px 3px; }
+  .rr-table-page[data-seat-density] .table-player-name { font-size: 9px; line-height: 1.3; }
+  .rr-table-page[data-seat-density] .table-player-stack { margin-top: 0; font-size: 10px; gap: 2px; }
+  .rr-table-page[data-seat-density] .table-chip { width: 7px; height: 7px; }
+  .rr-table-page[data-seat-density] [data-seat-chips] + div { margin-top: 0; }
   /* The phone wager panel is exactly three rows — shortcuts, the amount row,
      then back/exact next to submit — so every control stays inside the
      reserved strip with no panel-level scrolling. The exact-amount field is a
@@ -380,4 +382,11 @@
   .rr-table-page .table-exact-error { font-size: 10px; white-space: nowrap; }
   .rr-table-page .table-wager-output { font-size: 16px; }
   .rr-table-page .table-wager-editor:has(.table-exact-amount) .table-quick-amounts { display: none; }
+}
+
+/* 只有纵向余量充裕的桌面视口才放大行动区预留带。1366×768 这类矮视口没有
+   足够高度（768×1024 同样不够）：抬高 reserve 会把牌桌压到座位卡片相交，
+   "各 Seat 矩形互不相交"。矮视口保留 104px，由单行主操作适配。 */
+@media (min-width: 1200px) and (min-height: 900px) {
+  .rr-table-page { --dock-reserve: 240px; }
 }

@@ -1,6 +1,6 @@
 # TEX-46 单视口牌桌与按需行动区优化
 
-用户于 2026-09-16 直接委派实现，要求完成后不推送、先给出报告。[Linear TEX-46](https://linear.app/texas-holdem/issue/TEX-46/tex-46-单视口牌桌与按需行动区优化)；分支 `feat/TEX-46-single-viewport-table-and-action-panel`，工作目录 `C:/Users/34026/Texas-Holdem-TEX-46`。**截至本记录，改动仅本地提交，未推送、未创建 PR、未发布。**（本记录与实现同处一个提交，故不在此记录该提交自身的哈希——它以分支 `feat/TEX-46-single-viewport-table-and-action-panel` 的 HEAD 为准。）
+用户于 2026-09-16 直接委派实现，要求完成后不推送、先给出报告。[Linear TEX-46](https://linear.app/texas-holdem/issue/TEX-46/tex-46-单视口牌桌与按需行动区优化)；分支 `feat/TEX-46-single-viewport-table-and-action-panel`，工作目录 `C:/Users/34026/Texas-Holdem-TEX-46`。**截至 2026-09-16 本记录成文时，改动仅本地提交，未推送、未创建 PR、未发布；以下为该时点的快照。**（本记录与实现同处一个提交，故不在此记录该提交自身的哈希——它以分支 `feat/TEX-46-single-viewport-table-and-action-panel` 的 HEAD 为准。）
 
 ## 基线与依赖
 
@@ -33,7 +33,7 @@
 
 ## 各目标视口验收证据
 
-`tests/e2e/table-layout/single-viewport.spec.ts` 以 WS 投影夹具在真实浏览器中按 **5 视口 × 2/3/6/10 人桌** 矩阵断言：行动时无纵向/横向页面滚动；行动区、牌桌、公共牌与底池完整落在视口内；行动区不遮挡公共牌、底池与任何座位；各 Seat 卡片矩形互不相交；行动区随行动权出现与消失且不改变牌桌几何；手机金额面板的快捷额、Slider、±、精确输入、返回与提交全部在视口内可达，全下两步可完成。
+`tests/e2e/table-layout/single-viewport.spec.ts` 以 WS 投影夹具在真实浏览器中按 **5 视口 × 2/3/6/10 人桌 + 6 人稀疏座位（0,2,4,6,8,9）** 矩阵断言：行动时无纵向/横向页面滚动；行动区、牌桌、公共牌与底池完整落在视口内；行动区不遮挡公共牌、底池与任何座位；各 Seat 卡片矩形互不相交；行动区随行动权出现与消失且不改变牌桌几何；手机金额面板的快捷额、Slider、±、精确输入、返回与提交全部在视口内可达，全下按钮在行动区内可达（两步全下与 `ALL_IN` 信封由 `tests/e2e/betting/table.spec.ts` 覆盖）。
 
 本地证据截图（`fullPage`，页面本身不滚动故等于视口大小）生成于 `output/playwright/`，沿用 TEX-38 的既有约定、不纳入版本控制。TEX-46 已在 `.gitignore` 补上根目录规则 `/output/`，该目录因此不再出现在 `git status`，截图仍保留在本地。该目录在本次工作前已存有 TEX-38 的 6 张截图，本次新增下列 6 张：
 
@@ -53,9 +53,9 @@
 
 ## 未运行项与已知边界
 
-- **未推送、未创建 PR、未发布**（用户明确要求）。因此 CI 未在本分支运行过。
+- **交付状态（2026-09-17 更新）**：已推送并创建 PR [#56](https://github.com/fujiabao89/Texas-Holdem/pull/56)，目标分支 `main`（分支已 rebase 到 `main@5567e4fb`）。CI 已在该分支运行，`quality`、`e2e`、`e2e-real`、`perf-smoke`、CodeQL、`branch-and-pr-policy`、`repository-hygiene`、`workflow-lint` 全部通过。上一条「未推送、未创建 PR、CI 未运行过」仅适用于 2026-09-16 记录成文时点。
 - **未运行真实链路套件**（`pnpm test:e2e:real`，需要 `TEX_TEST_DATABASE_URL` 与 PostgreSQL）与 **TEX-28 多人联调**；本任务的布局结论来自受控投影下的前端回归，不宣称真实服务端/数据库联调通过。
 - **未做实机验收**：docs/06 §9.1 的 Android/iPhone 实机矩阵仍待发布前执行；本次为浏览器模拟视口。
 - **DeepSeek Harness 审查**按项目约定由用户手动启动，本记录不代表该审查已通过。
-- **既有并发 flakiness**：`tests/e2e/create-room/brand-experience.spec.ts` 在全量并发运行下会失败 1–4 个用例（`toHaveURL` 超时与 axe 超时），单独运行通过。已在 TEX-45 基线上复现同样失败，且在排除本任务新增测试后依然复现，故**与 TEX-46 无关**；建议单独开任务处理，不应记为本任务的回归。
+- **既有并发 flakiness**：`tests/e2e/create-room/brand-experience.spec.ts` 在全量并发运行下会失败 1–4 个用例（`toHaveURL` 超时与 axe 超时），单独运行通过。已在 TEX-45 基线上复现同样失败，且在排除本任务新增测试后依然复现，故**与 TEX-46 无关**，不应记为本任务的回归。**处置状态：待批准。** docs/06 §2.1 要求 Flaky 用例修复、或经负责人书面批准后带期限隔离；本任务未取得该书面批准，也未设定隔离期限，故**不声明为已隔离或已修复**，需由负责人批准并给出期限后另行处置。
 - **单视口的取舍**：为让行动区出现/消失不引起布局跳动，行动区高度带被固定预留，非行动状态牌桌下方会留白；同时桌面 1366×768 下牌桌比 TEX-45 的滚动布局更小。这是单视口硬约束的代价，已由用户在本任务目标中确认。

@@ -21,7 +21,23 @@ const VIEWPORTS = [
 
 const SEAT_COUNTS = [2, 3, 6, 10] as const;
 
-function roomSnapshot(playerCount: number) {
+/**
+ * 物理座位可以非连续：房间允许 CHANGE_SEAT 到任意空座。布局分支因此必须按
+ * 已入座人数选择，稀疏排布也要满足全部布局不变量。
+ */
+const SPARSE_SEATS = [0, 2, 4, 6, 8, 9] as const;
+
+/** 连续入座：从 0 号位起依次坐满。 */
+function contiguousSeats(count: number): readonly number[] {
+  return Array.from({ length: count }, (_, seat) => seat);
+}
+
+const ARRANGEMENTS = [
+  ...SEAT_COUNTS.map((count) => ({ name: `${count} 人桌`, seats: contiguousSeats(count) })),
+  { name: "6 人稀疏座位", seats: [...SPARSE_SEATS] },
+];
+
+function roomSnapshot(seats: readonly number[]) {
   return {
     snapshotVersion: 1,
     roomId: "room-1",
@@ -30,7 +46,7 @@ function roomSnapshot(playerCount: number) {
     inviteCode: "ABC234",
     hostPlayerId: "player-1",
     config: {
-      maxPlayers: playerCount,
+      maxPlayers: seats.length,
       startingStack: 1000,
       smallBlind: 5,
       bigBlind: 10,
@@ -40,9 +56,9 @@ function roomSnapshot(playerCount: number) {
       timeBank: 60,
     },
     activeTournamentId: "tournament-1",
-    players: Array.from({ length: playerCount }, (_, seat) => ({
-      playerId: `player-${seat + 1}`,
-      displayName: `玩家${seat + 1}`,
+    players: seats.map((seat, index) => ({
+      playerId: `player-${index + 1}`,
+      displayName: `玩家${index + 1}`,
       seat,
       ready: true,
       connectionStatus: "CONNECTED",
@@ -51,7 +67,7 @@ function roomSnapshot(playerCount: number) {
   };
 }
 
-function gameSnapshot(playerCount: number) {
+function gameSnapshot(seats: readonly number[]) {
   return {
     snapshotVersion: 1,
     reason: "INITIAL",
@@ -61,9 +77,9 @@ function gameSnapshot(playerCount: number) {
     tournamentStatus: "RUNNING",
     handPhase: "FLOP",
     blindLevel: { index: 0, smallBlind: 5, bigBlind: 10, ante: 0 },
-    dealerSeat: 0,
-    smallBlindSeat: 1 % playerCount,
-    bigBlindSeat: 2 % playerCount,
+    dealerSeat: seats[0]!,
+    smallBlindSeat: seats[1 % seats.length]!,
+    bigBlindSeat: seats[2 % seats.length]!,
     board: [
       { rank: "A", suit: "SPADES" },
       { rank: "K", suit: "HEARTS" },
@@ -72,18 +88,18 @@ function gameSnapshot(playerCount: number) {
     pots: [
       {
         amount: 90,
-        eligiblePlayerIds: Array.from({ length: playerCount }, (_, seat) => `player-${seat + 1}`),
+        eligiblePlayerIds: seats.map((_, index) => `player-${index + 1}`),
       },
     ],
     currentActorPlayerId: "player-1",
     actionDeadline: 50_000,
-    players: Array.from({ length: playerCount }, (_, seat) => ({
-      playerId: `player-${seat + 1}`,
-      displayName: `玩家${seat + 1}`,
+    players: seats.map((seat, index) => ({
+      playerId: `player-${index + 1}`,
+      displayName: `玩家${index + 1}`,
       seat,
       stack: 990 - seat,
-      streetBet: seat === 0 ? 10 : 5,
-      totalCommitted: seat === 0 ? 10 : 5,
+      streetBet: index === 0 ? 10 : 5,
+      totalCommitted: index === 0 ? 10 : 5,
       pokerStatus: "ACTIVE",
       hasHoleCards: true,
       revealedCards: [],
@@ -122,7 +138,7 @@ async function seedTableSession(page: Page): Promise<void> {
 
 async function openTable(
   page: Page,
-  playerCount: number,
+  seats: readonly number[],
   commands?: unknown[],
 ): Promise<(payload: unknown) => void> {
   let push: ((payload: unknown) => void) | undefined;
@@ -142,8 +158,8 @@ async function openTable(
             connectionId: "connection-1",
             resumed: true,
             tookOver: false,
-            roomSnapshot: roomSnapshot(playerCount),
-            gameSnapshot: gameSnapshot(playerCount),
+            roomSnapshot: roomSnapshot(seats),
+            gameSnapshot: gameSnapshot(seats),
           },
         }),
       );
@@ -229,10 +245,10 @@ function overlaps(left: Box, right: Box): boolean {
 
 test.describe("单视口牌桌", () => {
   for (const viewport of VIEWPORTS) {
-    for (const seats of SEAT_COUNTS) {
-      test(`${viewport.name} ${seats} 人桌在行动时不需要页面滚动`, async ({ page }) => {
+    for (const arrangement of ARRANGEMENTS) {
+      test(`${viewport.name} ${arrangement.name}在行动时不需要页面滚动`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await openTable(page, seats);
+        await openTable(page, arrangement.seats);
         await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
 
         const metrics = await page.evaluate(() => ({
@@ -245,7 +261,7 @@ test.describe("单视口牌桌", () => {
           metrics.innerHeight + 1,
         );
         expect(metrics.scrollWidth, "页面不得横向滚动").toBeLessThanOrEqual(metrics.innerWidth + 1);
-        await expect(page.locator("[data-seat]")).toHaveCount(seats);
+        await expect(page.locator("[data-seat]")).toHaveCount(arrangement.seats.length);
 
         const found = await boxes(page, {
           felt: ".rr-table-felt",
@@ -287,13 +303,13 @@ test.describe("单视口牌桌", () => {
         expect(seatsUnderDock, "行动区不得遮挡座位").toEqual([]);
       });
 
-      test(`${viewport.name} ${seats} 人桌座位卡片互不重叠`, async ({ page }) => {
+      test(`${viewport.name} ${arrangement.name}座位卡片互不重叠`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await openTable(page, seats);
+        await openTable(page, arrangement.seats);
         await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
         // Wait for the whole Seat ring before measuring; a partially painted
         // ring would report boxes that later move.
-        await expect(page.locator("[data-seat]")).toHaveCount(seats);
+        await expect(page.locator("[data-seat]")).toHaveCount(arrangement.seats.length);
 
         const seatsBoxes = await page.locator("[data-seat]").evaluateAll((elements) =>
           elements.map((element) => {
@@ -319,9 +335,9 @@ test.describe("单视口牌桌", () => {
         expect(intersecting, "座位卡片不得相交").toEqual([]);
       });
 
-      test(`${viewport.name} ${seats} 人桌全部合法操作在行动区内可达`, async ({ page }) => {
+      test(`${viewport.name} ${arrangement.name}全部合法操作在行动区内可达`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await openTable(page, seats);
+        await openTable(page, arrangement.seats);
         const panel = page.locator(".rr-betting-panel");
         await expect(panel).toBeVisible();
 
@@ -339,6 +355,17 @@ test.describe("单视口牌桌", () => {
             viewport.height + 1,
           );
         }
+
+        // 只与视口比较会漏掉 `overflow-y: auto` 的裁切：Playwright 的可见性
+        // 判定不计祖先裁切，被裁掉的控件仍可能落在视口内。行动区必须一次
+        // 呈现全部已投影操作，不得依赖内部滚动。
+        const panelMetrics = await panel.evaluate((element) => ({
+          scrollHeight: element.scrollHeight,
+          clientHeight: element.clientHeight,
+        }));
+        expect(panelMetrics.scrollHeight, "行动区不得内部滚动").toBeLessThanOrEqual(
+          panelMetrics.clientHeight + 1,
+        );
       });
     }
   }
@@ -348,7 +375,7 @@ test.describe("验收证据", () => {
   for (const viewport of VIEWPORTS) {
     test(`${viewport.name} 十人桌行动中`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await openTable(page, 10);
+      await openTable(page, contiguousSeats(10));
       await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
       await expect(page.locator("[data-seat]")).toHaveCount(10);
       await captureEvidence(page, testInfo, `${viewport.name}-10p`);
@@ -357,7 +384,7 @@ test.describe("验收证据", () => {
 
   test("390x844 金额面板展开", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await openTable(page, 6);
+    await openTable(page, contiguousSeats(6));
     await page.getByRole("button", { name: "加注" }).click();
     await expect(page.locator(".table-wager-editor")).toBeVisible();
     await captureEvidence(page, testInfo, "390x844-wager");
@@ -367,7 +394,7 @@ test.describe("验收证据", () => {
 test.describe("按需行动区", () => {
   test("行动区随行动权出现和消失，且不改变牌桌几何", async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    const push = await openTable(page, 6);
+    const push = await openTable(page, contiguousSeats(6));
     const felt = page.locator(".rr-table-felt");
     await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
     const acting = await felt.boundingBox();
@@ -381,7 +408,7 @@ test.describe("按需行动区", () => {
 
   test("非本人回合不渲染任何可提交控件", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    const push = await openTable(page, 3);
+    const push = await openTable(page, contiguousSeats(3));
     await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
     push(passTurn());
     await expect(page.locator(".rr-betting-panel")).toHaveCount(0);
@@ -395,7 +422,7 @@ test.describe("按需行动区", () => {
   ] as const) {
     test(`${viewport.name} 精确金额模式既不滚动页面也不滚动面板`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await openTable(page, 6);
+      await openTable(page, contiguousSeats(6));
 
       await page.getByRole("button", { name: "加注" }).click();
       await page.getByRole("button", { name: "输入精确金额" }).click();
@@ -472,7 +499,7 @@ test.describe("按需行动区", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     const commands: { type: string; payload?: { action?: { type: string; raiseTo?: number } } }[] =
       [];
-    await openTable(page, 6, commands);
+    await openTable(page, contiguousSeats(6), commands);
     const panel = page.locator(".rr-betting-panel");
 
     // 打开精确输入后仍可退回主操作行。
