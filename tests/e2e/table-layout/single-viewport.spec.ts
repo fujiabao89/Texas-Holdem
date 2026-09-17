@@ -62,6 +62,8 @@ function gameSnapshot(playerCount: number) {
     handPhase: "FLOP",
     blindLevel: { index: 0, smallBlind: 5, bigBlind: 10, ante: 0 },
     dealerSeat: 0,
+    smallBlindSeat: 1 % playerCount,
+    bigBlindSeat: 2 % playerCount,
     board: [
       { rank: "A", suit: "SPADES" },
       { rank: "K", suit: "HEARTS" },
