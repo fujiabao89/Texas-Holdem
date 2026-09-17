@@ -37,5 +37,5 @@
 | F-07 | [Greptile 4026558208](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026558208) | `已修正` | 已回复 |
 | F-08 | [CodeRabbit 4026612901](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026612901) | 已明确契约与运行时分工：TEX-58 完成展示阶段与时钟契约定义，服务端权威展示定时器与延迟开时钟由后续任务 [TEX-59] 实现编排，已在文档 §8.4.1 与代码注释中明确限定。 | 已回复 |
 | F-09 | [CodeRabbit 4026612910](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026612910) | `已修正` | 已回复 |
-| F-10 | [Codex 4031926337](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4031926337) | `已修正` | 待推送后回复 |
-| F-11 | [CodeRabbit 4031953534](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4031953534) | `已修正` | 待推送后回复 |
+| F-10 | [Codex 4031926337](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4031926337) | `已修正` | 已回复 |
+| F-11 | [CodeRabbit 4031953534](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4031953534) | `已修正` | 已回复 |
