@@ -487,9 +487,7 @@ test.describe("按需行动区", () => {
     await page.getByRole("textbox", { name: "输入精确下注额" }).fill("42");
     // 按钮文案跟随滑杆值，精确草稿在提交时被采用（TEX-25 既有契约）。
     await page.getByRole("button", { name: /确认加注至/ }).click();
-    await expect
-      .poll(() => commands.filter(({ type }) => type === "SUBMIT_ACTION").length)
-      .toBe(1);
+    await expect.poll(() => commands.filter(({ type }) => type === "SUBMIT_ACTION").length).toBe(1);
     expect(commands.find(({ type }) => type === "SUBMIT_ACTION")).toMatchObject({
       payload: { action: { type: "RAISE", raiseTo: 42 } },
     });
