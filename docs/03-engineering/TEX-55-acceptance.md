@@ -31,8 +31,27 @@
    - 加载中：展示 `message("result.loading")`，配合 `aria-live="polite"` 无障碍提示。
 
 5. **展示模型与 ADR-0002 无冠军终局支持**：
-   - 扩展 `resultRows`，无缝适配 `GameSnapshot`（`stack`）与 `TournamentResult`（`finalStack`），排名严格按服务端 `displayOrder` 呈现，UI 绝不重排序。
-   - 增加 `resultChampion`：当 `championPlayerId === null` 时，清晰标示“比赛结束，无冠军”，客户端不推断或捏造冠军。
+   - 扩展 `resultRows`，无缝适配 `GameSnapshot`（`stack`）与 `TournamentResult`（`finalStack`）。
+   - 修复排序键缺陷：排名排序先按 `placement.from` 升序再按 `displayOrder` 升序，彻底解决仅按 `displayOrder` 导致后续名次穿插进并列组的问题。
+   - 修复无冠军快路径虚构冠军缺陷：`GameSnapshot` 严格根据 `pokerStatus === "ACTIVE"` 数量与第 1 名权威排名识别冠军；若无唯一 ACTIVE 玩家（如无人获胜终局），快路径返回 `hasChampion: false`，两通道展示严格一致。
+   - 修复 `canPlayAgain` 状态：仅在 `FINISHED` 或 `LOBBY` 且为房主时返回 `true`，`IN_GAME` 期间严格返回 `false`，杜绝向服务端发起必定被拒的开局命令。
+
+6. **凭证安全防护边界**：
+   - 仅在 HTTP 请求路径直接以 Room 为目标（`/api/v1/rooms/:roomId...`）且返回 `AUTH_FAILED` / `INVITE_EXPIRED` 时经 `clearIfMatches` 清除 Token。
+   - 跨资源查询的 `GET /api/v1/tournaments/:tournamentId/result` 即使被服务端拒绝，也绝不误清本地有效 Room Token，彻底防范恶意错配 URL 导致玩家丢失匿名凭证。
+
+---
+
+## 审查意见复核处置清单（Review Findings Ledger）
+
+| 编号 | 级别 | 审查意见摘要 | 处置依据与实现 | 验证用例 |
+| --- | --- | --- | --- | --- |
+| F-1 | P1 | 无冠军快路径会虚构冠军（GameSnapshot 无 championPlayerId 时误将 placement.from===1 当冠军） | 新增 `snapshotChampionPlayerId`，严格校验唯一 ACTIVE 玩家且排名为 1-1（displayOrder=1）；无 ACTIVE 玩家时两通道一致呈现“无冠军” | `result-view.test.ts`（tied 终局 hasChampion===false 断言） |
+| F-2 | P1 | displayOrder 不是全局排序键（仅按 displayOrder 排序会把并列组打乱） | 排序统一采用 `(left.placement.from - right.placement.from) || (left.displayOrder - right.displayOrder)` | `result-view.test.ts`（并列与后续名次穿插排序断言） |
+| F-3 | P1 | 可由错配 URL 清除有效房间凭证（/room/A/result/B-tournament 导致清除 A 的 Token） | `HttpTransport` 增加 `isDirectRoomResource` 防护门禁，非 `/api/v1/rooms/:roomId` 路径收到 AUTH_FAILED 不清 Room Token | `http-transport.test.ts`（tournament URL AUTH_FAILED 保护 Room Token 断言） |
+| F-4 | P1 | 新标签页直接访问用例必然缺少凭证（sessionStorage 跨 tab 隔离导致 newPage 失败） | E2E 改为在原 Tab 验证同会话直接导航，新独立 context 验证未认证安全拦截，Bob 真实 context 验证下一轮后旧赛果稳定隔离 | `tests/e2e/real/result-recovery.spec.ts` |
+| F-5 | P2 | canPlayAgain 在 IN_GAME 时仍返回 true | `canPlayAgain` 限制为 `roomStatus === "FINISHED" || roomStatus === "LOBBY"` | `result-view.test.ts`（IN_GAME 返回 false） |
+| F-6 | P2 | 文档完成定义未闭合（protocol/README、tests/e2e/README 与 docs/06 缺漏） | 同步更新 `apps/web/src/protocol/README.md`、`tests/e2e/README.md`、`docs/06-testing-strategy.md` 并更新工程索引 | 本文档及相关 README |
 
 ---
 
@@ -40,15 +59,15 @@
 
 | 验证项 | 验证命令 / 测试文件 | 结果 |
 | --- | --- | --- |
-| HttpTransport 请求、Schema 校验与 Token 清理竞态保护 | `pnpm exec vitest run --project unit apps/web/src/protocol/http-transport.test.ts` | 13 项全部通过 |
+| HttpTransport 请求、Schema 校验、直接资源判定与 Token 清理竞态保护 | `pnpm exec vitest run --project unit apps/web/src/protocol/http-transport.test.ts` | 14 项全部通过 |
 | PlayerTokenStore `clearIfMatches` 原子校验 | `pnpm exec vitest run --project unit apps/web/src/protocol/token-store.test.ts` | 8 项全部通过 |
-| ResultView 纯展示模型（快照、权威结果、并列、无冠军终局） | `pnpm exec vitest run --project unit apps/web/src/features/result/result-view.test.ts` | 10 项全部通过 |
+| ResultView 纯展示模型（快照、权威结果、并列排序、无冠军终局、状态准入） | `pnpm exec vitest run --project unit apps/web/src/features/result/result-view.test.ts` | 12 项全部通过 |
 | ResultFlow 数据源优先级、HTTP 恢复、多轮缓存隔离与 Abort 竞态 | `pnpm exec vitest run --project unit apps/web/src/features/result/result-flow.test.ts` | 5 项全部通过 |
-| 仓库全量单元测试套件 | `pnpm test:unit` | 85 文件、859 项全部通过 |
+| 仓库全量单元测试套件 | `pnpm test:unit` | 85 文件、862 项全部通过 |
 | 全局代码类型检查 | `pnpm typecheck` | 全部包与测试通过，0 errors |
 | 全局代码风格检查 | `pnpm lint` | 通过，无新增警告 |
 | Next.js 与 Monorepo 生产构建 | `pnpm build` | 4 个 Package 全部构建成功 |
-| 真实链路 Playwright E2E 验证（刷新、直接访问、新轮共存、未授权拦截、移动视口） | `tests/e2e/real/result-recovery.spec.ts` | 已就绪 |
+| 真实链路 Playwright E2E 语法与场景规范 | `tests/e2e/real/result-recovery.spec.ts` | 已更新并通过静态检查 |
 | Git 差异规范检查 | `git diff --check` | 通过 |
 
 ---
@@ -57,4 +76,4 @@
 
 - 本任务在独立工作区 `C:\Users\34026\Texas-Holdem-TEX-55` 完成，新建分支 `feat/TEX-55-tournament-results-refresh-and-direct-access`。
 - 遵循用户指令：**未执行 `git push`**。
-- 文档同步：已同步更新 `apps/web/src/features/result/README.md`、`apps/web/README.md`、`docs/05-frontend-spec.md` 与本验收记录。
+- 文档同步：已同步更新 `apps/web/src/features/result/README.md`、`apps/web/README.md`、`apps/web/src/protocol/README.md`、`tests/e2e/README.md`、`docs/06-testing-strategy.md`、`docs/05-frontend-spec.md`、`docs/03-engineering/README.md` 与本验收记录。

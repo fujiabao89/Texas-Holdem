@@ -167,8 +167,13 @@ export class HttpTransport {
     const error = ErrorEnvelopeSchema.safeParse(payload);
     if (error.success) {
       this.diagnostic({ method, path, status: response.status, code: error.data.error.code });
+      const isDirectRoomResource =
+        options.roomId !== undefined &&
+        (path === `/api/v1/rooms/${encodeURIComponent(options.roomId)}` ||
+          path.startsWith(`/api/v1/rooms/${encodeURIComponent(options.roomId)}/`));
       if (
         (error.data.error.code === "AUTH_FAILED" || error.data.error.code === "INVITE_EXPIRED") &&
+        isDirectRoomResource &&
         options.roomId !== undefined &&
         token !== null
       ) {

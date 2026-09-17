@@ -230,10 +230,30 @@ describe("HttpTransport hand history endpoints", () => {
 
     const result = await transport.getTournamentResult("tournament-1", "room-1");
     expect(result.ok).toBe(false);
+    // Crucial protection against mismatched/malicious tournament URLs: does NOT clear room token!
+    expect(tokenStore.get("room-1")).toBe(TOKEN);
+  });
+
+  it("clears token on AUTH_FAILED when request directly targets the room resource", async () => {
+    const tokenStore = new PlayerTokenStore();
+    tokenStore.save("room-1", TOKEN, "player-1");
+    const transport = new HttpTransport({
+      apiBaseUrl: "https://example.test",
+      tokenStore,
+      createUuid: () => UUID,
+      fetchFn: async () => new Response(
+        JSON.stringify({ error: { code: "AUTH_FAILED", message: "token invalid", retryable: false, traceId: "t-1" } }),
+        { status: 401 },
+      ),
+    });
+
+    const result = await transport.startTournament("room-1", { expectedRoomRevision: "1" });
+    expect(result.ok).toBe(false);
+    // Direct room operation rejects token: clears room token
     expect(tokenStore.get("room-1")).toBeNull();
   });
 
-  it("does not clear token on AUTH_FAILED if token was updated concurrently", async () => {
+  it("does not clear token on direct room AUTH_FAILED if token was updated concurrently", async () => {
     const tokenStore = new PlayerTokenStore();
     tokenStore.save("room-1", TOKEN, "player-1");
     const transport = new HttpTransport({
@@ -250,7 +270,7 @@ describe("HttpTransport hand history endpoints", () => {
       },
     });
 
-    const result = await transport.getTournamentResult("tournament-1", "room-1");
+    const result = await transport.startTournament("room-1", { expectedRoomRevision: "1" });
     expect(result.ok).toBe(false);
     // Preserves the new token!
     expect(tokenStore.get("room-1")).toBe("new-updated-token-123");

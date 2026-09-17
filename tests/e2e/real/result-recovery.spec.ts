@@ -74,12 +74,18 @@ test.describe("TEX-55 赛果页刷新与直接访问", () => {
     // 2. 推进比赛直至结束
     await driveTournamentToFinish([page, bob]);
     await expect(page.getByText("比赛已结束")).toBeVisible();
+    await expect(bob.getByText("比赛已结束")).toBeVisible();
 
     // 3. 从牌桌跳转至赛果页（内存快照展示）
     const viewResult = page.getByRole("link", { name: "查看比赛结果" });
     await expect(viewResult).toBeVisible();
     await viewResult.click();
     await expect(page.getByRole("heading", { name: "比赛结果" })).toBeVisible();
+
+    const bobViewResult = bob.getByRole("link", { name: "查看比赛结果" });
+    await expect(bobViewResult).toBeVisible();
+    await bobViewResult.click();
+    await expect(bob.getByRole("heading", { name: "比赛结果" })).toBeVisible();
 
     const resultUrl = page.url();
     const tournamentId = resultUrl.split("/").pop() ?? "";
@@ -104,13 +110,13 @@ test.describe("TEX-55 赛果页刷新与直接访问", () => {
     const reloadedChampion = await page.locator('section[aria-label="冠军"] p').nth(1).textContent();
     expect(reloadedChampion).toBe(championText);
 
-    // 5. 路径验证二：复制 URL 在同 context 新标签页直接访问（Direct Access）
-    const newPage = await page.context().newPage();
-    await newPage.goto(resultUrl);
-    await expect(newPage.getByRole("heading", { name: "比赛结果" })).toBeVisible({ timeout: 30_000 });
-    await expect(newPage.getByRole("table").locator("tbody tr")).toHaveCount(2);
-    expect(await sumFinalChips(newPage)).toBe(40);
-    const directAccessChampion = await newPage.locator('section[aria-label="冠军"] p').nth(1).textContent();
+    // 5. 路径验证二：在已持有房间会话的标签页中，直接输入/跳转 URL 访问（Direct Navigation）
+    await page.goto("/join");
+    await page.goto(resultUrl);
+    await expect(page.getByRole("heading", { name: "比赛结果" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(2);
+    expect(await sumFinalChips(page)).toBe(40);
+    const directAccessChampion = await page.locator('section[aria-label="冠军"] p').nth(1).textContent();
     expect(directAccessChampion).toBe(championText);
 
     // 6. 路径验证三：无凭证 context 直接访问安全阻断
@@ -129,19 +135,18 @@ test.describe("TEX-55 赛果页刷新与直接访问", () => {
     await expect(page).toHaveURL(new RegExp(`/room/${roomId}/table$`), { timeout: 30_000 });
     expect(await countTournamentsForRoom(roomId)).toBe(2);
 
-    // 新标签页 newPage 依然停留在第一场比赛赛果页，验证旧赛果未被破坏
-    await expect(newPage.getByRole("heading", { name: "比赛结果" })).toBeVisible();
-    await expect(newPage.getByRole("table").locator("tbody tr")).toHaveCount(2);
-    expect(await sumFinalChips(newPage)).toBe(40);
+    // 玩家乙页面 bob 依然停留在第一场比赛赛果页，验证旧赛果未被破坏
+    await expect(bob.getByRole("heading", { name: "比赛结果" })).toBeVisible();
+    await expect(bob.getByRole("table").locator("tbody tr")).toHaveCount(2);
+    expect(await sumFinalChips(bob)).toBe(40);
 
-    // 再次在 newPage 刷新旧赛果页面，验证依然能从 HTTP 读出第一场赛果，不被进行中的第二场覆盖
-    await newPage.reload();
-    await expect(newPage.getByRole("heading", { name: "比赛结果" })).toBeVisible({ timeout: 30_000 });
-    await expect(newPage.getByRole("table").locator("tbody tr")).toHaveCount(2);
-    expect(await sumFinalChips(newPage)).toBe(40);
-    expect(await newPage.locator('section[aria-label="冠军"] p').nth(1).textContent()).toBe(championText);
+    // 再次在 bob 页面刷新旧赛果页面，验证依然能从 HTTP 读出第一场赛果，不被进行中的第二场覆盖
+    await bob.reload();
+    await expect(bob.getByRole("heading", { name: "比赛结果" })).toBeVisible({ timeout: 30_000 });
+    await expect(bob.getByRole("table").locator("tbody tr")).toHaveCount(2);
+    expect(await sumFinalChips(bob)).toBe(40);
+    expect(await bob.locator('section[aria-label="冠军"] p').nth(1).textContent()).toBe(championText);
 
-    await newPage.close();
     await bobContext.close();
   });
 

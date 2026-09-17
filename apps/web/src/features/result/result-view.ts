@@ -23,39 +23,58 @@ export interface ChampionView {
   readonly finalChips: number;
 }
 
-/** Rows in the server-given `displayOrder`; UI never re-sorts placements. */
+function sortRankings<T extends { readonly placement: { readonly from: number }; readonly displayOrder: number }>(
+  rankings: readonly T[],
+): T[] {
+  return [...rankings].sort(
+    (left, right) => left.placement.from - right.placement.from || left.displayOrder - right.displayOrder,
+  );
+}
+
+function snapshotChampionPlayerId(snapshot: GameSnapshot): string | null {
+  const activePlayers = snapshot.players.filter((p) => p.pokerStatus === "ACTIVE");
+  if (activePlayers.length !== 1) return null;
+  const candidate = activePlayers[0]!;
+  const isFirstRanked = snapshot.rankings.some(
+    (ranking) =>
+      ranking.playerId === candidate.playerId &&
+      ranking.placement.from === 1 &&
+      ranking.placement.to === 1 &&
+      ranking.displayOrder === 1,
+  );
+  return isFirstRanked ? candidate.playerId : null;
+}
+
+/** Rows in server-authoritative placement and display order; UI never re-sorts placements. */
 export function resultRows(source: GameSnapshot | TournamentResult): readonly ResultRow[] {
   if ("championPlayerId" in source) {
     const players = new Map(source.players.map((player) => [player.playerId, player]));
-    return [...source.rankings]
-      .sort((left, right) => left.displayOrder - right.displayOrder)
-      .map((ranking) => {
-        const player = players.get(ranking.playerId);
-        return {
-          playerId: ranking.playerId,
-          displayName: player?.displayName ?? ranking.playerId,
-          place: ranking.placement.from,
-          tied: ranking.placement.from !== ranking.placement.to,
-          champion: source.championPlayerId !== null && ranking.playerId === source.championPlayerId,
-          finalChips: player?.finalStack ?? 0,
-        };
-      });
-  }
-
-  const players = new Map(source.players.map((player) => [player.playerId, player]));
-  return [...source.rankings]
-    .sort((left, right) => left.displayOrder - right.displayOrder)
-    .map((ranking) => {
+    return sortRankings(source.rankings).map((ranking) => {
       const player = players.get(ranking.playerId);
       return {
         playerId: ranking.playerId,
         displayName: player?.displayName ?? ranking.playerId,
         place: ranking.placement.from,
         tied: ranking.placement.from !== ranking.placement.to,
-        champion: ranking.placement.from === 1,
-        finalChips: player?.stack ?? 0,
+        champion: source.championPlayerId !== null && ranking.playerId === source.championPlayerId,
+        finalChips: player?.finalStack ?? 0,
       };
     });
+  }
+
+  const players = new Map(source.players.map((player) => [player.playerId, player]));
+  const championPlayerId = snapshotChampionPlayerId(source);
+  return sortRankings(source.rankings).map((ranking) => {
+    const player = players.get(ranking.playerId);
+    return {
+      playerId: ranking.playerId,
+      displayName: player?.displayName ?? ranking.playerId,
+      place: ranking.placement.from,
+      tied: ranking.placement.from !== ranking.placement.to,
+      champion: championPlayerId !== null && ranking.playerId === championPlayerId,
+      finalChips: player?.stack ?? 0,
+    };
+  });
 }
 
 /** Extracts champion information, respecting championless finishes (ADR-0002). */
@@ -73,14 +92,16 @@ export function resultChampion(source: GameSnapshot | TournamentResult): Champio
     };
   }
 
-  const rows = resultRows(source);
-  const championRow = rows.find((r) => r.champion);
-  if (!championRow) return { hasChampion: false, playerId: null, displayName: null, finalChips: 0 };
+  const championPlayerId = snapshotChampionPlayerId(source);
+  if (championPlayerId === null) {
+    return { hasChampion: false, playerId: null, displayName: null, finalChips: 0 };
+  }
+  const player = source.players.find((p) => p.playerId === championPlayerId);
   return {
     hasChampion: true,
-    playerId: championRow.playerId,
-    displayName: championRow.displayName,
-    finalChips: championRow.finalChips,
+    playerId: championPlayerId,
+    displayName: player?.displayName ?? championPlayerId,
+    finalChips: player?.stack ?? 0,
   };
 }
 
@@ -89,9 +110,9 @@ export function resultAvailableFor(game: GameSnapshot | null, tournamentId: stri
   return game !== null && game.tournamentId === tournamentId && game.tournamentStatus === "FINISHED";
 }
 
-/** The room is playable for "play again" only through the host's start flow. */
+/** The room is playable for "play again" only through the host's start flow when finished or in lobby. */
 export function canPlayAgain(roomStatus: string, isHost: boolean): boolean {
-  return isHost && roomStatus !== "CLOSED";
+  return isHost && (roomStatus === "FINISHED" || roomStatus === "LOBBY");
 }
 
 /**
