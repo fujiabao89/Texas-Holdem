@@ -49,7 +49,7 @@ const PlayerPublicViewSchema = z.strictObject({
   hasHoleCards: z.boolean(),
   revealedCards: z.array(CardSchema).max(2),
 });
-const RankingViewSchema = z.strictObject({
+export const RankingViewSchema = z.strictObject({
   playerId: OpaqueIdSchema,
   placement: z.strictObject({ from: z.number().int().min(1), to: z.number().int().min(1) }).refine((value) => value.from <= value.to),
   displayOrder: z.number().int().min(1),
@@ -70,6 +70,8 @@ const PlayerViewShape = {
   handPhase: HandPhaseSchema.nullable(),
   blindLevel: BlindLevelViewSchema,
   dealerSeat: SeatSchema.nullable(),
+  smallBlindSeat: SeatSchema.nullable(),
+  bigBlindSeat: SeatSchema.nullable(),
   board: z.array(CardSchema).max(5),
   pots: z.array(z.strictObject({ amount: SafeIntegerSchema, eligiblePlayerIds: z.array(OpaqueIdSchema).min(1).max(10) })).max(10),
   currentActorPlayerId: OpaqueIdSchema.nullable(),
@@ -109,6 +111,8 @@ export const PlayerViewPatchSchema = z.strictObject({
   handPhase: HandPhaseSchema.nullable().optional(),
   blindLevel: BlindLevelViewSchema.optional(),
   dealerSeat: SeatSchema.nullable().optional(),
+  smallBlindSeat: SeatSchema.nullable().optional(),
+  bigBlindSeat: SeatSchema.nullable().optional(),
   board: z.array(CardSchema).max(5).optional(),
   pots: z.array(z.strictObject({ amount: SafeIntegerSchema, eligiblePlayerIds: z.array(OpaqueIdSchema).min(1).max(10) })).max(10).optional(),
   currentActorPlayerId: OpaqueIdSchema.nullable().optional(),

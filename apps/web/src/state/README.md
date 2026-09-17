@@ -11,3 +11,5 @@ TEX-26 额外提供只读 `subscribeAcceptedGameEvents`（仅在连续 Patch 已
 连续 `GAME_EVENT` 还必须与 Patch 前后手局身份一致；不一致时不更新 canonical，而是进入 `INVALID_EVENT` resync，防止动画 Event 身份与权威投影分叉。
 
 TEX-26/TEX-27 合并后，每个合法 Event 只提交一次 canonical、Clock 与 `currentHandEvents`，提交后才通知动画；Snapshot/重连先清空历史缓冲，再发出 presentation 屏障。`projection-store.test.ts` 联合断言这两种消费者的顺序、幂等和新手局身份切换。
+
+TEX-53：`projection-store.test.ts` 覆盖无需 HAND_STARTED 历史即可从 INITIAL/RECONNECT/RESYNC/FAST_FORWARD 还原权威 D/SB/BB，支持 null 清空以及跨手 patch 原子替换。字段直接消费共享协议，不在客户端推算盲注位置。

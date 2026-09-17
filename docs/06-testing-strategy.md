@@ -1,5 +1,11 @@
 # 06 · 测试方案与发布门槛（`tests/`）
 
+TEX-52 生命周期专项：`tournament-lifecycle.test.ts` 的 100 轮终局/卸载/失败重试，`rooms/runtime-lifecycle.test.ts` 的 24 房间 × 3 轮（72 场）验证重型对象、Writer 队列、连接 epoch、timer 与 10 分钟墓碑全部回到基线；使用 Fake Clock，记录 heap/RSS，不依赖真实 sleep 或偶然 GC。此 bounded soak 不替代 §10 的正式长时容量/发布 Soak。终局保留期间验证旧成功动作可重放、新动作拒绝、最终 Snapshot 可取，卸载后 Hand History 仍经数据库侧授权读取，CLOSED 不再授权。
+
+生命周期指标口径：`texas_active_tournaments` 仅 RUNNING；`texas_registered_tournaments` / `texas_finished_retained_tournaments` / `texas_frozen_tournaments` 分离总注册/终局保留/冻结。Room 使用 `texas_active_rooms`、`texas_registered_rooms`、`texas_closed_room_tombstones`；Writer 驻留队列用 `texas_persistence_registered_queues`，均无高基数标签。
+
+TEX-51 恢复专项：`src/persistence/room-recovery.test.ts` 验证身份/配置/检查点交叉一致性、缺房/损坏隔离、重复屏障及失败撤销；真实 PostgreSQL `tests/integration/room-recovery.test.ts` 验证一致读取和 revision 号段；`room-restart.test.ts` 使用生产入口子进程与两个真实 WS 客户端，整手提交后 SIGKILL、原库重启、原 token 认证并再完成一手，核对 Host、邀请码、筹码、Game sequence 与私有投影。缺测试数据库按现有约定跳过，跳过不得作为 TEX-51 完成证据。
+
 > 状态：草稿（实施基线 v0.5；测试基础设施已按 TEX-12 落地，持久化 Integration 已按 TEX-18 落地，Headless Simulator 长跑已按 TEX-16 落地，其余业务测试随对应任务回填）
 > 规划核对：2026-08-21（TEX-12 基线）；2026-08-23（TEX-18 持久化 Integration 落地）；2026-08-24（TEX-16 Headless Simulator 落地）——其余章节在对应任务落地前仍为**设计意图**
 > 权威范围：本文是测试体系的唯一权威来源——测试分层与归属、确定性回归集、P0 必测范围矩阵、Invariant 自动断言、Headless Simulator、联机/重连/投影安全测试范围、P1 AI 测试、UI E2E 与人工验收组织、性能与监控指标、CI 分层与门禁、缺陷分级处理与发布门槛。范围之外的事实见对应文档：规则语义 [01](./01-engine-spec.md)、协议与错误码 [02](./02-protocol-spec.md)、持久化 [03](./03-data-model.md)、服务端运行时行为 [04](./04-game-server-architecture.md)、前端交互与验收界面 [05](./05-frontend-spec.md)。
@@ -401,3 +407,11 @@ Performance CI 落地事实（2026-09-05，TEX-29）：`ci.yml` 的 `perf-smoke`
 《总规划》v1.0 新增、docx 未覆盖的测试相关决策（本文已吸收）：不限时模式测试项（§3.1）；超时竞争裁决四步语义可重放、可测试（§3.2）；无真人关房 `ABANDONED_NO_HUMAN`（§4.2，对应 §3.2 测试项）；P0 开局 ≥2 真人且房主不能绕过 Ready（§2.1，对应 §3.2 Ready/开局锁定测试）。
 
 规划书是产品意图、非实现事实：本文所有实现类陈述在代码落地前一律视为设计意图（见文首标记）。
+
+TEX-53 增加公开 D/SB/BB 契约回归：协议必填/nullable/范围与 v3 拒绝；2/3/6/10 人、非连续座位、撤回、真实全下淘汰/观战、三手庄位移动与每事件 apply 不变量；INITIAL/RECONNECT/RESYNC/FAST_FORWARD 无历史快照恢复；真实 HTTP/WS 重连、GAP 请求与开手事件对照；生产 Bundle→PostgreSQL→恢复→下一手盲注与 wire 水位+1。覆盖文件、命令与结果见 [TEX-53 验收记录](./03-engineering/TEX-53-acceptance.md)。
+
+## TEX-54：持久化赛果验收
+
+协议单元测试覆盖严格嵌套白名单、并列组/冠军/撤回语义、未知字段和不安全筹码。真实 PostgreSQL 套件从 TournamentExecutor 生成生产 Commit Bundle，经原子仓储写入后从 result GET 读取，覆盖冠军、同手并列、手内主动退出、无冠军、Room 非参赛成员、多 Tournament 隔离、有效淘汰观战身份、缺失/错误/LEFT/CLOSED/撤销凭证、到期读取、11 类损坏、私密字段隔离和全局限流 no-store。
+
+重建 app 时不提供 TournamentManager 且 RoomManager 为空，证明结果不依赖旧内存。读取仓储故障单元测试检查安全500、日志不包含原始异常，其他HTTP端点继续可用。验收证据与现存手间写入/旧live筹码投影限制见 [TEX-54验收记录](./03-engineering/TEX-54-acceptance.md)，不能将未覆盖的旧写入路径宣称为已修复。

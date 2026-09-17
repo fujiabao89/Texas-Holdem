@@ -456,6 +456,7 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 - 投影必须**从服务端源头删除**未授权信息，严禁"先发送再用 CSS 隐藏"（《总规划》附录 B 红线 2）。
 - 验收：字段级测试——任何非授权 Payload 不含其他底牌、Deck、Burn Card 或服务端私密字段（[06](./06-testing-strategy.md) §7；《总规划》§9.1；《区块6-10 v0.2》§9.13）。
 - 投影器是只读组件：从 GameState 读、产出投递对象，不做状态变更（§4 原则）。
+- TEX-53：D/SB/BB 从当前手读取，SB/BB 无手为 null；逐事件覆盖的 hand 同时决定庄位，避免 Tournament 已推进时把下一手庄位写入上一手 patch。Snapshot reason 与恢复都复用同一投影，契约见 02 §9.2。
 
 ## 12. 持久化编排
 
@@ -464,6 +465,7 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 - 唯一写者：只有 game-server 连接 Postgres（[03](./03-data-model.md) §9）。
 - Tournament 执行器只在内存原子提交之后，把不可变持久化任务追加给 Persistence Writer；Action 热路径不等待 DB。每桌写入顺序与 event `sequence` 一致（[03](./03-data-model.md) §7.1）。
 - P0 以整手为原子提交单元：手末把 `hands` 行、该手全部 `hand_events`、结果更新与 `game_snapshots` 组成不可变 Commit Bundle，在单个 DB 事务中提交；Snapshot.sequence 必须等于该手最后一个事件。元数据状态转换使用独立的幂等写任务（[03](./03-data-model.md) §4.2/§7）。
+- TEX-53 真实恢复核对：生产 Bundle 的 `snapshot.state` 是 canonical JSON 字符串，jsonb 可保留字符串值；Drizzle jsonb 映射会解析字符串值，RecoveryRepository 返回状态对象；恢复编排对该对象校验版本、结构、Time Bank、checksum 与序列。TEX-53 真实 PostgreSQL 回归覆盖 SQL 原形、仓储对象与恢复后下一手投影，保持现有读取、Writer 与持久化 schemaVersion。
 - 每个写任务有稳定幂等键（至少包含 `tournamentId + handNumber/transition + targetSequence`）；超时或连接中断后允许安全重试，不得插入重复 Hand/Event 或倒序覆盖较新状态。
 - 无真人关房时持久化 Hand History 与断开原因（§6.5；《总规划》§4.2）。
 
@@ -481,6 +483,12 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 - 因此“DB 失败不锁桌”的精确定义是：单次或短暂写失败不阻塞 Action、不回滚当前 Hand；资源安全硬限允许在 Hand 边界受控暂停。不得以无限内存队列实现表面上的永不暂停。
 
 ## 13. 进程生命周期与崩溃恢复
+
+启动恢复与运行期鉴权必须使用同一当前/保留 HMAC 密钥解析器；凭证 key ID 在解析器中可用即可恢复，不要求等于当前签发 key。未知/已移除 key 仍隔离。已提交终局根直接注册 FINISHED 只读 Tournament Runtime，保留快照 handId/sequence，Room `activeTournamentId=null`；不执行 START、不重发终局事件、Bundle 或 Room 迁移。该 Runtime 仅安排 §13.2 的保留到期计时，不启动行动/升盲/断线宽限计时。保留期内原身份可用 REQUEST_SNAPSHOT 读取最终视图，到期后按既定持久化接口读取。
+
+**TEX-51 完整启动屏障**：先以一致读取重建 Room/ACTIVE 成员/Host/邀请码/凭证，再验证最新 Tournament 的锁定配置、参赛者与手末根。验证成功后预留新 Room revision 号段、完成必要的水位回退/状态协调，先注册 Room，再等待进行中 Tournament 的恢复 START 或终局只读注册成功，全部完成才监听。未知 key ID、缺 Host/成员、配置/座位冲突或无可验证根隔离整个 Room；其他 Room 正常服务。仅输出 ID 和固定诊断码。重复屏障调用共享 Promise；已注册 Room 不被覆盖。数据库整体读取失败则拒绝监听。
+
+持久 Host 必须仍为 ACTIVE HUMAN；不猜选新 Host。全部连接恢复 DISCONNECTED/未准备；Lobby 座位归空，比赛座位/状态从锁定成员与已提交根重建。最新场由最大 tournamentNo 唯一选定，较旧 IN_GAME 场仅诊断不注册；Room FINISHED 与最新 IN_GAME 可由异步终局提交延迟造成，按验证根协调控制面状态。终局根不重开发牌。完整裁决和 migration/号段边界见 [ADR-0003](./adr/0003-tex-51-room-recovery-authority.md)。
 
 - **启动屏障**：恢复完成前不接受创建/加入/Action。按 `rooms`/`tournaments` 元数据定位活跃比赛，只选择 [03](./03-data-model.md) §4.3 定义的最新“整手已完整提交”Commit Bundle；校验版本、checksum、事件连续性与 Snapshot.sequence，孤立 Snapshot、部分事务或事件缺口一律拒绝并回退到上一个可验证检查点。
 - **进行中 Hand 崩溃**：P0 不回放 Snapshot 之后未完整提交的 Hand Events。恢复到最近手末 Snapshot 后，丢弃崩溃 Hand 的内存牌面、Action、Timer 与未提交事件，再以新的随机结果开始下一 Hand；该丢弃 Hand 不进入 Hand History。若首手尚无手末 Snapshot，则从已持久化的 Tournament 配置和锁定参与者重新初始化比赛。
@@ -500,7 +508,17 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 
 收到第二次终止信号只缩短到当前 Flush 阶段，不绕过 DB 事务原子性。Liveness 在进程实际退出前保持成功，Readiness 从步骤 1 起保持失败。
 
+`createRoom` 一旦已准入并进入 Room+Host 持久化事务，关停会等待它完成运行时注册和凭证响应；只有尚未准入的创建被拒绝。随后再统一卸载运行时，避免 DB 已提交但调用方未取得 Token 的孤儿 Room。
+
 ### 13.2 终局内存卸载
+
+**TEX-52 已实施**：TournamentExecutor 的终局通知只在最后事件/Bundle 输出并退出 drain 后发一次，保留期内 Action/TimeBank 先查成功幂等结果、新命令拒绝；所有旧 timer generation 失效。Manager 按 executor identity 安排 10 分钟保留，旧回调不能删除新赛，`activeTournamentIds` 仅 RUNNING，注册/终局保留/冻结分别观测。Gateway 只允许该 Tournament 的原参赛者读取保留期最终 Snapshot 与重放其原动作（不要求比赛仍是 activeTournamentId）；后来加入同 Room 的成员、跨房间身份或已撤销身份均拒绝。事件与时钟广播只跟随 Room 当前 `activeTournamentId`，不会把旧赛实时流转发给新一场成员。
+
+Room 快照广播隔离每个观察者的异常，必须继续其他连接的同步撤销并完成本地清理；诊断只包含 Room ID。已提交的控制面状态不因发送/观察者故障回滚。
+
+CLOSED 先广播最后 RoomSnapshot 并同步撤销邀请码/epoch/订阅/心跳；该连接在途 Lobby 命令写完回执才关闭 Socket。Room 队列拒绝后续任务，完成已在执行的事务后卸载本地对象；下游释放失败仍报告错误，不让本地已关闭 Room 无限驻留。墓碑只保存三字段，由独立作用域 timer 到期删除，迟到请求使用既有 `ROOM_NOT_FOUND`。HTTP/WS requestId 缓存归属 Room，在关闭时释放；in-flight 请求共享原执行结果，不能因清缓存再执行或回填已关闭 Room。没有提前 TTL/LRU。
+
+Writer 在 enqueue 边界复制 Bundle（保留 Buffer/Date/BigInt），Runtime 卸载只标记其队列退休，pending/in-flight/隔离项仍保留，成功排空才回收。关停 latch 不因背压回落而重开入口；手间等待结束后先停止入口和 Runtime，再执行最后 flush，最后停 Writer 调度。历史继续走数据库侧 ACTIVE Room 凭证与投影校验，Runtime 卸载不延长身份有效期，也不删除数据库历史。
 
 - Tournament 进入 `FINISHED`/`ABANDONED_NO_HUMAN` 后立即取消 Timer/AI、拒绝新动作，并把最终状态复制进不可变持久化任务。旧 Tournament Runtime 转只读保留 10 分钟，供已连接客户端完成最终 Snapshot/事件同步；之后即使 DB 重试仍在进行也可卸载，因为 Writer 持有独立 Bundle。
 - Room `FINISHED → LOBBY` 后可立即创建新 Tournament；旧 Runtime 的只读保留不能占据“活跃 Tournament”名额，也不能接收新 Room 的命令。
@@ -644,3 +662,9 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 《总规划》v1.0 新增、docx 未覆盖的决策（本文已吸收）：Action 与超时竞争的四步裁决（§3.2）；`ABANDONED_NO_HUMAN`、`CLOSED` 后邀请码立即失效、停 AI 与计时（§4.2）；断线满 10 分钟 `EXIT_PENDING`（§4.1）；不限时强制禁用 Time Bank（§3.1）；P0 开局 ≥2 真人、房主不能绕过 Ready 强制开始（§2.1）；房主转移规则（§4.2）。
 
 规划书是产品意图、非实现事实：本文所有实现类陈述在代码落地前一律视为设计意图（见文首标记）。
+
+## TEX-54：持久化赛果入口
+
+生产 app 装配独立 `TournamentResultReadRepository` 与 result GET 路由。路由解析 Bearer 并通过数据库 Room 成员 HMAC 凭证授权；仓储以只读一致性事务读取终局来源，白名单投影校验后经共享 HTTP Schema 返回。Runtime 卸载、进程重启、同 Room 启动后续比赛均不影响旧场赛果，前提是身份与保留期仍有效。读取故障映射安全 ErrorEnvelope，无运行时命令、Writer 回退或控制面写入。
+
+no-store 在请求 hook 中设置，覆盖限流和验证失败；全局 per-IP 限流与现有 HTTP 指标适用。服务端不记录请求、响应或异常本体，访问代理也必须剔除 Authorization 与 query。具体授权、错误与数据完整性以 02/03 的 TEX-54 契约为准。

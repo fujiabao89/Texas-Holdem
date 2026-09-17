@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | `pnpm test:unit` | Unit | `apps/*/src`、`apps/*/tests/unit`、`packages/*/src`、`tests/support`、`tests/meta` | Vitest（根 `vitest.config.ts`） |
 | `pnpm test:rules` | Poker Rule | `packages/poker-engine/tests` | Vitest |
-| `pnpm test:integration` | Integration | `apps/game-server/tests/integration` | Vitest |
+| `pnpm test:integration` | Integration | `apps/game-server/tests/integration`（含 TEX-51 真实 PostgreSQL + 生产进程崩溃重启 + 双 WS 原令牌重连） | Vitest |
 | `pnpm test:ws` | Multiplayer/WS | `apps/game-server/tests/ws`、`tests/clients` | Vitest |
 | `pnpm test:e2e` | E2E（mock WS 投影注入） | `tests/e2e`（不含 `real/`） | Playwright（[tests/e2e/README.md](./e2e/README.md)） |
 | `pnpm test:e2e:real` | E2E（真实链路） | `tests/e2e/real` | Playwright（真实浏览器 → 真实 web/game-server → 真实 PostgreSQL；需 `TEX_TEST_DATABASE_URL`，缺失时启动即失败并提示设置指引，不静默降级/不跳过） |

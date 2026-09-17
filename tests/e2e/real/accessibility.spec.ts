@@ -38,6 +38,8 @@ async function pressOn(
 test.describe("真实链路无障碍", () => {
   test("纯键盘主流程与关键页面 axe 扫描 @key", async ({ browser, page, diagnostics }) => {
     test.setTimeout(240_000);
+    // 固定在动画终态，避免 axe 因机器速度不同读到 opacity 过渡中的瞬时对比度。
+    await page.emulateMedia({ reducedMotion: "reduce" });
     // 预期内的 WS 连接中断噪声（导航/关闭时 teardown），非产品缺陷（Firefox/WebKit）。
     diagnostics.allow(/can't establish a connection/);
     diagnostics.allow("WebSocket is closed before the connection is established");
@@ -53,20 +55,20 @@ test.describe("真实链路无障碍", () => {
     await page.getByLabel("昵称").focus();
     await page.keyboard.type("玩家甲");
     await page.keyboard.press("Tab"); // 最大人数
-    await page.keyboard.press("Control+a");
+    await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type("2");
     await page.keyboard.press("Tab"); // 初始筹码
-    await page.keyboard.press("Control+a");
+    await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type("20");
     await page.keyboard.press("Tab"); // 小盲注（默认 50 对筹码 20 是退化配置，必须显式降低）
-    await page.keyboard.press("Control+a");
+    await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type("1");
     await page.keyboard.press("Tab"); // 大盲注
-    await page.keyboard.press("Control+a");
+    await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type("2");
-    // 跳过 行动时间/延时储备（默认值合法）。
-    for (let index = 0; index < 3; index += 1) await page.keyboard.press("Tab");
-    await page.keyboard.press("Enter"); // 创建并进入大厅
+    // 行动时间/延时储备保留默认值；直接聚焦提交按钮，避免不同浏览器把
+    // number/select 的内部控件计入不同数量的 Tab stop。
+    await pressOn(page, page.getByRole("button", { name: "创建并进入大厅" }));
     await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
 
     // Bob 纯键盘加入（join?code 预填邀请码）。
@@ -76,8 +78,7 @@ test.describe("真实链路无障碍", () => {
     await bob.goto(`/join?code=${inviteCode}`);
     await bob.getByLabel("昵称").focus();
     await bob.keyboard.type("玩家乙");
-    await bob.keyboard.press("Tab"); // 加入房间
-    await bob.keyboard.press("Enter");
+    await pressOn(bob, bob.getByRole("button", { name: "加入房间" }));
     await expect(bob.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: 30_000 });
 
     // 先等待双方连接就绪，再入座/准备：SET_READY 需经已认证 WS 提交，早于

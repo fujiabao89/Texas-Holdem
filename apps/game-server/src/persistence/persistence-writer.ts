@@ -80,6 +80,8 @@ export interface PersistenceWriterDeps {
 }
 
 export interface WriterMetrics {
+  /** 尚有 Runtime 所有者或未提交任务的 Tournament 队列数（§13.2）。 */
+  readonly queueCount: number;
   readonly level: BackpressureLevel;
   readonly items: number;
   readonly bytes: number;
@@ -103,6 +105,11 @@ export interface PersistenceWriter {
   backpressureLevel(): BackpressureLevel;
   getMetrics(): WriterMetrics;
   lastCommittedSequence(tournamentId: string): bigint | null;
+  /** Runtime 已卸载：空队列立即释放；未提交 Bundle 保留至成功排空。 */
+  releaseTournament(tournamentId: string): void;
+  queueCount(): number;
+  /** 最终 flush 后关停调度器；不丢弃未提交 Bundle，不取消正在执行的 DB 原子事务。 */
+  dispose(): void;
 }
 
 interface BundleEntry {
@@ -112,6 +119,7 @@ interface BundleEntry {
 }
 
 interface TournamentQueue {
+  released: boolean;
   pending: BundleEntry[];
   retryTimer: TimerHandle | null;
   retryAt: number;
@@ -136,6 +144,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
   };
   const random = deps.random ?? Math.random;
   const queues = new Map<string, TournamentQueue>();
+  let disposed = false;
   const inflight = new Set<string>();
   const quarantined = new Set<string>();
   const lastDbLatency = { value: null as number | null };
@@ -144,6 +153,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
   let flushing = false;
   let flushDeadline = Infinity;
   let flushResolvers: (() => void)[] = [];
+  const flushTimers = new Set<TimerHandle>();
   /** 最旧 pending bundle 的下一 soft/hard 年龄阈值定时器（挂起的 in-flight 提交也会触发 evaluateWatermark）。 */
   let ageTimer: TimerHandle | null = null;
 
@@ -151,6 +161,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     let queue = queues.get(tournamentId);
     if (queue === undefined) {
       queue = {
+        released: false,
         pending: [],
         retryTimer: null,
         retryAt: 0,
@@ -163,6 +174,21 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     return queue;
   }
 
+  function releaseIfDrained(tournamentId: string, queue: TournamentQueue): void {
+    if (!queue.released || queue.pending.length !== 0 || inflight.has(tournamentId)) return;
+    if (queues.get(tournamentId) !== queue) return;
+    if (queue.retryTimer !== null) deps.scheduler.clearTimeout(queue.retryTimer);
+    queues.delete(tournamentId);
+    quarantined.delete(tournamentId);
+  }
+
+  function releaseTournament(tournamentId: string): void {
+    const queue = queues.get(tournamentId);
+    if (queue === undefined) return;
+    queue.released = true;
+    releaseIfDrained(tournamentId, queue);
+  }
+
   function pendingTotal(): number {
     let total = 0;
     for (const queue of queues.values()) total += queue.pending.length;
@@ -173,7 +199,8 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     let oldest: number | null = null;
     for (const queue of queues.values()) {
       const head = queue.pending[0];
-      if (head !== undefined && (oldest === null || head.enqueuedAt < oldest)) oldest = head.enqueuedAt;
+      if (head !== undefined && (oldest === null || head.enqueuedAt < oldest))
+        oldest = head.enqueuedAt;
     }
     return oldest;
   }
@@ -195,7 +222,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     }
     if (next !== level) {
       level = next;
-      deps.onBackpressureChange?.(level);
+      if (!disposed) deps.onBackpressureChange?.(level);
     }
     return next;
   }
@@ -228,6 +255,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
       deps.scheduler.clearTimeout(ageTimer);
       ageTimer = null;
     }
+    if (disposed) return;
     const oldest = oldestPendingAt();
     if (oldest === null) return;
     const now = deps.clock();
@@ -250,7 +278,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
    * 避免 flush 在「有退避 timer 但无 in-flight」时空转。
    */
   function notifyStateChanged(): void {
-    if (flushing && (pendingTotal() === 0 || deps.clock() >= flushDeadline)) {
+    if (flushing && (disposed || pendingTotal() === 0 || deps.clock() >= flushDeadline)) {
       const resolvers = flushResolvers;
       flushResolvers = [];
       for (const resolve of resolvers) resolve();
@@ -263,6 +291,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     const head = queue.pending[0];
     if (head === undefined) {
       inflight.delete(tournamentId);
+      releaseIfDrained(tournamentId, queue);
       notifyStateChanged();
       scheduleAgeTimer();
       return;
@@ -293,12 +322,14 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
       queue.attempt += 1;
       queue.consecutiveFailures += 1;
       maxConsecutiveFailures = Math.max(maxConsecutiveFailures, queue.consecutiveFailures);
-      const timer = deps.scheduler.setTimeout(() => {
-        queue.retryTimer = null;
-        if (queue.pending.length > 0) kick();
-      }, delay);
-      queue.retryTimer = timer;
-      queue.retryAt = deps.clock() + delay;
+      if (!disposed) {
+        const timer = deps.scheduler.setTimeout(() => {
+          queue.retryTimer = null;
+          if (queue.pending.length > 0) kick();
+        }, delay);
+        queue.retryTimer = timer;
+        queue.retryAt = deps.clock() + delay;
+      }
       evaluateWatermark(); // 退避中任务仍占用队列 → 年龄/字节持续计入 watermark
       inflight.delete(tournamentId);
       notifyStateChanged();
@@ -316,6 +347,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     }
     evaluateWatermark();
     inflight.delete(tournamentId);
+    releaseIfDrained(tournamentId, queue);
     notifyStateChanged();
     scheduleAgeTimer();
     kick();
@@ -323,6 +355,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
 
   /** 触发可启动的 Tournament 处理；遵守并发上限与 backpressure/flush 状态。 */
   function kick(): void {
+    if (disposed) return;
     if (flushing && deps.clock() >= flushDeadline) return;
     for (const [tournamentId, queue] of queues) {
       if (inflight.size >= limits.maxConcurrent) break;
@@ -336,12 +369,14 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
   }
 
   function enqueue(bundles: readonly HandCommitBundle[]): void {
+    if (disposed) throw new Error("PersistenceWriter is disposed");
     for (const bundle of bundles) {
+      const owned = copyCommitBundle(bundle);
       const queue = queueFor(bundle.tournamentId);
       queue.pending.push({
-        bundle,
+        bundle: owned,
         enqueuedAt: deps.clock(),
-        bytes: stableStringify(bundle).length,
+        bytes: stableStringify(owned).length,
       });
     }
     evaluateWatermark();
@@ -351,13 +386,18 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
   }
 
   async function flush(timeoutMs: number = WRITER_DB_TIMEOUT_MS * 6): Promise<void> {
+    if (disposed) return;
     flushing = true;
     flushDeadline = deps.clock() + timeoutMs;
     let deadlineTimer: TimerHandle | null = null;
     try {
       // 强制忽略退避 timer：立即重试队头，直到耗尽 deadline。
       for (const [tournamentId, queue] of queues) {
-        if (queue.retryTimer !== null && queue.pending.length > 0 && !quarantined.has(tournamentId)) {
+        if (
+          queue.retryTimer !== null &&
+          queue.pending.length > 0 &&
+          !quarantined.has(tournamentId)
+        ) {
           deps.scheduler.clearTimeout(queue.retryTimer);
           queue.retryTimer = null;
           queue.retryAt = 0;
@@ -368,11 +408,15 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
       const remaining = Math.max(0, flushDeadline - deps.clock());
       // deadline 兜底：即使无任何状态推进（例如反复瞬态失败），到点也返回。
       deadlineTimer = deps.scheduler.setTimeout(() => notifyStateChanged(), remaining);
-      while (pendingTotal() > 0 && deps.clock() < flushDeadline) {
+      flushTimers.add(deadlineTimer);
+      while (!disposed && pendingTotal() > 0 && deps.clock() < flushDeadline) {
         await new Promise<void>((resolve) => flushResolvers.push(resolve));
       }
     } finally {
-      if (deadlineTimer !== null) deps.scheduler.clearTimeout(deadlineTimer);
+      if (deadlineTimer !== null) {
+        deps.scheduler.clearTimeout(deadlineTimer);
+        flushTimers.delete(deadlineTimer);
+      }
       flushing = false;
     }
   }
@@ -386,6 +430,7 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     }
     const oldest = oldestPendingAt();
     return {
+      queueCount: queues.size,
       level,
       items,
       bytes,
@@ -407,8 +452,52 @@ export function createPersistenceWriter(deps: PersistenceWriterDeps): Persistenc
     pendingCount: pendingTotal,
     backpressureLevel: () => level,
     getMetrics,
+    releaseTournament,
+    queueCount: () => queues.size,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      if (ageTimer !== null) deps.scheduler.clearTimeout(ageTimer);
+      ageTimer = null;
+      for (const queue of queues.values()) {
+        if (queue.retryTimer !== null) deps.scheduler.clearTimeout(queue.retryTimer);
+        queue.retryTimer = null;
+      }
+      for (const timer of flushTimers) deps.scheduler.clearTimeout(timer);
+      flushTimers.clear();
+      notifyStateChanged();
+    },
     lastCommittedSequence(tournamentId) {
       return queues.get(tournamentId)?.lastCommitted ?? null;
     },
   };
+}
+
+/** Writer owns a detached copy, so runtime unload and caller mutation cannot alter a retry. */
+function copyCommitBundle(bundle: HandCommitBundle): HandCommitBundle {
+  const copied = structuredClone(bundle);
+  // structuredClone preserves Date / BigInt but converts Node Buffer into Uint8Array.
+  // Repository checksum comparison requires Buffer, so restore its independent byte copies.
+  const owned: HandCommitBundle = {
+    ...copied,
+    snapshot: {
+      ...copied.snapshot,
+      stateChecksum: Buffer.from(bundle.snapshot.stateChecksum),
+      commitChecksum: Buffer.from(bundle.snapshot.commitChecksum),
+    },
+  };
+  freezeRecords(owned);
+  return owned;
+}
+
+function freezeRecords(value: unknown): void {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    value instanceof Date ||
+    ArrayBuffer.isView(value)
+  )
+    return;
+  for (const child of Object.values(value)) freezeRecords(child);
+  Object.freeze(value);
 }

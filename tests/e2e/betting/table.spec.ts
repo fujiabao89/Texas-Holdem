@@ -17,7 +17,7 @@ const roomSnapshot = {
 function gameSnapshot(overrides: Record<string, unknown> = {}) {
   return {
     snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament-1", sequence: "1", handId: "hand-1", tournamentStatus: "RUNNING", handPhase: "FLOP",
-    blindLevel: { index: 0, smallBlind: 5, bigBlind: 10, ante: 0 }, dealerSeat: 0,
+    blindLevel: { index: 0, smallBlind: 5, bigBlind: 10, ante: 0 }, dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1,
     board: [{ rank: "A", suit: "SPADES" }, { rank: "K", suit: "HEARTS" }, { rank: "2", suit: "CLUBS" }],
     pots: [{ amount: 90, eligiblePlayerIds: ["player-1", "player-2"] }], currentActorPlayerId: "player-1", actionDeadline: 50_000,
     players: [

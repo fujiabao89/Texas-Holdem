@@ -255,6 +255,8 @@ HAND_START → POST_BLINDS → DEAL_HOLE_CARDS → PREFLOP
 | Post-Flop 首个行动者 | Dealer 左侧第一名仍在牌局中的玩家；Heads-Up：BB 先行动 | 《区块1-5 v0.1》§2.4；§6.4 |
 | 行动流转 | 顺时针；跳过已 Fold、已 All-in、无合法行动的玩家 | 《区块6-10 v0.2》§6.3（推论） |
 
+当前/最近一手的 `hand.dealerSeat/sbSeat/bbSeat` 是本手庄位与盲注的权威结果。TEX-53 将其投影为公开座位字段；Snapshot 的 null、手末保留与跨手同步语义见 [02 §9.2](./02-protocol-spec.md)，客户端不重复计算本节规则。
+
 ## 12. Tournament 层（《区块6-10 v0.2》§6.14）
 
 - **分工**：`PokerHandEngine` 负责一手牌（§6–§11）；`TournamentEngine` 负责初始筹码、Blind Level、玩家淘汰、排名、下一手、Heads-Up 切换与最终 Champion（§6.14）。

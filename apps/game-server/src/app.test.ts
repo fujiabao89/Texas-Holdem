@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApp } from "./app";
-import { parseAppConfig } from "./config";
+import { parseAppConfig, resolveTokenSecret } from "./config";
 import { createNodeIdSource } from "./rooms/id-source";
 import { createRoomManager } from "./rooms/room-manager";
 import { fakePersistence, fakeRoomRepository } from "./rooms/test-support";
@@ -18,6 +18,35 @@ function makeApp() {
 }
 
 describe("buildApp", () => {
+  it("解析当前签发 key 与保留期旧验证 key，并拒绝重复定义当前 key", () => {
+    const config = parseAppConfig({ TOKEN_HMAC_SECRET: "c".repeat(32), TOKEN_HMAC_KEY_ID: "v2", TOKEN_HMAC_RETAINED_KEYS: JSON.stringify({ v1: "p".repeat(32) }) });
+    expect(resolveTokenSecret(config, "v2")).toBe("c".repeat(32));
+    expect(resolveTokenSecret(config, "v1")).toBe("p".repeat(32));
+    expect(resolveTokenSecret(config, "unknown")).toBeUndefined();
+    expect(() => parseAppConfig({ TOKEN_HMAC_SECRET: "c".repeat(32), TOKEN_HMAC_KEY_ID: "v2", TOKEN_HMAC_RETAINED_KEYS: JSON.stringify({ v2: "p".repeat(32) }) })).toThrow("must not redefine TOKEN_HMAC_KEY_ID");
+  });
+
+  it("仅从密钥环自有属性解析 secret，并安全支持原型属性同名 key", () => {
+    const protoSecret = "p".repeat(32);
+    const constructorSecret = "o".repeat(32);
+    const config = parseAppConfig({
+      TOKEN_HMAC_SECRET: "c".repeat(32),
+      TOKEN_HMAC_KEY_ID: "v2",
+      TOKEN_HMAC_RETAINED_KEYS: `{"__proto__":"${protoSecret}","constructor":"${constructorSecret}"}`,
+    });
+
+    expect(Object.getPrototypeOf(config.token.secretsByKeyId)).toBeNull();
+    expect(resolveTokenSecret(config, "__proto__")).toBe(protoSecret);
+    expect(resolveTokenSecret(config, "constructor")).toBe(constructorSecret);
+    expect(resolveTokenSecret(config, "toString")).toBeUndefined();
+
+    const currentConstructor = parseAppConfig({
+      TOKEN_HMAC_SECRET: "n".repeat(32),
+      TOKEN_HMAC_KEY_ID: "constructor",
+    });
+    expect(resolveTokenSecret(currentConstructor, "constructor")).toBe("n".repeat(32));
+  });
+
   it("responds to /health", async () => {
     const app = makeApp();
     const response = await app.inject({ method: "GET", url: "/health" });

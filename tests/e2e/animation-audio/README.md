@@ -18,7 +18,7 @@ $env:TEX_E2E_PORT = '3138'
 pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/animation-audio/experience.spec.ts --workers=1
 ```
 
-无重试。需要 Node/pnpm 与已安装的 Playwright Chromium；不依赖 game-server 或 PostgreSQL。时序回归使用 Playwright Clock，CPU 采样使用真实 rAF，没有固定 sleep。成功截图保存在 `output/playwright/TEX-38-*.png`，并作为附件进入现有 `.artifacts`；CPU 报告作为 JSON 附件和 `[TEX-38-CPU-6X]` 运行输出保留。失败 trace/视频和浏览器错误由共享配置/fixture 处理。
+无重试。需要 Node/pnpm 与已安装的 Playwright Chromium；不依赖 game-server 或 PostgreSQL。设置页用例预置非默认的本地音效偏好，并等待 SSR 默认值切换为客户端持久值，以此确认水合完成后再发送键盘事件；不使用固定等待或重试。时序回归使用 Playwright Clock，CPU 采样使用真实 rAF。成功截图保存在 `output/playwright/TEX-38-*.png`，并作为附件进入现有 `.artifacts`；CPU 报告作为 JSON 附件和 `[TEX-38-CPU-6X]` 运行输出保留。失败 trace/视频和浏览器错误由共享配置/fixture 处理。
 
 CPU 采样只报告当前机器和浏览器条件下的帧间隔，不将 CDP 6x 等同于指定 Android/iPhone，也不要求高性能主机必然触发慢帧降级。持续慢帧的确定性阈值由 `FrameHealth` 单元测试覆盖；本浏览器用例在真实受限 CPU 下验证事件终帧与操作可达性。点击至命令耗时包含自动化开销，不作为原生输入延迟的精确测量。
 
@@ -27,3 +27,5 @@ CPU 采样只报告当前机器和浏览器条件下的帧间隔，不将 CDP 6x
 TEX-44 新增全站动态偏好容器后，CPU 回归的降级断言精确定位 `main[data-reduced-motion]`，继续测量牌桌自己的自动性能降级，而不是外层设备偏好。
 
 CPU 用例先用 MutationObserver 记录飞牌或自动降级，避免跨进程轮询漏掉瞬态。90 个真实帧采样与 trace/video 共享的整条用例时限为 60 秒；没有放宽下注序列或终帧断言。验证记录见 [TEX-44](../../../docs/03-engineering/TEX-44-acceptance.md)。
+
+TEX-53 的 wire v4 夹具补齐 smallBlindSeat/bigBlindSeat，沿用既有动画与音效断言。

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TournamentConfig } from "@texas-holdem/protocol";
 import { RoomDomainError } from "./room-errors";
 import type { IdSource } from "./id-source";
@@ -59,6 +59,46 @@ describe("RoomManager", () => {
     expect(session.roomSnapshot.inviteCode).toMatch(/^[A-HJKMNPQRSTUVWXYZ2-9]{6}$/);
   });
 
+  it("关停等待已准入的创建完成凭证交付，再卸载新注册的运行时", async () => {
+    const { manager, roomRepository } = makeManager();
+    const persist = roomRepository.createRoomWithHost.bind(roomRepository);
+    let releasePersistence!: () => void;
+    let enteredPersistence!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enteredPersistence = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releasePersistence = resolve;
+    });
+    roomRepository.createRoomWithHost = vi.fn(async (input) => {
+      enteredPersistence();
+      await gate;
+      await persist(input);
+    });
+
+    const creation = manager.createRoom({
+      displayName: "Host",
+      displayNameKey: "host",
+      config: makeConfig(),
+    });
+    await entered;
+    let disposed = false;
+    const disposal = manager.dispose().then(() => {
+      disposed = true;
+    });
+    await Promise.resolve();
+    expect(disposed).toBe(false);
+
+    releasePersistence();
+    const session = await creation;
+    expect(session.playerToken).toHaveLength(43);
+    await disposal;
+    expect(manager.getSnapshot(session.roomId)).toBeUndefined();
+    await expect(
+      manager.createRoom({ displayName: "Late", displayNameKey: "late", config: makeConfig() }),
+    ).rejects.toMatchObject({ code: "GAME_UNAVAILABLE" });
+  });
+
   it("加入房间：返回新身份与更新后的快照；无效邀请码拒绝 INVALID_INVITE_CODE", async () => {
     const { manager } = makeManager();
     const creator = await manager.createRoom({
@@ -88,9 +128,9 @@ describe("RoomManager", () => {
       config: makeConfig(),
     });
     expect(manager.authenticate(creator.roomId, creator.playerToken)).toBe(creator.playerId);
-    expect(() => manager.authenticate(creator.roomId, "wrong-token-wrong-token-wrong")).toThrowError(
-      new RoomDomainError("AUTH_FAILED"),
-    );
+    expect(() =>
+      manager.authenticate(creator.roomId, "wrong-token-wrong-token-wrong"),
+    ).toThrowError(new RoomDomainError("AUTH_FAILED"));
     expect(() => manager.authenticate("unknown-room", creator.playerToken)).toThrowError(
       new RoomDomainError("ROOM_NOT_FOUND"),
     );
@@ -108,8 +148,16 @@ describe("RoomManager", () => {
 
   it("创建房间持久化 Room + Host 且邀请码唯一（两次创建互不相同）", async () => {
     const { manager, roomRepository } = makeManager();
-    const a = await manager.createRoom({ displayName: "A", displayNameKey: "a", config: makeConfig() });
-    const b = await manager.createRoom({ displayName: "B", displayNameKey: "b", config: makeConfig() });
+    const a = await manager.createRoom({
+      displayName: "A",
+      displayNameKey: "a",
+      config: makeConfig(),
+    });
+    const b = await manager.createRoom({
+      displayName: "B",
+      displayNameKey: "b",
+      config: makeConfig(),
+    });
     expect(a.roomSnapshot.inviteCode).not.toBe(b.roomSnapshot.inviteCode);
     expect(roomRepository.createdRooms).toHaveLength(2);
     expect(roomRepository.createdRooms[0]?.inviteCode).toBe(a.roomSnapshot.inviteCode);
@@ -120,10 +168,20 @@ describe("RoomManager", () => {
 
   it("Host Grace 转让会立即广播新的权威 hostPlayerId", async () => {
     const { manager } = makeManager();
-    const host = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config: makeConfig() });
-    const joined = await manager.joinRoom({ inviteCode: host.roomSnapshot.inviteCode!, displayName: "Alice", displayNameKey: "alice" });
+    const host = await manager.createRoom({
+      displayName: "Host",
+      displayNameKey: "host",
+      config: makeConfig(),
+    });
+    const joined = await manager.joinRoom({
+      inviteCode: host.roomSnapshot.inviteCode!,
+      displayName: "Alice",
+      displayNameKey: "alice",
+    });
     const snapshots: string[] = [];
-    const unsubscribe = manager.subscribe((snapshot) => snapshots.push(snapshot.hostPlayerId ?? ""));
+    const unsubscribe = manager.subscribe((snapshot) =>
+      snapshots.push(snapshot.hostPlayerId ?? ""),
+    );
 
     await manager.transferHost(host.roomId);
 
@@ -132,31 +190,35 @@ describe("RoomManager", () => {
   });
 });
 
-  it("持久化降级（soft/hard watermark / 关停）时 START_TOURNAMENT 被拒绝，其他命令不受门控", async () => {
-    let available = true;
-    const manager = createRoomManager({
-      persistence: fakePersistence(),
-      roomRepository: fakeRoomRepository(),
-      ids: fakeIds(),
-      tokenSecret: TOKEN_SECRET,
-      tokenKeyId: TOKEN_KEY_ID,
-      isPersistenceAvailable: () => available,
-    });
-    const host = await manager.createRoom({ displayName: "Host", displayNameKey: "host", config: makeConfig() });
-    available = false; // 降级
-    await expect(
-      manager.submitCommand(host.roomId, {
-        type: "START_TOURNAMENT",
-        actorPlayerId: host.playerId,
-        expectedRevision: 1,
-        tournamentId: "t-x",
-      }),
-    ).rejects.toMatchObject({ code: "GAME_UNAVAILABLE" });
-    // 非开局命令不被门控（加入成员仍可用）。
-    const joined = await manager.joinRoom({
-      inviteCode: host.roomSnapshot.inviteCode!,
-      displayName: "Alice",
-      displayNameKey: "alice",
-    });
-    expect(joined.playerId).toBeDefined();
+it("持久化降级（soft/hard watermark / 关停）时 START_TOURNAMENT 被拒绝，其他命令不受门控", async () => {
+  let available = true;
+  const manager = createRoomManager({
+    persistence: fakePersistence(),
+    roomRepository: fakeRoomRepository(),
+    ids: fakeIds(),
+    tokenSecret: TOKEN_SECRET,
+    tokenKeyId: TOKEN_KEY_ID,
+    isPersistenceAvailable: () => available,
   });
+  const host = await manager.createRoom({
+    displayName: "Host",
+    displayNameKey: "host",
+    config: makeConfig(),
+  });
+  available = false; // 降级
+  await expect(
+    manager.submitCommand(host.roomId, {
+      type: "START_TOURNAMENT",
+      actorPlayerId: host.playerId,
+      expectedRevision: 1,
+      tournamentId: "t-x",
+    }),
+  ).rejects.toMatchObject({ code: "GAME_UNAVAILABLE" });
+  // 非开局命令不被门控（加入成员仍可用）。
+  const joined = await manager.joinRoom({
+    inviteCode: host.roomSnapshot.inviteCode!,
+    displayName: "Alice",
+    displayNameKey: "alice",
+  });
+  expect(joined.playerId).toBeDefined();
+});

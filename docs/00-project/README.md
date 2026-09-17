@@ -16,3 +16,5 @@
 - [TEX-44 产品首页与视觉交互升级](https://linear.app/texas-holdem/issue/TEX-44)：用户直接委派 Codex；范围为既有 Web 展示层与产品首页，保留游戏协议和服务端权威边界。分支 `feat/TEX-44-river-and-raise-design`；[验收记录](../03-engineering/TEX-44-acceptance.md)。
 
 - [TEX-45 游戏内牌桌与扑克牌视觉优化](https://linear.app/texas-holdem/issue/TEX-45)：用户直接委派 Codex，仅优化游戏展示，保留动效和音效。基于 TEX-44 已提交版本，分支 `feat/TEX-45-refine-in-game-table-and-cards`；用户追加授权推送并创建 PR，依赖 TEX-44，见 [验收记录](../03-engineering/TEX-45-acceptance.md)。
+
+TEX-54 持久化赛果读取已实现，任务验收与明确非范围见 [TEX-54验收记录](../03-engineering/TEX-54-acceptance.md)。现有前端页面的HTTP恢复接入、暂停手间独立终局写入与旧live撤回筹码投影分别保留为后续事项，不扩大本卡只读范围。

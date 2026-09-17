@@ -20,6 +20,18 @@ function event(sequence: string, tournamentId = "tournament-1") {
 }
 
 describe("ProjectionStore", () => {
+  it.each(["INITIAL", "RECONNECT", "RESYNC", "FAST_FORWARD"] as const)("restores blind seats from a %s snapshot without any HAND_STARTED history", (reason) => {
+    const store = new ProjectionStore();
+    store.acceptGameSnapshot(gameSnapshot());
+    const snapshot = gameSnapshot({ reason, sequence: "9007199254740993", handId: "hand-2", dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0 });
+    if (reason === "RECONNECT") store.acceptReconnectResult(roomSnapshot(), snapshot);
+    else store.acceptGameSnapshot(snapshot);
+    expect(store.getSnapshot().game).toMatchObject({ handId: "hand-2", dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0 });
+    expect(store.getSnapshot().currentHandEvents).toEqual([]);
+    store.acceptGameSnapshot(gameSnapshot({ reason: "RESYNC", sequence: "9007199254740994", handId: null, handPhase: null, smallBlindSeat: null, bigBlindSeat: null }));
+    expect(store.getSnapshot().game).toMatchObject({ smallBlindSeat: null, bigBlindSeat: null });
+  });
+
   it("accepts a new room even when its independent revision is lower", () => {
     const store = new ProjectionStore();
     store.acceptRoomSnapshot(roomSnapshot({ roomId: "room-a", roomRevision: "9007199254740992" }));
@@ -196,10 +208,11 @@ describe("ProjectionStore current-hand event buffer", () => {
       payload: {
         ...nextHand.payload,
         event: { type: "HAND_STARTED", payload: { handNumber: 2, dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0, blindLevel: 0 } },
-        patch: { handId: "hand-2", handPhase: "PREFLOP", dealerSeat: 1, board: [] },
+        patch: { handId: "hand-2", handPhase: "PREFLOP", dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0, board: [] },
       },
     })).toBe("APPLIED");
     expect(store.getSnapshot().currentHandEvents.map((entry) => entry.handId)).toEqual(["hand-2"]);
+    expect(store.getSnapshot().game).toMatchObject({ dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0 });
   });
 
   it("clears the buffer on a game snapshot and on a reconnect barrier", () => {

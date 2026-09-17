@@ -147,6 +147,7 @@ export function createRecoveredTournamentRuntimeState(
       lastWireSequence: number;
       committedThroughHand: number;
       engineEventBase: number;
+      handId?: string;
       /** 每玩家剩余 Time Bank（来自快照 serverTimeBank；旧快照无 → 满余额回退）。 */
       timeBank?: Record<string, number>;
     };
@@ -165,7 +166,7 @@ export function createRecoveredTournamentRuntimeState(
     actionTime: engineConfig.actionTime,
     timeBank: engineConfig.timeBank,
   };
-  return buildRuntimeState(
+  const runtime = buildRuntimeState(
     { tournamentId: seed.tournamentId, roomId: seed.roomId, players: seed.players },
     deps,
     seed.engine,
@@ -179,6 +180,11 @@ export function createRecoveredTournamentRuntimeState(
     },
     true, // 恢复后所有连接视为断开（§13），宽限计时由 createRecovered 启动
   );
+  if (seed.engine.getState().phase === "finished") {
+    runtime.status = "FINISHED";
+    runtime.currentHandId = seed.recovered.handId ?? null;
+  }
+  return runtime;
 }
 
 /** 共享运行时初始化：建立 seat ↔ player 映射并组装不可变状态。 */
