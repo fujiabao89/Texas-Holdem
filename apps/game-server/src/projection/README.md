@@ -14,4 +14,5 @@ TEX-36：`TOURNAMENT_FINISHED` 将 Engine 的 `championSeat: null` 明确投影�
 
 TEX-53：完整视图与逐事件 patch 的 D/SB/BB 读取当前 hand，SB/BB 无手为 null，保留手末座位直至下一手。执行器在替换 `handId` 前发完旧手尾部事件，下一手 `HAND_STARTED` 才携带新的 handId 与 D/SB/BB，避免撤回结算时提前推进客户端牌桌。`blind-seats.test.ts` 覆盖 2/3/6/10 人、空位、撤回、真实全下淘汰、跨手与恢复；规则与 nullable 语义仅在 [协议规格](../../../../docs/02-protocol-spec.md) §9.2 维护。
 
-TEX-54：`tournament-result.ts` 校验已提交终局的版本/checksum/序列、Participant 与 finalStandings、冠军与筹码守恒，然后按共享 HTTP Schema 白名单输出公开赛果。持久化名次仍保留原桌人数位置；公开结果排除 WITHDRAWN 后按原组顺序压缩为连续 `1..N`，并保持并列组完整。此路径不恢复引擎，也不输出 Snapshot 的 Deck/Burn/底牌/Time Bank/内部 ID。具体来源与错误规则见 [03](../../../../docs/03-data-model.md) / [02](../../../../docs/02-protocol-spec.md) 的 TEX-54 小节。
+TEX-54 / TEX-55：`tournament-result.ts` 校验已提交终局的版本/checksum/序列、Participant 与 finalStandings、冠军与筹码守恒，然后按共享 HTTP Schema 白名单输出公开赛果。持久化名次仍保留原桌人数位置；公开结果排除 WITHDRAWN 后按原组顺序压缩为连续 `1..N`，并保持并列组完整。此路径不恢复引擎，也不输出 Snapshot 的 Deck/Burn/底牌/Time Bank/内部 ID。`state-projector.ts` 中的实时 `PlayerView.rankings` 与 `TOURNAMENT_FINISHED` wire 事件共享 `compactPublicStandings` 逻辑，确保终局内存快照快路径与持久化赛果的名次（含淘汰后其余玩家撤回场景）双通道严格一致。具体来源与错误规则见 [03](../../../../docs/03-data-model.md) / [02](../../../../docs/02-protocol-spec.md) 的 TEX-54/TEX-55 小节。
+

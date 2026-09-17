@@ -30,7 +30,6 @@ const FinishedStateSchema = z.object({
 const TerminalEventSchema = z.object({
   championSeat: SeatSchema.nullable(), finalStandings: z.array(StandingSchema).max(10),
 });
-type DurableStanding = z.infer<typeof StandingSchema>;
 
 function requireComplete(condition: boolean): asserts condition {
   if (!condition) throw new RoomDomainError("TOURNAMENT_RESULT_INCOMPLETE");
@@ -100,14 +99,23 @@ export function projectTournamentResult(record: TournamentResultRecord): Tournam
   }
 }
 
+export interface CompactableStanding {
+  readonly seatIndex: number;
+  readonly placementRange: { readonly from: number; readonly to: number };
+  readonly displayOrder: number;
+}
+
 /** 排除 WITHDRAWN 后，把持久化的原桌名次组压缩为公开连续 1..N；并列组不拆分。 */
-function compactPublicStandings(standings: readonly DurableStanding[]): readonly DurableStanding[] {
-  const groups = new Map<string, DurableStanding[]>();
+export function compactPublicStandings<T extends CompactableStanding>(
+  standings: readonly T[],
+): readonly T[] {
+  if (standings.length === 0) return standings;
+  const groups = new Map<string, T[]>();
   for (const standing of standings) {
     const key = `${standing.placementRange.from}:${standing.placementRange.to}`;
     groups.set(key, [...(groups.get(key) ?? []), standing]);
   }
-  const compact = new Map<number, DurableStanding>();
+  const compact = new Map<number, T>();
   let nextRank = 1;
   for (const group of [...groups.values()].sort((left, right) => left[0]!.placementRange.from - right[0]!.placementRange.from || left[0]!.placementRange.to - right[0]!.placementRange.to)) {
     const ordered = [...group].sort((left, right) => left.displayOrder - right.displayOrder);
@@ -118,3 +126,4 @@ function compactPublicStandings(standings: readonly DurableStanding[]): readonly
   }
   return standings.map((standing) => compact.get(standing.seatIndex)!);
 }
+
