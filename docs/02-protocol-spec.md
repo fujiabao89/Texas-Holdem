@@ -102,7 +102,7 @@ TEX-36 读取约束：重复的 `limit` / `cursor` 返回 `400 INVALID_MESSAGE`�
    ```json
    {
      "type": "AUTHENTICATE",
-     "protocolVersion": 4,
+     "protocolVersion": 5,
      "requestId": "uuid",
      "payload": { "roomId": "opaque-id", "playerToken": "secret" }
    }
@@ -158,7 +158,7 @@ type ClientCommand<TType extends string, TPayload> = {
 ```ts
 type ServerMessage<TType extends string, TPayload> = {
   type: TType;
-  protocolVersion: 4;
+  protocolVersion: 5;
   serverTime: number;
   payload: TPayload;
 };

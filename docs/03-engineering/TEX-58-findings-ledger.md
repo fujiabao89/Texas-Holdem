@@ -1,4 +1,4 @@
-﻿# TEX-58 / PR #54 Findings Ledger
+# TEX-58 / PR #54 Findings Ledger
 
 复核日期：2026-09-16。基线：`f7024c71128a0759d8dd7465c882407d0663f5e5`。来源为 GitHub PR #54 全部审查线程（9 条，包含 Codex、Greptile 与 CodeRabbit）；未主动触发新的自动化审阅。
 
@@ -15,11 +15,12 @@
 | F-07 | [Greptile 4026558208](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026558208) | **重复 (F-01)**。指出严格 Schema 下新增字段破坏 v4 兼容性，须提升协议主版本。 | P1 | **合并至 F-01**，处理方式同 F-01。单独在 Greptile 评论线程中回复说明。 |
 | F-08 | [CodeRabbit 4026612901](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026612901) | **重复 (F-02)**。建议实现服务端权威的摊牌展示状态与定时器。 | Major (P1) | **合并至 F-02**，处理方式同 F-02。单独在 CodeRabbit 评论线程中回复说明。 |
 | F-09 | [CodeRabbit 4026612910](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026612910) | **重复 (F-01)**。指出 `showdownDisplayUntil` 必填破坏 strict Schema，需递增 `PROTOCOL_VERSION`。 | Major (P1) | **合并至 F-01**，处理方式同 F-01。单独在 CodeRabbit 评论线程中回复说明。 |
+| F-10 | [Codex 4031926337](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4031926337) | **有效**。指出在声明 wire v5 之后，`docs/02-protocol-spec.md:161` 中 `ServerMessage` 规范定义仍为 `protocolVersion: 4`，且 `apps/web/src/protocol/README.md` 与 `apps/game-server/src/realtime/gateway/README.md` 仍写 wire v4。实现若依此规范发射 v4 会被 `PROTOCOL_VERSION = 5` 拒绝。 | P1 | **修复**：将 `docs/02-protocol-spec.md:161` 改为 `protocolVersion: 5`；更新两份 README 为 v5 并说明旧版本拒绝；在 `websocket-transport.test.ts` 与 `lobby-gateway.test.ts` 中增补对 v4 拒绝的直接测试。 |
+| F-11 | [CodeRabbit 4031953534](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4031953534) | **有效**。指出 `docs/02-protocol-spec.md:105` 的 `AUTHENTICATE` 示例仍写作 `"protocolVersion": 4`，客户端参照该示例发送会在握手阶段直接触发 `UNSUPPORTED_PROTOCOL_VERSION`。 | Major (P1) | **修复**：将 `docs/02-protocol-spec.md:105` 示例改为 `"protocolVersion": 5`。 |
 
 ## 验证
 
-- `pnpm test:unit -- packages/protocol/src/protocol.test.ts apps/web/src/state/projection-store.test.ts`：全量通过（包含版本拒绝断言 [1, 2, 3, 4, 6] 与非空 actor 拦截测试）。
-- `pnpm test:rules`：全部通过。
+- `pnpm test:unit -- apps/web/src/protocol/websocket-transport.test.ts apps/game-server/src/realtime/gateway/lobby-gateway.test.ts packages/protocol/src/protocol.test.ts`：64/64 全量通过（验证客户端与服务端网关对 v3 与 v4 旧版本首帧/快照的强制拒绝）。
 - `pnpm typecheck`：通过（0 错误）。
 - `pnpm lint`：通过（0 错误）。
 
@@ -27,12 +28,14 @@
 
 | Finding | 原评论线程 | 计划回复 | 状态 |
 | --- | --- | --- | --- |
-| F-01 | [Codex 4026504727](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504727) | `已修正` | 待推送后回复 |
-| F-02 | [Codex 4026504734](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504734) | 已明确契约与运行时分工：TEX-58 完成展示阶段与时钟契约定义，服务端权威展示定时器与延迟开时钟由后续任务 [TEX-59] 实现编排，已在文档 §8.4.1 与代码注释中明确限定。 | 待推送后回复 |
-| F-03 | [Codex 4026504739](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504739) | `已修正` | 待推送后回复 |
-| F-04 | [Codex 4026504746](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504746) | `已修正` | 待推送后回复 |
-| F-05 | [Codex 4026504754](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504754) | `已修正` | 待推送后回复 |
-| F-06 | [Greptile 4026558193](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026558193) | 已明确契约与运行时分工：TEX-58 完成展示阶段与时钟契约定义，服务端权威展示定时器与延迟开时钟由后续任务 [TEX-59] 实现编排，已在文档 §8.4.1 与代码注释中明确限定。 | 待推送后回复 |
-| F-07 | [Greptile 4026558208](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026558208) | `已修正` | 待推送后回复 |
-| F-08 | [CodeRabbit 4026612901](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026612901) | 已明确契约与运行时分工：TEX-58 完成展示阶段与时钟契约定义，服务端权威展示定时器与延迟开时钟由后续任务 [TEX-59] 实现编排，已在文档 §8.4.1 与代码注释中明确限定。 | 待推送后回复 |
-| F-09 | [CodeRabbit 4026612910](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026612910) | `已修正` | 待推送后回复 |
+| F-01 | [Codex 4026504727](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504727) | `已修正` | 已回复 |
+| F-02 | [Codex 4026504734](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504734) | 已明确契约与运行时分工：TEX-58 完成展示阶段与时钟契约定义，服务端权威展示定时器与延迟开时钟由后续任务 [TEX-59] 实现编排，已在文档 §8.4.1 与代码注释中明确限定。 | 已回复 |
+| F-03 | [Codex 4026504739](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504739) | `已修正` | 已回复 |
+| F-04 | [Codex 4026504746](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504746) | `已修正` | 已回复 |
+| F-05 | [Codex 4026504754](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026504754) | `已修正` | 已回复 |
+| F-06 | [Greptile 4026558193](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026558193) | 已明确契约与运行时分工：TEX-58 完成展示阶段与时钟契约定义，服务端权威展示定时器与延迟开时钟由后续任务 [TEX-59] 实现编排，已在文档 §8.4.1 与代码注释中明确限定。 | 已回复 |
+| F-07 | [Greptile 4026558208](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026558208) | `已修正` | 已回复 |
+| F-08 | [CodeRabbit 4026612901](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026612901) | 已明确契约与运行时分工：TEX-58 完成展示阶段与时钟契约定义，服务端权威展示定时器与延迟开时钟由后续任务 [TEX-59] 实现编排，已在文档 §8.4.1 与代码注释中明确限定。 | 已回复 |
+| F-09 | [CodeRabbit 4026612910](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4026612910) | `已修正` | 已回复 |
+| F-10 | [Codex 4031926337](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4031926337) | `已修正` | 待推送后回复 |
+| F-11 | [CodeRabbit 4031953534](https://github.com/fujiabao89/Texas-Holdem/pull/54#discussion_r4031953534) | `已修正` | 待推送后回复 |
