@@ -1,8 +1,28 @@
 /* TEX-45: static table skin. Motion, timing and sound remain owned by TEX-38. */
+/* TEX-46: one viewport for the felt and the whole action set. The dock reserve
+   is always subtracted from the stage, so showing or hiding the action dock
+   never resizes the felt (docs/05 §7.5, §8.1). */
+/* TEX-46: the table route owns exactly one viewport. The site header sits above
+   `#page-content`, so the page fills what is left instead of assuming 100dvh.
+   Scoped with :has() so every other route keeps its current scrolling layout. */
+.rr-site:has(.rr-table-page) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+.rr-site:has(.rr-table-page) #page-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
 .rr-table-page {
   --table-gold: #dfc88e;
+  --felt-ratio: 1.72;
+  --dock-reserve: 104px;
+  flex: 1 1 auto;
   max-width: 1240px;
-  gap: 16px;
+  min-height: 0;
 }
 .rr-table-page .rr-table-header {
   border-color: #dcded1;
@@ -21,8 +41,26 @@
   font: 30px Georgia, serif;
 }
 .rr-table-page .table-subtitle { margin-top: 4px; font-size: 12px; color: #4f5f4d; }
-.rr-table-page .table-stage { max-width: 1060px; }
+.rr-table-page .table-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 1060px;
+  /* Floor the felt so the centre stack (street, pot, board) can never spill
+     outside the felt onto the page background on a very short viewport. */
+  min-height: 220px;
+  margin-inline: auto;
+  padding-bottom: var(--dock-reserve);
+  container-type: size;
+}
 .rr-table-page .rr-table-felt {
+  --felt-height: min(100cqh, calc(100cqw / var(--felt-ratio)));
+  flex: none;
+  width: calc(var(--felt-height) * var(--felt-ratio));
+  height: var(--felt-height);
   border-color: #243b30;
   background-color: #285340;
   background-image:
@@ -146,6 +184,7 @@
   font: 14px Georgia, serif;
 }
 .rr-table-page .table-clock-bar {
+  flex: none;
   max-width: 640px;
   background: transparent;
   border: 0;
@@ -153,9 +192,37 @@
   padding: 0 12px;
   font-variant-numeric: tabular-nums;
 }
+/* TEX-46: the action dock only exists while the server projects this viewer as
+   the actor with LegalActions. It lives inside the reserved strip below the
+   felt, anchored to the viewer Seat at the felt's bottom edge. */
+.rr-table-page .table-action-dock {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  height: var(--dock-reserve);
+  padding-inline: 6px;
+}
+.rr-table-page .table-notices { flex: none; }
+/* Hand results float above the felt instead of shrinking it, so the table keeps
+   one size for the whole hand and the review layer never reflows the Seats. */
+.rr-table-page .table-post-hand {
+  position: absolute;
+  inset-inline: 4px;
+  bottom: var(--dock-reserve);
+  max-height: 62%;
+  overflow-y: auto;
+  z-index: 45;
+}
+.rr-table-page .table-notices:empty,
+.rr-table-page .table-post-hand:empty { display: none; }
 .rr-table-page .rr-betting-panel {
+  width: 100%;
   max-width: 640px;
-  padding: 18px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 12px;
   border: 1px solid #d9ddcb;
   border-radius: 16px;
   background: #fffef8;
@@ -164,33 +231,57 @@
 .rr-table-page .table-action-heading { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #4f5f4d; }
 .rr-table-page .table-action-heading h2 { font-weight: 600; }
 .rr-table-page .table-action-heading > span { color: #3b623e; }
-.rr-table-page .table-primary-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: 1/-1; padding: 6px; min-height: 44px; background: #f1f3e8; font-size: 12px; }
+.rr-table-page .table-primary-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.rr-table-page .table-primary-actions > .rr-action-neutral { padding: 6px; min-height: 44px; background: #f1f3e8; font-size: 12px; }
 .rr-table-page .table-wager-editor { background: #f0f2e7; }
-.rr-table-page .table-wager-editor output { margin-left: auto; font-size: 24px; font-variant-numeric: tabular-nums; }
+/* The back button only exists where the wager panel replaces the primary row. */
+.rr-table-page .table-wager-back { display: none; }
+.rr-table-page .table-wager-editor output { margin-left: auto; font-size: 20px; font-variant-numeric: tabular-nums; }
 .rr-table-page .table-wager-editor input { min-width: 0; max-width: 100%; }
 .rr-table-page .rr-action-allin { background: #f7e7db; border-color: #d5af91; color: #934024; }
 .rr-table-page .rr-action-allin:hover:not(:disabled) { background: #f0d9c7; }
+@media (min-width: 640px) {
+  /* Fit the tallest dock state — heading plus the three-row wager editor — so
+     every projected control stays reachable without a nested scroll. */
+  .rr-table-page { padding: 16px; gap: 12px; }
+  /* The one-viewport felt is shorter than the TEX-45 scroll layout, so an
+     eight-plus handed table compresses the Seat card and pulls the upper flank
+     Seats inwards; no two Seat rectangles may intersect (docs/05 §7.5/§16). */
+  .rr-table-page[data-seat-density] .table-seat { width: 112px; }
+  .rr-table-page[data-seat-density] [data-seat-cards] { min-height: 40px; }
+  .rr-table-page[data-seat-density] [data-seat-chips] { padding: 3px 6px; }
+  .rr-table-page[data-seat-density] .table-player-name { font-size: 11px; line-height: 1.4; }
+  .rr-table-page[data-seat-density] .table-player-stack { margin-top: 0; font-size: 12px; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="1"] { left: 70%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="9"] { left: 30%; }
+  .rr-table-page[data-seat-density] [data-seat-slot="3"],
+  .rr-table-page[data-seat-density] [data-seat-slot="7"] { top: 70%; }
+}
 @media (min-width: 640px) and (max-width: 1000px) {
   .rr-table-page .table-watermark { display: none; }
   .rr-table-page .table-seat { width: 96px; }
-  .rr-table-page .rr-table-felt { aspect-ratio: 1.25; }
+  .rr-table-page { --felt-ratio: 1.25; }
 }
 @media (min-width: 640px) and (max-width: 760px) {
   .rr-table-page .table-seat { width: 80px; }
-  .rr-table-page .rr-table-felt { aspect-ratio: 1.05; }
+  .rr-table-page { --felt-ratio: 1.05; }
   .rr-table-page [data-seat-slot="2"], .rr-table-page [data-seat-slot="8"] { top: 25%; }
   .rr-table-page [data-seat-slot="3"], .rr-table-page [data-seat-slot="7"] { top: 75%; }
 }
 @media (max-width: 639px) {
-  .rr-table-page { gap: 12px; padding: 12px; }
-  .rr-table-page .rr-table-header { padding: 12px; gap: 12px; }
-  .rr-table-page .table-heading { gap: 10px; }
-  .rr-table-page .table-heading-mark { width: 34px; height: 40px; font-size: 24px; }
-  .rr-table-page .table-subtitle { font-size: 10px; }
+  /* Height is the scarce axis on a phone: the dock reserve plus the header are
+     subtracted first, and the felt then takes whatever width they leave. */
+  .rr-table-page { --felt-ratio: 0.8; --dock-reserve: 176px; gap: 6px; padding: 8px; }
+  .rr-table-page .rr-table-header { padding: 6px 8px; gap: 6px; }
+  .rr-table-page .table-heading { gap: 8px; }
+  .rr-table-page .table-heading-mark { display: none; }
+  .rr-table-page .table-heading h1 { font-size: 16px; }
+  .rr-table-page .table-subtitle { margin-top: 0; font-size: 10px; }
   .rr-table-page .rr-table-header > div:last-child { width: 100%; }
-  .rr-table-page .rr-table-header .rr-button { padding: 8px 12px; font-size: 11px; }
-  .rr-table-page .rr-table-header [role="status"] { margin-left: auto; padding: 6px 8px; font-size: 10px; }
+  .rr-table-page .rr-table-header .rr-button { padding: 6px 10px; font-size: 11px; }
+  .rr-table-page .rr-table-header [role="status"] { margin-left: auto; padding: 4px 8px; font-size: 10px; }
+  /* The delay button no longer claims a full row, so five actions fit two rows. */
+  .rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: auto; padding: 4px 6px; font-size: 11px; }
   .rr-table-page .table-seat { width: 76px; }
   .rr-table-page .table-player-name { font-size: 10px; }
   .rr-table-page .table-player-stack { font-size: 11px; gap: 3px; }
@@ -209,7 +300,113 @@
   .rr-table-page .table-card-court { font-size: 18px; }
   .rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 12px; }
   .rr-table-page .table-card-seal { font-size: 10px; }
-  .rr-table-page .rr-betting-panel { padding: 12px; }
-  .rr-table-page .table-primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .rr-table-page .rr-action { padding: 12px 8px; font-size: 13px; }
+  .rr-table-page .rr-betting-panel { padding: 10px; gap: 6px; }
+  .rr-table-page .table-primary-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rr-table-page .table-wager-back { display: inline-flex; }
+  .rr-table-page .rr-action { min-height: 44px; padding: 8px 6px; font-size: 12px; }
+  /* Phone action dock keeps only submittable controls: the heading becomes
+     screen-reader-only so the panel fits the reserved strip. */
+  .rr-table-page .table-action-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* The phone felt is narrow, so the deck shrinks into the top-left arc and the
+     two upper Seats move inwards to keep their rectangles clear of it. */
+  .rr-table-page .table-deck { left: 4px; top: 2px; height: 40px; width: 28px; }
+  /* Stable clockwise slots reuse five vertical bands on the shorter phone felt, so no
+     two Seat rectangles intersect (docs/05 §7.5/§16). */
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="1"],
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="9"] { top: 13%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="2"],
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="8"] { top: 37%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="3"],
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="7"] { top: 61%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="4"],
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { top: 87%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="4"] { left: 74%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { left: 26%; }
+  /* A crowded phone table compresses each Seat card; docs/05 §7.5 allows the
+     10-player phone layout to shorten names and stacks. Density comes from the
+     occupied-seat count, so a sparse six-handed table compresses too. */
+  .rr-table-page[data-seat-density] .table-seat { width: 62px; }
+  .rr-table-page[data-seat-density] [data-seat-cards] { min-height: 26px; }
+  .rr-table-page[data-seat-density] [data-seat-chips] { padding: 2px 3px; }
+  .rr-table-page[data-seat-density] .table-player-name { font-size: 9px; line-height: 1.3; }
+  .rr-table-page[data-seat-density] .table-player-stack { margin-top: 0; font-size: 10px; gap: 2px; }
+  .rr-table-page[data-seat-density] .table-chip { width: 7px; height: 7px; }
+  .rr-table-page[data-seat-density] [data-seat-chips] + div { margin-top: 0; }
+  /* The phone wager panel is exactly three rows — shortcuts, the amount row,
+     then back/exact next to submit — so every control stays inside the
+     reserved strip with no panel-level scrolling. The exact-amount field is a
+     grid item of its own: it occupies the shortcut row one-for-one, so opening
+     it swaps content instead of stacking a fourth row. */
+}
+
+/* 展开金额面板时替换主操作行，使行动区不超过 --dock-reserve。全下入口同步放入
+   编辑器第三行，保留“普通加注 ↔ 全下确认”的双向切换能力。 */
+.rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
+/* 紧凑三行金额编辑器在各宽度通用：桌面同时保留主操作行时内容实测高达 377px，
+   远超行动区预留带，必然产生面板内部滚动（docs/05 §8.1）。 */
+.rr-table-page .table-wager-editor {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(44px, auto);
+  gap: 4px;
+  padding: 4px;
+}
+.rr-table-page .table-wager-editor > p { display: none; }
+.rr-table-page .table-quick-amounts {
+  grid-area: 1 / 1 / 2 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
+.rr-table-page .table-wager-meta { display: contents; }
+.rr-table-page .table-wager-back { grid-area: 3 / 1 / 4 / 2; }
+.rr-table-page .table-wager-exact-toggle { grid-area: 3 / 1 / 4 / 3; min-width: 0; padding-inline: 6px; }
+.rr-table-page .table-wager-allin { grid-area: 3 / 3 / 4 / 4; min-width: 0; }
+.rr-table-page .table-wager-allin > .rr-action { width: 100%; height: 100%; min-width: 0; padding-inline: 4px; }
+.rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 4 / 4 / 5; min-width: 0; padding-inline: 4px; }
+.rr-table-page .table-exact-amount {
+  grid-area: 1 / 1 / 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The field keeps its accessible name, but the visible text is the value. */
+.rr-table-page .table-exact-amount > span:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.rr-table-page .table-exact-amount > input { flex: 1; min-width: 0; }
+.rr-table-page .table-exact-error { font-size: 10px; white-space: nowrap; }
+.rr-table-page .table-wager-output { font-size: 16px; }
+.rr-table-page .table-wager-editor:has(.table-exact-amount) .table-quick-amounts { display: none; }
+
+@media (max-width: 639px) {
+  .rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; }
+  .rr-table-page .table-wager-back,
+  .rr-table-page .table-wager-exact-toggle,
+  .rr-table-page .table-wager-allin > .rr-action,
+  .rr-table-page .table-wager-editor > .rr-action-bet {
+    min-height: 44px;
+    padding: 4px;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+}
+
+/* 展开态行动区需约 203px。高度充裕的桌面/平板视口放大预留带；1366×768
+   无法在不压缩牌桌到座位相交的前提下提供同等高度，残留边界记录在
+   docs/03-engineering/TEX-46-findings-ledger.md。 */
+@media (min-width: 640px) and (min-height: 900px) {
+  .rr-table-page { --dock-reserve: 208px; }
 }

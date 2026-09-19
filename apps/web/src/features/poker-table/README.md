@@ -14,10 +14,20 @@ Showdown 的 canonical target 可以先包含多个已公开 `revealedCards`；S
 
 TEX-26 的牌桌将队列 presentation state 仅用于牌、筹码和 Overlay；下注区、倒计时和命令 payload 一律使用最新 canonical Snapshot。物理 Deck 固定在牌桌外左上角的白色留白区，不占用任何玩家手牌或 Board 空间；每张手牌按其已投影的 `DEAL_HOLE_CARD` 读取 Deck 与牌桌的实际 DOM 边界，从同一 Deck 沿 transform/opacity 合成层的浅弧线、保持正向地飞向目标座位。第一、二轮的每张牌背都对全桌可见，第二轮最后一张落定后，本人才将服务端投影的两张牌依次纵轴翻开，其他人始终只有牌背；`cardIndex` 还用于把两轮牌落在手牌区左右两侧。每个 `handId + playerId + cardIndex` 都生成新的飞行组件 key，保证连续发牌不会复用已经结束的 CSS animation。TEX-38 改为 `event-feedback.ts` 的 DOM 实测坐标，逐任务读取 Deck、Seat 左右手牌槽和 Pot；`deal-flight.ts` 保留原独立工具与单元资产，不再作为当前 UI 几何入口，其测试不代替实际页面验收。公共牌在对应目标框中按“入框 → 停顿 → 翻面”逐张可读地呈现，Soft Catch-up 不会抢先以 canonical Board 替换尚未翻完的第三张；Burn Overlay 没有牌面。Showdown 先摊开服务端公开的底牌，再使七张已公开候选牌中非最佳牌淡出并组合 `PLAYER_REVEALED.handRank.bestFiveCards`，并保留 Best Five 的长阅读停留；前端只比较卡牌身份以展示服务端已判定集合，绝不计算牌型或赢家。牌桌提供音效开关、非阻断重连提示、`EXIT_PENDING`/`WITHDRAWN` 文案及 `SESSION_REPLACED` 的键盘可达阻断对话框。
 
-手机牌桌使用更高的纵向布局，拉开十人座位并给五张公共牌留出独立中间区域；允许纵向滚动至操作区，桌面保持横向椭圆。360/390/1366 像素的座位矩形不相交和下注可操作性由专用 E2E 检查。
+手机牌桌使用更高的纵向布局，拉开十人座位并给五张公共牌留出独立中间区域，桌面保持横向椭圆。360/390/1366 像素的座位矩形不相交和下注可操作性由专用 E2E 检查。TEX-46 起手机不再需要滚动到操作区：整页固定在一个视口内，见下。
 
 TEX-44 将桌面、牌背、牌面和下注操作区统一到 River & Raise 品牌色；跟注、加注、全下仍用可读文字区分。座位坐标、Deck/Board DOM ref、牌局动画队列、权威 LegalActions、时钟与全下两步流程保持不变。
 
 TEX-45：`poker-table.css` 是仅限 `.rr-table-page` 的静态视觉样式，采用细纹毛毡、双层桌沿、独立底池数字、暖白本人座位和易读牌角。顶部显示权威盲注，桌面收紧到 1060px，640–1000px 使用较高椭圆（640–760px 进一步拉开左右座位）和紧凑座位；手机保持纵向牌桌。牌面与牌背保留原尺寸，座位旋转映射、全部动画参数/关键帧、DOM 几何读取和音效保持不变。页面继续从原有投影渲染；不增加本地牌局或示例路由。验收见 [TEX-45 记录](../../../../../docs/03-engineering/TEX-45-acceptance.md)。
 
 不限时且存在行动者时，时钟栏显示“本桌不限行动时间”，避免与操作区的“轮到你行动”提示冲突；不新增计时逻辑。
+
+TEX-46：牌桌页收敛为单一视口，操作区按需出现在本人 Seat 前方的牌桌下沿。
+
+`.rr-site:has(.rr-table-page)` 把站点页头之外的剩余高度交给页面，`#page-content` 改为 flex 填充且页面本身不滚动；牌桌容器以 `container-type: size` 按 `--felt-ratio` 在剩余空间内取最大可用尺寸，并用 `min-height` 兜底，避免中央信息溢出到页面背景。牌桌容器始终为操作区预留 `--dock-reserve`，行动区（`.table-action-dock`）只在该预留带内出现或消失，因此不改变牌桌几何、不产生布局跳动。
+
+行动区仍只在服务端投影表明本人是当前行动者且 `viewer.legalActions` 非空时渲染——`table-state.ts` 的准入条件（当前行动者、连接、无 pending、无同步禁用）未变；等待、观战、淘汰、断线与 pending 期间不渲染任何可提交控件。
+
+为容纳更矮的牌桌，合并 TEX-47 的稳定顺时针槽位后，3 人以上统一启用压缩与纵向分层，保证连续和稀疏物理座位映射后的 Seat 矩形互不相交；公共牌、底池与行动区互不遮挡。本手结果层（`HandOutcomeSummary`、终局排名与赛果入口）改为浮于牌桌之上的覆盖层，不再挤压牌桌。牌局动画、命令信封、投影语义与音效未变。
+
+回归见 `tests/e2e/table-layout/single-viewport.spec.ts`（视口 × 人数矩阵）。

@@ -44,3 +44,5 @@ TEX-47 将座位视觉映射固定为服务端 `seatIndex`：本人始终位于�
 TEX-55 通过 `HttpTransport.getTournamentResult` 接入 TEX-54 权威持久化赛果端点，使赛果页（`/room/[roomId]/result/[tournamentId]`）支持页面刷新（Reload）与复制 URL 直接访问；内存快照优先展示，按 `tournamentId` 隔离多轮结果，处理请求竞态并在 HTTP 401 `AUTH_FAILED` 时安全展示权限错误并隔离房间凭证。
 
 PR 审查回归同时把牌桌座位筹码文字调整为满足深色桌面上的 WCAG AA 对比度，真实 WebKit axe 检查不得再以临界色值失败。
+
+TEX-46 把牌桌页收敛为单一视口：站点页头之外的剩余高度交给页面，牌桌在剩余空间内自适应，并为操作区固定预留一条高度带。操作区不再常驻牌桌下方，只在服务端投影表明轮到本人且存在 `LegalActions` 时出现在本人座位前方，隐藏与显示都不改变牌桌几何。合并 TEX-47 的稳定顺时针槽位后，3 人以上统一启用压缩分层，保证连续与稀疏物理座位映射后的 Seat 卡片均不相交；本手结果层改为浮于牌桌之上的覆盖层。回归见 [tests/e2e/table-layout](../../tests/e2e/table-layout/single-viewport.spec.ts) 与 [前端规格](../../docs/05-frontend-spec.md) §7.5/§8.1。
