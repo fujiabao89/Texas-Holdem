@@ -11,6 +11,7 @@ import {
   LeaveRoomResponseSchema,
   StartTournamentRequestSchema,
   StartTournamentResponseSchema,
+  TournamentResultResponseSchema,
   UpdateRoomRequestSchema,
   UpdateRoomResponseSchema,
   type CreateRoomRequest,
@@ -23,6 +24,7 @@ import {
   type LeaveRoomResponse,
   type StartTournamentRequest,
   type StartTournamentResponse,
+  type TournamentResultResponse,
   type UpdateRoomRequest,
   type UpdateRoomResponse,
 } from "@texas-holdem/protocol";
@@ -117,6 +119,12 @@ export class HttpTransport {
     return this.request("GET", path, undefined, undefined, HandHistoryDetailResponseSchema, { ...requestOptions, roomId });
   }
 
+  /** Authoritative persisted tournament result (docs/02 §4.3, TEX-54 / TEX-55). */
+  getTournamentResult(tournamentId: string, roomId: string, requestOptions: HttpRequestOptions = {}): Promise<HttpResult<TournamentResultResponse>> {
+    const path = `/api/v1/tournaments/${encodeURIComponent(tournamentId)}/result`;
+    return this.request("GET", path, undefined, undefined, TournamentResultResponseSchema, { ...requestOptions, roomId });
+  }
+
   async request<TRequest, TResponse>(
     method: "GET" | "POST" | "PATCH",
     path: string,
@@ -159,6 +167,18 @@ export class HttpTransport {
     const error = ErrorEnvelopeSchema.safeParse(payload);
     if (error.success) {
       this.diagnostic({ method, path, status: response.status, code: error.data.error.code });
+      const isDirectRoomResource =
+        options.roomId !== undefined &&
+        (path === `/api/v1/rooms/${encodeURIComponent(options.roomId)}` ||
+          path.startsWith(`/api/v1/rooms/${encodeURIComponent(options.roomId)}/`));
+      if (
+        (error.data.error.code === "AUTH_FAILED" || error.data.error.code === "INVITE_EXPIRED") &&
+        isDirectRoomResource &&
+        options.roomId !== undefined &&
+        token !== null
+      ) {
+        this.options.tokenStore.clearIfMatches(options.roomId, token, error.data.error.code);
+      }
       return { ok: false, error: error.data.error, idempotencyKey };
     }
     this.diagnostic({ method, path, status: response.status, code: "INVALID_MESSAGE" });

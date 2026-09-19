@@ -198,6 +198,8 @@ apps/web/
 ### 6.6 Game Result
 
 - 排名（并列展示顺序由服务端结果给定，UI 只展示；《总规划》§2.1）、冠军、各玩家最终筹码/名次。
+- 刷新与直接访问（TEX-55）：首选内存快照立即展示；缺失或直接通过 URL `/room/[roomId]/result/[tournamentId]` 访问时，经 `GET /api/v1/tournaments/{tournamentId}/result`（TEX-54）请求权威持久化赛果。赛果按 `tournamentId` 本地缓存，新比赛开启（`room.status === "IN_GAME"`）后旧赛果仍可独立查看，不与新快照混合。
+- 竞态与身份保护：URL 切换或卸载时使用 `AbortController` 取消请求；HTTP 返回 `AUTH_FAILED` 时安全清除被拒凭证，引导重新加入。
 - `FINISHED → LOBBY` 后提供"再来一局"（新建 Tournament，不复用旧牌局状态，《总规划》§5.1）与返回。
 - 无真人关房（`CLOSED`/`ABANDONED_NO_HUMAN`）时展示房间已关闭（《总规划》§4.2）。
 

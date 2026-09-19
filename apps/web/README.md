@@ -41,4 +41,6 @@ TEX-53 随共享 wire v4 补齐 Snapshot 夹具并验证投影存储在重连、
 
 TEX-47 将座位视觉映射固定为服务端 `seatIndex`：本人始终位于下方中央槽位，其他 Seat 按相对座位顺时针偏移映射到固定槽位，同一桌内不随入座人数、行动者、筹码、连接状态、弃牌、全下、淘汰或重渲染重排仍在桌的 Seat；D/SB/BB 徽标只消费 Snapshot 的 `dealerSeat/smallBlindSeat/bigBlindSeat`（TEX-53），Heads-Up 的 D=SB 在同一 Seat 并排显示，当前行动者只做高亮不改座位位置。验收与 E2E 见 [座位稳定性套件](../../tests/e2e/seats/README.md)。
 
+TEX-55 通过 `HttpTransport.getTournamentResult` 接入 TEX-54 权威持久化赛果端点，使赛果页（`/room/[roomId]/result/[tournamentId]`）支持页面刷新（Reload）与复制 URL 直接访问；内存快照优先展示，按 `tournamentId` 隔离多轮结果，处理请求竞态并在 HTTP 401 `AUTH_FAILED` 时安全展示权限错误并隔离房间凭证。
+
 PR 审查回归同时把牌桌座位筹码文字调整为满足深色桌面上的 WCAG AA 对比度，真实 WebKit axe 检查不得再以临界色值失败。

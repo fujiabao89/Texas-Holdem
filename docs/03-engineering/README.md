@@ -29,3 +29,5 @@ DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它�
 - [TEX-45-findings-ledger.md](./TEX-45-findings-ledger.md)：PR #46 的 Codex、CodeRabbit 与 Greptile 审查意见逐项核验、定级和处置记录。
 - [TEX-53-acceptance.md](./TEX-53-acceptance.md)：权威庄位/盲注座位、wire v4、恢复和多客户端一致性验证。
 - [TEX-54-acceptance.md](./TEX-54-acceptance.md)：持久化赛果读取的协议/真实PostgreSQL/授权隐私验收与既有终局写入边界。
+- [TEX-55-acceptance.md](./TEX-55-acceptance.md)：赛果页权威HTTP接口恢复、刷新与直接访问、未认证降级、多轮隔离与E2E验证。
+- [TEX-55-findings-ledger.md](./TEX-55-findings-ledger.md)：PR #57 的 Codex、CodeRabbit 与 Greptile 审查意见逐项核验、精确失败场景、严重度与处置台账。

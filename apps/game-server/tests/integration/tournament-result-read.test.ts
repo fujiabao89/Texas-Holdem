@@ -167,6 +167,7 @@ describeTestDatabase("TEX-54 durable public tournament result", (context) => {
     expect(result.statusCode, result.body).toBe(200);
     expect(result.json().data.championPlayerId).toBeNull();
     expect(result.json().data.rankings).toEqual([{ playerId: f.players[eliminated.seatIndex].playerId, placement: { from: 1, to: 1 }, displayOrder: 1 }]);
+    expect(f.view().rankings).toEqual(result.json().data.rankings);
     expect(result.json().data.players.filter((p: { pokerStatus: string }) => p.pokerStatus === "WITHDRAWN")).toHaveLength(2);
   });
 

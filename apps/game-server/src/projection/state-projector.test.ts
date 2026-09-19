@@ -36,6 +36,42 @@ it("projects a championless tournament with empty standings as a schema-valid nu
   expect(GameEventSchema.parse(event)).toEqual({ type: "TOURNAMENT_FINISHED", payload: { winnerPlayerId: null, rankings: [] } });
 });
 
+it("compacts public standings in live PlayerView and TOURNAMENT_FINISHED wire event when active players withdraw", () => {
+  const engine = makeEngine(3, 42);
+  const input = projectionInput(engine, "p0", {
+    engineState: {
+      ...engine.getState(),
+      phase: "finished",
+      finalStandings: [
+        { seatIndex: 2, name: "Player 2", placementRange: { from: 3, to: 3 }, displayOrder: 1 },
+      ],
+    },
+  });
+  const view = projectPlayerView(input);
+  expect(view.rankings).toEqual([
+    { playerId: "p2", placement: { from: 1, to: 1 }, displayOrder: 1 },
+  ]);
+
+  const event = projectWireEvent(
+    {
+      sequence: 0,
+      type: "TOURNAMENT_FINISHED",
+      championSeat: null,
+      finalStandings: [
+        { seatIndex: 2, name: "Player 2", placementRange: { from: 3, to: 3 }, displayOrder: 1 },
+      ],
+    },
+    wireContext(engine, "p0"),
+  );
+  expect(GameEventSchema.parse(event)).toEqual({
+    type: "TOURNAMENT_FINISHED",
+    payload: {
+      winnerPlayerId: null,
+      rankings: [{ playerId: "p2", finishPosition: 1, tied: false }],
+    },
+  });
+});
+
 function makeEngine(seatCount = 2, seed = 42): TournamentEngine {
   const rng = new SeededRandomSource(seed);
   const participants = Array.from({ length: seatCount }, (_, seatIndex) => ({
