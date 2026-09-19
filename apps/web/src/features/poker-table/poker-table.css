@@ -302,10 +302,6 @@
   .rr-table-page .table-card-seal { font-size: 10px; }
   .rr-table-page .rr-betting-panel { padding: 10px; gap: 6px; }
   .rr-table-page .table-primary-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  /* The wager panel replaces the primary row instead of stacking, so the dock
-     never exceeds --dock-reserve. Phone only: the desktop all-in confirmation
-     button lives in the primary row, so hiding it would break that flow. */
-  .rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
   .rr-table-page .table-wager-back { display: inline-flex; }
   .rr-table-page .rr-action { min-height: 44px; padding: 8px 6px; font-size: 12px; }
   /* Phone action dock keeps only submittable controls: the heading becomes
@@ -323,7 +319,7 @@
   /* The phone felt is narrow, so the deck shrinks into the top-left arc and the
      two upper Seats move inwards to keep their rectangles clear of it. */
   .rr-table-page .table-deck { left: 4px; top: 2px; height: 40px; width: 28px; }
-  /* Eight-plus Seats reuse five vertical bands on the shorter phone felt, so no
+  /* Stable clockwise slots reuse five vertical bands on the shorter phone felt, so no
      two Seat rectangles intersect (docs/05 §7.5/§16). */
   .rr-table-page[data-seat-density="stacked"] [data-seat-slot="1"],
   .rr-table-page[data-seat-density="stacked"] [data-seat-slot="9"] { top: 13%; }
@@ -332,7 +328,7 @@
   .rr-table-page[data-seat-density="stacked"] [data-seat-slot="3"],
   .rr-table-page[data-seat-density="stacked"] [data-seat-slot="7"] { top: 61%; }
   .rr-table-page[data-seat-density="stacked"] [data-seat-slot="4"],
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { top: 85%; }
+  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { top: 87%; }
   .rr-table-page[data-seat-density="stacked"] [data-seat-slot="4"] { left: 74%; }
   .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { left: 26%; }
   /* A crowded phone table compresses each Seat card; docs/05 §7.5 allows the
@@ -350,44 +346,67 @@
      reserved strip with no panel-level scrolling. The exact-amount field is a
      grid item of its own: it occupies the shortcut row one-for-one, so opening
      it swaps content instead of stacking a fourth row. */
-  .rr-table-page .table-wager-editor {
-    grid-template-columns: 1fr auto;
-    grid-auto-rows: minmax(44px, auto);
-    gap: 4px;
-    padding: 4px;
-  }
-  .rr-table-page .table-wager-editor > p { display: none; }
-  .rr-table-page .table-quick-amounts {
-    grid-area: 1 / 1 / 2 / -1;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
-  .rr-table-page .table-wager-meta { grid-area: 3 / 1 / 4 / 2; }
-  .rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 2 / 4 / 3; }
-  .rr-table-page .table-exact-amount {
-    grid-area: 1 / 1 / 2 / -1;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  /* The field keeps its accessible name, but the visible text is the value. */
-  .rr-table-page .table-exact-amount > span:first-child {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .rr-table-page .table-exact-amount > input { flex: 1; min-width: 0; }
-  .rr-table-page .table-exact-error { font-size: 10px; white-space: nowrap; }
-  .rr-table-page .table-wager-output { font-size: 16px; }
-  .rr-table-page .table-wager-editor:has(.table-exact-amount) .table-quick-amounts { display: none; }
 }
 
-/* 只有纵向余量充裕的桌面视口才放大行动区预留带。1366×768 这类矮视口没有
-   足够高度（768×1024 同样不够）：抬高 reserve 会把牌桌压到座位卡片相交，
-   "各 Seat 矩形互不相交"。矮视口保留 104px，由单行主操作适配。 */
-@media (min-width: 1200px) and (min-height: 900px) {
-  .rr-table-page { --dock-reserve: 240px; }
+/* 展开金额面板时替换主操作行，使行动区不超过 --dock-reserve。全下入口同步放入
+   编辑器第三行，保留“普通加注 ↔ 全下确认”的双向切换能力。 */
+.rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
+/* 紧凑三行金额编辑器在各宽度通用：桌面同时保留主操作行时内容实测高达 377px，
+   远超行动区预留带，必然产生面板内部滚动（docs/05 §8.1）。 */
+.rr-table-page .table-wager-editor {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(44px, auto);
+  gap: 4px;
+  padding: 4px;
+}
+.rr-table-page .table-wager-editor > p { display: none; }
+.rr-table-page .table-quick-amounts {
+  grid-area: 1 / 1 / 2 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
+.rr-table-page .table-wager-meta { display: contents; }
+.rr-table-page .table-wager-back { grid-area: 3 / 1 / 4 / 2; }
+.rr-table-page .table-wager-exact-toggle { grid-area: 3 / 1 / 4 / 3; min-width: 0; padding-inline: 6px; }
+.rr-table-page .table-wager-allin { grid-area: 3 / 3 / 4 / 4; min-width: 0; }
+.rr-table-page .table-wager-allin > .rr-action { width: 100%; height: 100%; min-width: 0; padding-inline: 4px; }
+.rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 4 / 4 / 5; min-width: 0; padding-inline: 4px; }
+.rr-table-page .table-exact-amount {
+  grid-area: 1 / 1 / 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The field keeps its accessible name, but the visible text is the value. */
+.rr-table-page .table-exact-amount > span:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.rr-table-page .table-exact-amount > input { flex: 1; min-width: 0; }
+.rr-table-page .table-exact-error { font-size: 10px; white-space: nowrap; }
+.rr-table-page .table-wager-output { font-size: 16px; }
+.rr-table-page .table-wager-editor:has(.table-exact-amount) .table-quick-amounts { display: none; }
+
+@media (max-width: 639px) {
+  .rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; }
+  .rr-table-page .table-wager-back,
+  .rr-table-page .table-wager-exact-toggle,
+  .rr-table-page .table-wager-allin > .rr-action,
+  .rr-table-page .table-wager-editor > .rr-action-bet {
+    min-height: 44px;
+    padding: 4px;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+}
+
+/* 展开态行动区需约 203px。高度充裕的桌面/平板视口放大预留带；1366×768
+   无法在不压缩牌桌到座位相交的前提下提供同等高度，残留边界记录在
+   docs/03-engineering/TEX-46-findings-ledger.md。 */
+@media (min-width: 640px) and (min-height: 900px) {
+  .rr-table-page { --dock-reserve: 208px; }
 }

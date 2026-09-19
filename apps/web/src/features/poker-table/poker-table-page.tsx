@@ -7,7 +7,7 @@ import type { Card, ErrorCode, GameSnapshot, SubmitAction } from "@texas-holdem/
 
 import { clampWager, quickAmounts, wagerRange, wagerStep, type WagerRange } from "../betting/amounts";
 import { HandHistoryDrawer } from "../hand-history/hand-history-drawer";
-import { errorMessage, formatMessage, message } from "../../messages/zh-CN";
+import { errorMessage, formatMessage, message, type MessageKey } from "../../messages/zh-CN";
 import { useAudioController } from "../../audio/use-audio-controller";
 import { useTableCues } from "../../audio/use-table-cues";
 import { animationTimings, visualTimings } from "../../animations/timings";
@@ -17,7 +17,7 @@ import type { PendingCommand as TransportPendingCommand } from "../../protocol/w
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
 import { actionFeedback, awardedTo, feedbackFlight, potName, publicHandRankName, publicPlayerName, relativeCenter, type Point } from "./event-feedback";
-import { canSubmitTableAction, remainingTimeMs, tableSeats } from "./table-state";
+import { canSubmitTableAction, remainingTimeMs, seatBadges, tableSeatSlots, tableSeats, type SeatBadge } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
 // The viewer Seat is pinned to this slot and anchored by its bottom edge, so the
@@ -240,6 +240,7 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
       <div className="table-wager-slider flex items-center gap-2"><ActionButton tone="neutral" label="−" ariaLabel={message("betting.decrease")} onClick={() => onChooseAmount(displayedAmount - step, currentRange.kind)} /><input className="min-w-0 flex-1 accent-emerald-700" type="range" aria-label={message("betting.amount")} min={currentRange.min} max={currentRange.max} step={step} value={displayedAmount} onChange={(event) => onChooseAmount(Number(event.target.value), currentRange.kind)} /><ActionButton tone="neutral" label="+" ariaLabel={message("betting.increase")} onClick={() => onChooseAmount(displayedAmount + step, currentRange.kind)} /><output aria-live="polite" className="table-wager-output font-semibold text-slate-950">{displayedAmount}</output></div>
       <div className="table-wager-meta flex flex-wrap items-center gap-2"><button className="table-wager-back min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" onClick={() => onSelectMode(null)} type="button">{message("betting.backToActions")}</button><button className="table-wager-exact-toggle min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" onClick={onToggleExact} type="button">{message("betting.openExactInput")}</button></div>
       {showExactInput && <label className="table-exact-amount grid gap-1 text-sm"><span>{message("betting.amountInput")}</span><input className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2" inputMode="numeric" value={exactAmount} onChange={(event) => onExactChange(event.target.value)} onBlur={() => { if (exactValid) onChooseAmount(exactNumber, currentRange.kind, false); }} />{!exactValid && exactAmount !== "" && <span className="table-exact-error text-red-700" role="alert">{message("betting.invalidAmount")}</span>}</label>}
+      {legal.canAllIn && <div className="table-wager-allin"><ActionButton tone="allIn" label={allInConfirm ? formatMessage("betting.confirmAllIn", { amount: legal.allInTo }) : formatMessage("betting.allIn", { amount: legal.allInTo })} onClick={() => allInConfirm ? onAction({ type: "ALL_IN" }) : onSetAllInConfirm(true)} /></div>}
       <ActionButton tone="bet" label={currentRange.kind === "BET" ? formatMessage("betting.submitBet", { amount: displayedAmount }) : formatMessage("betting.submitRaise", { amount: displayedAmount })} disabled={showExactInput && !exactValid} onClick={submitAmount} />
     </div>}
   </section>;
@@ -259,7 +260,8 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
   const playerEvent = overlay !== null && "playerId" in overlay.event.payload && overlay.event.payload.playerId === player.playerId ? overlay : null;
   const eventText = playerEvent === null ? null : actionFeedback(playerEvent.event);
   const departing = playerEvent?.event.type === "PLAYER_ELIMINATED" || playerEvent?.event.type === "PLAYER_WITHDRAWN";
-  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} data-viewer={viewer} data-active={active} className={`table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 text-center sm:w-36 ${slot === VIEWER_SEAT_SLOT ? "-translate-y-full" : "-translate-y-1/2"}`} aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
+  const badges = seatBadges(game, player.seat);
+  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} data-viewer={viewer} data-active={active ? "true" : "false"} className={`table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 text-center sm:w-36 ${slot === VIEWER_SEAT_SLOT ? "-translate-y-full" : "-translate-y-1/2"}`} aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
     <div data-seat-cards className={`relative z-10 mx-auto -mb-1 flex min-h-8 justify-center sm:min-h-14 ${playerEvent?.event.type === "PLAYER_FOLDED" ? "opacity-35" : ""}`}>
       {revealCards === null
         ? stagedCardCount === null
@@ -268,9 +270,13 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
         : <HoleCardsReveal cards={revealCards} landedCount={stagedCardCount ?? 2} />}
     </div>
     <div data-seat-chips className={`relative rounded-xl border px-1.5 py-1.5 shadow-lg sm:rounded-2xl sm:px-3 sm:py-2 ${award !== null ? "border-amber-100 bg-[#315d37] ring-2 ring-amber-200" : active ? "border-amber-300 bg-[#315d37] ring-2 ring-amber-300/75" : "border-slate-700 bg-[#203c2e]"} ${departing ? "table-seat-departing" : ""} ${player.pokerStatus === "ELIMINATED" || player.pokerStatus === "WITHDRAWN" ? "opacity-55" : ""}`} style={playerEvent === null ? undefined : { "--feedback-duration": `${playerEvent.durationMs}ms` } as CSSProperties}>
-      {player.seat === game.dealerSeat && <span aria-label={message("table.dealer")} className="absolute -left-2 -top-2 grid h-5 w-5 place-items-center rounded-full border-2 border-white bg-slate-950 text-[9px] font-bold text-white shadow">D</span>}
-      <strong className="table-player-name block truncate text-[10px] font-semibold text-white sm:text-sm" title={player.displayName}>{viewer && <span className="table-you" aria-label={message("table.you")}>● </span>}{player.displayName}</strong>
-      <span className="table-player-stack mt-0.5 block font-mono text-[9px] font-semibold text-emerald-100 sm:text-xs"><span className="table-chip" aria-hidden="true" />{player.stack.toLocaleString("zh-CN")}</span>
+      <span data-seat-name-row className="flex items-center justify-center gap-0.5">
+        {badges.length > 0 && <span data-seat-badges className="flex shrink-0 items-center gap-0.5">
+          {badges.map((badge) => <span data-seat-badge={badge} role="img" aria-label={message(seatBadgeLabel[badge])} className={`grid h-4 min-w-4 shrink-0 place-items-center rounded-full border border-white/80 px-0.5 text-[8px] font-bold leading-none text-white shadow-sm sm:h-5 sm:min-w-5 sm:px-1 sm:text-[10px] ${seatBadgeTone[badge]}`} key={badge}>{badge}</span>)}
+        </span>}
+        <strong data-seat-name className="table-player-name block min-w-0 truncate text-[10px] font-semibold text-white sm:text-sm" title={player.displayName}>{viewer && <span className="table-you" aria-label={message("table.you")}>● </span>}{player.displayName}</strong>
+      </span>
+      <span data-seat-stack className="table-player-stack mt-0.5 block font-mono text-[9px] font-semibold text-emerald-100 sm:text-xs"><span className="table-chip" aria-hidden="true" />{player.stack.toLocaleString("zh-CN")}</span>
       {award !== null && <span key={overlay?.eventKey} className="table-seat-award absolute -right-2 -top-3 rounded-full border border-amber-100 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-950" style={{ "--feedback-duration": `${animationTimings.winner}ms` } as CSSProperties}>{formatMessage("table.feedback.winnerAmount", { amount: award })}</span>}
     </div>
     {eventText !== null && <span className={`table-action-badge absolute left-1/2 top-full z-50 mt-1 w-max max-w-36 -translate-x-1/2 rounded-full px-2 py-1 text-[9px] font-semibold shadow sm:text-xs ${playerEvent?.event.type === "PLAYER_ALL_IN" ? "bg-amber-200 text-amber-950" : "bg-white text-slate-900"}`} style={{ "--feedback-duration": `${playerEvent?.durationMs ?? 0}ms` } as CSSProperties} key={playerEvent?.eventKey}>{eventText}</span>}
@@ -581,12 +587,13 @@ type ButtonTone = "neutral" | "fold" | "call" | "bet" | "allIn";
 function ActionButton({ label, onClick, disabled = false, ariaLabel, tone = "neutral" }: { readonly label: string; readonly onClick: () => void; readonly disabled?: boolean; readonly ariaLabel?: string; readonly tone?: ButtonTone }) { return <button aria-label={ariaLabel} className={`${actionButtonClass} ${buttonToneClass[tone]}`} disabled={disabled} onClick={onClick}>{label}</button>; }
 /** Seat density is derived from the occupied-seat count alone. Physical Seats may
     be non-contiguous, so the crowded layout must never be keyed on seat numbers. */
-function seatDensity(occupiedSeats: number): "compact" | "stacked" | undefined {
-  if (occupiedSeats >= 8) return "stacked";
-  if (occupiedSeats >= 6) return "compact";
+function seatDensity(occupiedSeats: number): "stacked" | undefined {
+  // TEX-47 的槽位映射自本人起顺时针连续占位，故三人起左侧侧翼即开始聚集；
+  // 分层（stacked）几何必须覆盖整个聚集区间，否则相邻座位卡片会相交。
+  if (occupiedSeats >= 3) return "stacked";
   return undefined;
 }
-function TableFrame({ children, reducedMotion = false, density }: { readonly children: ReactNode; readonly reducedMotion?: boolean; readonly density?: "compact" | "stacked" }) { return <main data-reduced-motion={reducedMotion} data-seat-density={density} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-2 overflow-hidden bg-[#f7faf8] p-2 text-slate-900 sm:gap-3 sm:p-4">{children}</main>; }
+function TableFrame({ children, reducedMotion = false, density }: { readonly children: ReactNode; readonly reducedMotion?: boolean; readonly density?: "stacked" }) { return <main data-reduced-motion={reducedMotion} data-seat-density={density} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-2 overflow-hidden bg-[#f7faf8] p-2 text-slate-900 sm:gap-3 sm:p-4">{children}</main>; }
 const tableMotionStyle = {
   "--board-flight-duration": `${visualTimings.boardFlight}ms`,
   "--board-flip-duration": `${visualTimings.boardFlip}ms`,
@@ -623,7 +630,6 @@ function suitName(suit: Card["suit"]): string {
     case "SPADES": return message("table.suits.SPADES");
   }
 }
-const seatSlotsByOpponentCount = [[], [0], [8, 2], [8, 0, 2], [8, 0, 2, 7], [8, 0, 2, 3, 7], [8, 9, 0, 1, 3, 7], [8, 9, 0, 1, 2, 3, 7], [6, 7, 8, 9, 1, 2, 3, 4], [0, 1, 2, 3, 4, 6, 7, 8, 9]] as const;
 const tableSeatPositions = [
   { left: "50%", top: "8%" }, { left: "76%", top: "14%" }, { left: "91%", top: "34%" }, { left: "91%", top: "64%" }, { left: "73%", top: "83%" },
   { left: "50%", top: "93%" }, { left: "27%", top: "83%" }, { left: "9%", top: "64%" }, { left: "9%", top: "34%" }, { left: "24%", top: "14%" },
@@ -633,17 +639,9 @@ const actionButtonClass = "rr-action";
 const buttonToneClass: Record<ButtonTone, string> = {
   neutral: "rr-action-neutral", fold: "rr-action-fold", call: "rr-action-call", bet: "rr-action-bet", allIn: "rr-action-allin",
 };
+const seatBadgeTone: Record<SeatBadge, string> = { D: "bg-slate-950", SB: "bg-sky-700", BB: "bg-amber-700" };
+const seatBadgeLabel: Record<SeatBadge, MessageKey> = { D: "table.badges.dealer", SB: "table.badges.smallBlind", BB: "table.badges.bigBlind" };
 
-function tableSeatSlots(game: GameSnapshot): ReadonlyArray<number | null> {
-  const slots = Array<number | null>(10).fill(null);
-  const viewer = game.players.find((player) => player.playerId === game.viewer.playerId);
-  if (viewer === undefined) return slots;
-  slots[viewer.seat] = VIEWER_SEAT_SLOT;
-  const opponents = game.players.filter((player) => player.playerId !== viewer.playerId).sort((left, right) => ((left.seat - viewer.seat + 10) % 10) - ((right.seat - viewer.seat + 10) % 10));
-  const availableSlots = seatSlotsByOpponentCount[opponents.length] ?? seatSlotsByOpponentCount[9];
-  opponents.forEach((player, index) => { slots[player.seat] = availableSlots[index] ?? null; });
-  return slots;
-}
 function seatPosition(slot: number): CSSProperties {
   const position = tableSeatPositions[slot] ?? tableSeatPositions[0]!;
   return { "--seat-left": position.left, "--seat-top": position.top } as CSSProperties;
