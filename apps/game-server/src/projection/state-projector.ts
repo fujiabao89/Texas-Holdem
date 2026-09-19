@@ -19,6 +19,7 @@
 import { evaluateHand, handRankName } from "@texas-holdem/poker-engine";
 import type { Card as WireCard, GameEvent, LegalActions, PlayerView, PlayerViewPatch } from "@texas-holdem/protocol";
 import type { Card, PokerEvent, TournamentState } from "@texas-holdem/poker-engine";
+import { compactPublicStandings } from "./tournament-result";
 
 /** 由协议 Schema 推导的类型（协议包不单独导出这些视图子类型）。 */
 type HandRankView = Extract<GameEvent, { type: "PLAYER_REVEALED" }>["payload"]["handRank"];
@@ -253,11 +254,12 @@ export function projectWireEvent(event: PokerEvent, ctx: WireProjectionContext):
       };
     case "TOURNAMENT_FINISHED": {
       const winnerSeat = event.championSeat;
+      const standings = compactPublicStandings(event.finalStandings);
       return {
         type: "TOURNAMENT_FINISHED",
         payload: {
           winnerPlayerId: winnerSeat !== null ? seatOfPlayer(winnerSeat) : null,
-          rankings: event.finalStandings.map((fs) => ({
+          rankings: standings.map((fs) => ({
             playerId: seatOfPlayer(fs.seatIndex),
             finishPosition: fs.placementRange.from,
             tied: fs.placementRange.to > fs.placementRange.from,
@@ -302,7 +304,7 @@ function projectRankings(
 ): RankingView[] {
   const source =
     state.finalStandings.length > 0
-      ? state.finalStandings.map((fs) => ({ seatIndex: fs.seatIndex, placementRange: fs.placementRange, displayOrder: fs.displayOrder }))
+      ? compactPublicStandings(state.finalStandings)
       : state.eliminations.flatMap((group) =>
           group.players.map((seatIndex, i) => ({
             seatIndex,

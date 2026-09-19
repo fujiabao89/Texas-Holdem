@@ -226,9 +226,9 @@ AI 接入边界见 04 §14（AI 只能选择 Engine 合法 Action）；成本与
 
 - 每次运行生成唯一 `runId` 并创建隔离数据库 Schema（迁移先行），teardown 终止本运行连接并清理 Schema；无 `TEX_TEST_DATABASE_URL` 时启动器直接失败，禁止静默降级。
 - 服务端随机性经 `TEX_TEST_RNG_SEED` 注入固定种子（生产默认安全随机源），牌局可确定性重放；测试只用真实 UI 与服务端权威结果推进，禁止 `route.fulfill`、伪造 Snapshot 或修改浏览器 store。
-- 覆盖：多人完整旅程（创建 → 邀请码加入 → 入座 → 准备 → 开局 → 行动 → 结算 → 结果页 → 再来一局）、字段级安全（DB 真值 vs 客户端收到的消息集：对手未公开底牌永不到达；playerToken 不落 URL/持久存储；错误信封无堆栈/SQL）、无障碍（纯键盘主流程 + axe serious 门槛 + Reduced Motion 业务终态不变）。
+- 覆盖：多人完整旅程（创建 → 邀请码加入 → 入座 → 准备 → 开局 → 行动 → 结算 → 结果页 → 再来一局）、字段级安全（DB 真值 vs 客户端收到的消息集：对手未公开底牌永不到达；playerToken 不落 URL/持久存储；错误信封无堆栈/SQL）、无障碍（纯键盘主流程 + axe serious 门槛 + Reduced Motion 业务终态不变）；TEX-55 增加赛果恢复全链路（`tests/e2e/real/result-recovery.spec.ts`：Reload 刷新恢复、有效会话直接导航、无凭证降级阻断、下一轮开局后旧赛果隔离共存、移动端视口适配）。
 - 配置 `retries: 0`（§2.1：重试通过不得记为门禁通过）；Chromium/Firefox/WebKit 三浏览器矩阵执行关键用例（`@key`）。
-- 已知边界：归档历史读取（TEX-36 端点）未覆盖——见 `docs/03-engineering/TEX-28-findings-ledger.md` F-2；服务端终局后结果的刷新/直达可达性留待服务端数据源裁决——F-3。
+- 已知边界：归档历史读取（TEX-36 端点）未覆盖——见 `docs/03-engineering/TEX-28-findings-ledger.md` F-2；服务端终局后结果的刷新/直达可达性留待服务端数据源裁决——F-3（TEX-54 交付了持久化端点，TEX-55 交付了前端恢复流与真实 E2E 规范用例 `tests/e2e/real/result-recovery.spec.ts`；待在配置 `TEX_TEST_DATABASE_URL` 的真实数据库环境中执行该套件后正式宣告闭合）。
 
 - E2E 覆盖创建房间、邀请码加入、Ready、完成一手牌与完整 Tournament；P1 增加单人开局（《区块6-10 v0.2》§9.16）。TEX-47 的座位映射与 D/SB/BB 稳定性用例位于 `tests/e2e/seats/`，覆盖 Heads-up、6/10 人、移动视口无重叠与跨手 Dealer/盲注迁移。
 - 前端验收标准表的权威在 [05](./05-frontend-spec.md) §16（下注无键盘、All-in 两步、动画剧本、响应式矩阵、重连、信息隔离），本文不重述。
