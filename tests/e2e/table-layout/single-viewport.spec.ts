@@ -525,7 +525,7 @@ test.describe("按需行动区", () => {
 });
 
 test.describe("展开态行动区", () => {
-  // 展开时以三行金额编辑器替换主操作行，并在第三行保留全下入口。面板一旦
+  // 展开时以三行金额编辑器替换主操作行，并在第三行保留返回与全下入口。面板一旦
   // overflow-y:auto 就是内部滚动，违反验收条件。覆盖能承受 208px 预留带的
   // 高视口；1366×768 的残留见台账未解决项。
   for (const viewport of VIEWPORTS.filter((item) => item.width >= 640 && item.height >= 900)) {
@@ -543,6 +543,10 @@ test.describe("展开态行动区", () => {
         metrics.scrollHeight,
         `展开态行动区不得内部滚动（需要 ${metrics.scrollHeight}px，实际 ${metrics.clientHeight}px）`,
       ).toBeLessThanOrEqual(metrics.clientHeight + 1);
+      await expect(page.getByRole("button", { name: "返回操作" })).toBeVisible();
+      await page.getByRole("button", { name: "返回操作" }).click();
+      await expect(panel).toHaveAttribute("data-wager-open", "false");
+      await expect(page.locator(".table-primary-actions")).toBeVisible();
     });
   }
 });

@@ -10,6 +10,7 @@
 | F-04 | CodeRabbit [`4035432530`](https://github.com/fujiabao89/Texas-Holdem/pull/56#discussion_r4035432530) Minor | 有效。`TEX-46-acceptance.md` 的"截至本记录…未推送、未创建 PR"是 2026-09-16 的历史快照，作为当时事实未失真；但第 56 行仍在**当前验收边界**中重复"未推送、未创建 PR、未发布。因此 CI 未在本分支运行过"，而 PR #56 已存在且 CI 已运行——该句现在是错的。同一文件第 9 行仍写"PR 目标分支必须设为 `feat/TEX-45-…`"，也与已 rebase 到 `main` 的事实不符。 | 文档无 PR 后的状态更新。 | P3 | 已修正：保留 2026-09-16 历史快照并标注时点，补充当前交付状态（PR #56、目标分支 `main`、CI 结果），第 56 行改为仅适用于记录时点。 |
 | F-05 | CodeRabbit [`4035432538`](https://github.com/fujiabao89/Texas-Holdem/pull/56#discussion_r4035432538) Minor | 有效。`docs/06-testing-strategy.md` §2.1 明文要求"Flaky 用例等同失败，须修复或经负责人书面批准后带期限隔离"。验收记录只写"建议单独开任务处理"，既无负责人书面批准，也无期限，不满足该条。 | 无。 | P3 | 已修正（部分）：在验收记录中如实登记为**待批准**状态，写明缺书面批准与期限、不得记为已批准或已修复。**未**修改 `brand-experience.spec.ts`；取得负责人书面批准前不做隔离声明。 |
 | F-06 | CodeRabbit [`4035432547`](https://github.com/fujiabao89/Texas-Holdem/pull/56#discussion_r4035432547) Minor | 有效。`single-viewport.spec.ts` 仅在按钮清单与 `toBeEnabled()` 中触及"全下至 1000"，从未点击二次确认、也未断言 `ALL_IN` 信封，即未执行"全下两步"；但 `docs/06-testing-strategy.md`、`tests/e2e/README.md` 与 `TEX-46-acceptance.md` 三处都称该套件"全下两步可完成"。同文件第 36 行与第 48 行自相矛盾（48 行正确指出该流程由 `tests/e2e/betting/table.spec.ts` 覆盖）。 | 无。 | P3 | 已修正：三处改为"全下按钮在行动区内可达"（这是本套件真实断言的内容），并注明两步全下与 `ALL_IN` 信封由 `tests/e2e/betting/table.spec.ts` 覆盖。 |
+| F-07 | Codex [`4056408211`](https://github.com/fujiabao89/Texas-Holdem/pull/56#discussion_r4056408211) P1 + CodeRabbit 顶层审查 [`5748392152`](https://github.com/fujiabao89/Texas-Holdem/pull/56#issuecomment-5748392152) P1（重复） | 有效。金额编辑器在所有视口隐藏主操作行，但“返回操作”仅在手机显示；768×1024 与更宽视口进入 Bet/Raise 后无法取消草稿并重新选择 Fold/Call/Time Bank。 | 既有返回流程 E2E 仅覆盖 390×844。 | P1 | 已修正：所有视口显示返回按钮，并把精确金额按钮固定到第三行第二列，避免与返回按钮重叠；768×1024、1920×1080 展开态回归同时断言可返回并恢复主操作行。 |
 
 未发现 P0、安全、授权、数据完整性、并发或扑克规则问题。
 
@@ -43,6 +44,7 @@
 - `pnpm exec playwright test -c tests/e2e/playwright.config.ts betting/table.spec.ts --workers=1`：**16 passed**。
 - `pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout --workers=1`：**88 passed**，包括 360×800 的 3/6/10 人稳定槽位不相交、手机精确金额无内部滚动，以及 768×1024 / 1920×1080 展开金额面板无内部滚动。
 - `CI=1 pnpm run test:e2e`：**138 passed**（2 workers），覆盖上述徽标回归与完整 mock 浏览器门禁。
+- `pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/table-layout/single-viewport.spec.ts --grep '精确金额可返回|展开金额面板不产生内部滚动' --workers=1`：**3 passed**，覆盖手机既有返回路径及 768×1024、1920×1080 非手机展开态返回主操作行。
 
 下列记录为本轮合并前的历史验证证据：
 
