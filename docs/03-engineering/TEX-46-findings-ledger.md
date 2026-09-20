@@ -27,6 +27,12 @@
 
 已修正：`tests/e2e/table-layout/single-viewport.spec.ts` 的 `gameSnapshot` 补 `showdownDisplayUntil: null`，table-layout 套件恢复 86 passed。
 
+### 合并 TEX-47 后的移动端徽标回归
+
+2026-09-20 的 CI `e2e`（run `35451002198`）有 **136 passed / 2 failed**；失败均为 `stable-seats.spec.ts` 的 10 人桌手机用例（360×800、390×844）。实测 D/SB/BB 徽标与本 Seat 的 40px 底牌盒相交 1px。根因是紧凑 Seat 继承底牌容器的 `-mb-1`，而 TEX-47 新增的昵称行徽标恰好进入该负边距区域。
+
+已修正：仅在手机 `data-seat-density` 布局中把底牌盒视觉上移 1px；CSS transform 不参与布局计算，因此不会增加 Seat 总高度，也不会重新触发相邻槽位相交。CI 同配置（`CI=1`、2 workers）的完整 mock Playwright 套件本地 **138 passed**；定向的 10 人桌徽标、360×800 六人桌/十人桌座位互斥矩阵 **18 passed**。
+
 ## 修复后验证
 
 2026-09-19 合并 `main`（含 TEX-47 稳定座位映射）后的当前证据：
@@ -36,6 +42,7 @@
 - `pnpm exec vitest run --project unit apps/web/src/features/poker-table --maxWorkers 1`：**18 passed / 3 files**。
 - `pnpm exec playwright test -c tests/e2e/playwright.config.ts betting/table.spec.ts --workers=1`：**16 passed**。
 - `pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout --workers=1`：**88 passed**，包括 360×800 的 3/6/10 人稳定槽位不相交、手机精确金额无内部滚动，以及 768×1024 / 1920×1080 展开金额面板无内部滚动。
+- `CI=1 pnpm run test:e2e`：**138 passed**（2 workers），覆盖上述徽标回归与完整 mock 浏览器门禁。
 
 下列记录为本轮合并前的历史验证证据：
 

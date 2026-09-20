@@ -57,6 +57,12 @@
 
 已在 `tests/e2e/table-layout/single-viewport.spec.ts` 的 `gameSnapshot` 补 `showdownDisplayUntil: null`；table-layout 套件恢复全绿。
 
+## 合并 TEX-47 后的移动端徽标 CI 修复（2026-09-20）
+
+CI run `35451002198` 的 mock `e2e` 为 136 passed / 2 failed；两项失败均是 `stable-seats.spec.ts` 在 360×800 与 390×844 十人桌中发现 D/SB/BB 徽标与本 Seat 底牌盒相交 1px。紧凑布局的底牌容器继承 `-mb-1`，TEX-47 新增徽标后暴露了该像素级边界。
+
+修复只在手机 `data-seat-density` 布局把底牌盒视觉上移 1px，不改变 Seat 的布局高度。定向徽标与座位互斥矩阵 18/18 通过；按 CI 配置执行完整 `CI=1 pnpm run test:e2e` 为 **138/138 通过**。目录 README 与前端/测试权威规格已检查，无需更新：既有契约已经要求徽标不得遮挡底牌且 Seat 矩形不得相交，本次只恢复该既定行为，没有新增页面流程、接口或运行方式。
+
 ## PR #56 审查意见处置
 
 Codex / CodeRabbit / Greptile 的 9 条意见逐项核验与处置见 [TEX-46-findings-ledger.md](./TEX-46-findings-ledger.md)。
