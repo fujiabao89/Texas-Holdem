@@ -341,10 +341,10 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
   const dimensions = cardDimensions(variant);
   const cornerText = variant === "seat" ? "text-[8px] sm:text-xs" : "text-[10px] sm:text-sm";
   const color = red ? "text-rose-600" : "text-slate-900";
-  return <span role="img" data-card-variant={variant} className={`table-card-face relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#fffef9,#eeeee2)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
-    <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
+  return <span role="img" data-card-rank={card.rank} data-card-suit={card.suit} data-card-variant={variant} className={`table-card-face relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#fffef9,#eeeee2)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
+    <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[8%] top-[6%] ${cornerText}`} />
     <CardPips card={card} variant={variant} />
-    <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
+    <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[6%] right-[8%] rotate-180 ${cornerText}`} />
   </span>;
 }
 
@@ -357,16 +357,19 @@ function CardBack({ variant, className = "" }: { readonly variant: "board" | "se
 
 function CardCorner({ rank, suit, className }: { readonly rank: Card["rank"]; readonly suit: string; readonly className: string }) {
   const compactTen = rank === "10" ? "text-[8px] tracking-[-0.08em] sm:text-xs" : "";
-  return <span aria-hidden="true" className={`table-card-corner absolute z-10 grid justify-items-center gap-px rounded-[0.1rem] bg-white/95 px-px leading-[0.95] ${className} ${compactTen}`}><span>{rank}</span><span>{suit}</span></span>;
+  return <span aria-hidden="true" data-card-corner className={`table-card-corner absolute z-10 grid justify-items-center gap-px leading-[0.95] ${className} ${compactTen}`}><span>{rank}</span><span>{suit}</span></span>;
 }
 
 function CardPips({ card, variant }: { readonly card: Card; readonly variant: "board" | "seat" | "hole" }) {
   const suit = cardSuit(card);
-  const pipText = card.rank === "10" ? variant === "seat" ? "text-[8px] sm:text-[10px]" : "text-[10px] sm:text-xs" : variant === "seat" ? "text-[9px] sm:text-xs" : variant === "board" ? "text-xs sm:text-base" : "text-xs sm:text-sm";
   const layout = pipLayouts[card.rank];
-  if (layout !== undefined) return <>{layout.map((pip, index) => <span aria-hidden="true" className={`absolute -translate-x-1/2 -translate-y-1/2 leading-none ${pip.inverted ? "rotate-180" : ""} ${pipText}`} style={{ left: `${pip.x}%`, top: `${pip.y}%` }} key={index}>{suit}</span>)}</>;
-  if (card.rank === "A") return <span aria-hidden="true" className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl"}`}>{suit}</span>;
-  return <span aria-hidden="true" className={`table-card-court absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 justify-items-center rounded-md border border-current/15 bg-white/45 px-1 leading-none ${variant === "seat" ? "text-base sm:text-2xl" : "text-2xl sm:text-4xl"}`}><span>{card.rank}</span><span className={variant === "seat" ? "text-xs sm:text-base" : "text-sm sm:text-xl"}>{suit}</span></span>;
+  return <span aria-hidden="true" data-card-content data-card-content-variant={variant} className="table-card-content absolute inset-[20%_16%]">
+    {layout !== undefined
+      ? layout.map((pip, index) => <span data-card-pip className={`table-card-pip absolute -translate-x-1/2 -translate-y-1/2 leading-none ${pip.inverted ? "rotate-180" : ""}`} style={{ left: `${pip.x}%`, top: `${pip.y}%` }} key={index}>{suit}</span>)
+      : card.rank === "A"
+        ? <span data-card-pip className="table-card-ace absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none">{suit}</span>
+        : <span data-card-court className="table-card-court absolute inset-[2%_8%] grid place-content-center justify-items-center rounded-sm border bg-white/55 leading-none"><span>{card.rank}</span><span>{suit}</span></span>}
+  </span>;
 }
 
 function cardDimensions(variant: "board" | "seat" | "hole"): string {
@@ -377,13 +380,13 @@ type PipPosition = { readonly x: number; readonly y: number; readonly inverted?:
 const pipLayouts: Readonly<Partial<Record<Card["rank"], readonly PipPosition[]>>> = {
   "2": [{ x: 50, y: 31 }, { x: 50, y: 69, inverted: true }],
   "3": [{ x: 50, y: 28 }, { x: 50, y: 50 }, { x: 50, y: 72, inverted: true }],
-  "4": [{ x: 34, y: 29 }, { x: 66, y: 29 }, { x: 34, y: 71, inverted: true }, { x: 66, y: 71, inverted: true }],
-  "5": [{ x: 34, y: 27 }, { x: 66, y: 27 }, { x: 50, y: 50 }, { x: 34, y: 73, inverted: true }, { x: 66, y: 73, inverted: true }],
-  "6": [{ x: 34, y: 25 }, { x: 66, y: 25 }, { x: 34, y: 50 }, { x: 66, y: 50 }, { x: 34, y: 75, inverted: true }, { x: 66, y: 75, inverted: true }],
-  "7": [{ x: 34, y: 24 }, { x: 66, y: 24 }, { x: 50, y: 37 }, { x: 34, y: 58 }, { x: 66, y: 58 }, { x: 34, y: 76, inverted: true }, { x: 66, y: 76, inverted: true }],
-  "8": [{ x: 34, y: 22 }, { x: 66, y: 22 }, { x: 50, y: 36 }, { x: 34, y: 50 }, { x: 66, y: 50 }, { x: 50, y: 64, inverted: true }, { x: 34, y: 78, inverted: true }, { x: 66, y: 78, inverted: true }],
-  "9": [{ x: 34, y: 22 }, { x: 66, y: 22 }, { x: 34, y: 36 }, { x: 66, y: 36 }, { x: 50, y: 50 }, { x: 34, y: 64, inverted: true }, { x: 66, y: 64, inverted: true }, { x: 34, y: 78, inverted: true }, { x: 66, y: 78, inverted: true }],
-  "10": [{ x: 38, y: 26 }, { x: 62, y: 26 }, { x: 38, y: 38 }, { x: 62, y: 38 }, { x: 38, y: 50 }, { x: 62, y: 50, inverted: true }, { x: 38, y: 62, inverted: true }, { x: 62, y: 62, inverted: true }, { x: 38, y: 74, inverted: true }, { x: 62, y: 74, inverted: true }],
+  "4": [{ x: 30, y: 24 }, { x: 70, y: 24 }, { x: 30, y: 76, inverted: true }, { x: 70, y: 76, inverted: true }],
+  "5": [{ x: 30, y: 20 }, { x: 70, y: 20 }, { x: 50, y: 50 }, { x: 30, y: 80, inverted: true }, { x: 70, y: 80, inverted: true }],
+  "6": [{ x: 30, y: 14 }, { x: 70, y: 14 }, { x: 30, y: 50 }, { x: 70, y: 50 }, { x: 30, y: 86, inverted: true }, { x: 70, y: 86, inverted: true }],
+  "7": [{ x: 27, y: 10 }, { x: 73, y: 10 }, { x: 50, y: 32 }, { x: 27, y: 54 }, { x: 73, y: 54 }, { x: 27, y: 90, inverted: true }, { x: 73, y: 90, inverted: true }],
+  "8": [{ x: 27, y: 8 }, { x: 73, y: 8 }, { x: 50, y: 29 }, { x: 27, y: 50 }, { x: 73, y: 50 }, { x: 50, y: 71, inverted: true }, { x: 27, y: 92, inverted: true }, { x: 73, y: 92, inverted: true }],
+  "9": [{ x: 27, y: 6 }, { x: 73, y: 6 }, { x: 27, y: 35 }, { x: 73, y: 35 }, { x: 50, y: 50 }, { x: 27, y: 65, inverted: true }, { x: 73, y: 65, inverted: true }, { x: 27, y: 94, inverted: true }, { x: 73, y: 94, inverted: true }],
+  "10": [{ x: 32, y: 5 }, { x: 68, y: 5 }, { x: 32, y: 28 }, { x: 68, y: 28 }, { x: 32, y: 50 }, { x: 68, y: 50, inverted: true }, { x: 32, y: 72, inverted: true }, { x: 68, y: 72, inverted: true }, { x: 32, y: 95, inverted: true }, { x: 68, y: 95, inverted: true }],
 };
 
 function ClockStatus({ hasActor, actionDeadline, timeBankMs, serverTime, clockKey }: { readonly actionDeadline: number | null; readonly timeBankMs: number; readonly serverTime: number; readonly clockKey: string; readonly hasActor: boolean }) {
