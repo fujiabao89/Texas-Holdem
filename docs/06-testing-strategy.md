@@ -96,6 +96,7 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 | 不限时模式：无行动超时任务、不自动 Check/Fold、`USE_TIME_BANK` 被拒绝 | Integration | [04](./04-game-server-architecture.md) §8；《总规划》§3.1 |
 | Time Bank：基础时间 + 银行组合、`timeBankRemainingMs` 扣减、多次使用/用尽/超额请求、用尽后 Auto Check/Fold、断线不自动消耗 | Integration | 04 §8 |
 | 超时竞争裁决：`receivedAt <= actionDeadline` 的合法 Action 优先；逾期返回 `ACTION_TIMEOUT`/`STALE_GAME_STATE` 且不执行 | Integration | 04 §7.2；02 §11 |
+| 展示阶段计时：摊牌/发牌窗口内无 actor、LegalActions、deadline；窗口结束后完整开钟；旧 `tournamentId/handId/phase/generation` 回调 no-op | Unit + Fake Clock | 04 §6.2/§8.2；02 §8.4 |
 
 ### 3.2 联机与服务端（权威：[04](./04-game-server-architecture.md) / [02](./02-protocol-spec.md)）
 
@@ -362,6 +363,7 @@ Performance CI 落地事实（2026-09-05，TEX-29）：`ci.yml` 的 `perf-smoke`
 - 测试基础设施（TEX-12，2026-08-21）已落地：Vitest 分层入口、fast-check、Playwright + axe-core、Seed/Fake Clock/Fixture Builder/数据库隔离工具与 E2E 失败产物；业务测试（规则、联机、投影、性能）随对应任务回填。
 - 持久化 Integration（TEX-18，2026-08-23）已落地：`apps/game-server/tests/integration/` 覆盖迁移（空库一次成功/幂等）、控制面原子写入、手末 Commit Bundle（对齐/回滚/幂等/冲突）、约束（FK/CHECK/唯一）与最小权限（anon/authenticated 拒绝），运行于真实 PostgreSQL 隔离 schema；CI 未配置测试库时该层仍受控跳过。
 - §3.1/§3.2 的 Tournament 运行时测试项已随 TEX-20 落地（unit 层，`apps/game-server/src/tournaments/**/*.test.ts` 与 `projection/state-projector.test.ts`）：单桌串行化、`receivedAt` 截止裁决（截止前合法 Action 胜过 Timer / 迟到 `ACTION_TIMEOUT` / `STALE_GAME_STATE`）、Time Bank（扣减/机会一次性/UNLIMITED 禁用）、断线宽限与无真人关房、重复/非法/过期命令不污染状态、事件 sequence 与 Commit Bundle 对齐、time 模式升盲、Room↔Tournament 开局/终局闭环；全部使用 Fake Clock + 注入随机源，不依赖真实 DB 或 sleep。
+- TEX-59 在上述运行时套件增加摊牌/发牌展示窗口、完整行动时钟、弃牌获胜跳过摊牌与 stale 展示回调。
 - §3.2 的"持久化 Writer"与"崩溃恢复"测试项已随 TEX-22 落地（2026-08-25）：Writer/watermark 与恢复编排用 Fake Persistence（`apps/game-server/tests/fixtures/persistence.ts`）+ Fake Clock 在 unit 层覆盖（`apps/game-server/src/persistence/**/*.test.ts`）——成功/重复投递/退避/乱序完成/部分失败/软硬 watermark/损坏隔离/flush、正常恢复/孤立快照/事件缺口/checksum/版本不兼容/序列连续性；真实 PostgreSQL 恢复仓储（`hasCommittedEventsThrough`、`listActiveTournaments`/`listSnapshots`、`rollbackToSnapshot`）在 `apps/game-server/tests/integration/recovery.test.ts` 覆盖（缺测试库受控跳过）。
 - Hand History 投影读取 Integration（TEX-36，2026-08-27）已落地：`apps/game-server/tests/integration/hand-history-read.test.ts` 覆盖 token 摘要数据库侧鉴权（401/403/404）、`handNumber` 倒序 cursor 分页（默认 20/上限 50/非法参数 400）、接收者视角隐私隔离（本人底牌带牌面、他人底牌无牌面、Burn 牌面过滤并以全场唯一花色做字节级断言）、跨 Tournament 详情 404、损坏记录降级 500 不泄露细节；运行于真实 PostgreSQL 隔离 schema，缺测试库时受控跳过。
 - PR #30 审查回归（TEX-36，2026-09-03）：增加关闭/离开后的凭证拒绝、重复分页参数、事件首/中/尾缺失与 hand/global 双序列连续性；用真实 TournamentExecutor → Commit Bundle → PostgreSQL → HTTP 覆盖手间撤回归属及仍在房间的淘汰观战者读取无冠军终局。共享 v3 Schema、前端时间线与旧版本拒绝路径同步验证；完整判定见 [Findings Ledger](./03-engineering/TEX-36-findings-ledger.md)。

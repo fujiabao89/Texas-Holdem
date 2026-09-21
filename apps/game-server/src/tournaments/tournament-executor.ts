@@ -57,6 +57,10 @@ import {
 export const DISCONNECT_GRACE_MS = 10 * 60 * 1000;
 /** Time Bank 单次最多延长/扣除（§8.4）。 */
 export const TIME_BANK_STEP_MS = 30_000;
+/** 摊牌结果的服务端语义展示窗口（TEX-58/59）。 */
+export const SHOWDOWN_DISPLAY_MS = 4_000;
+/** 新手发牌的服务端语义展示窗口；行动时钟在窗口结束后才建立。 */
+export const DEALING_DISPLAY_MS = 4_000;
 /** 终态 Tournament 保留期：180 天（03 §5.10）。 */
 const RETENTION_MS = 180 * 24 * 3600 * 1000;
 
@@ -64,6 +68,8 @@ const RETENTION_MS = 180 * 24 * 3600 * 1000;
 export interface TournamentOutputSink {
   emitEvents(messages: readonly GameEventMessage[]): void;
   emitClockUpdated(payload: ClockUpdatedPayload): void;
+  /** 阶段切换没有 Engine Event 时，要求网关向当前连接发送权威 Snapshot。 */
+  requestGameSnapshots?(tournamentId: string): void;
   enqueueCommitBundles(bundles: readonly HandCommitBundle[]): void;
   /** Tournament 在释放自身执行权后向 Room 队列投递生命周期命令（§5.7）。 */
   submitRoomCommand(roomId: string, command: RoomCommand): void;
@@ -245,6 +251,9 @@ export class TournamentExecutor {
       case "SYSTEM_TIMER_ACTION":
         this.processActionTimer(command);
         return null;
+      case "PRESENTATION_PHASE_TIMER":
+        this.processPresentationPhaseTimer(command);
+        return null;
       case "GRACE_TIMER":
         this.processGraceTimer(command);
         return null;
@@ -290,26 +299,36 @@ export class TournamentExecutor {
       if (this.checkNoHuman()) return;
       const engineState = this.state.engine.getState();
       if (!engineState.handInProgress) {
+        this.clearPresentationPhaseTimer();
         this.state.actionDeadline = null;
         this.state.currentLegalActions = null;
-      }
-      if (engineState.phase === "finished") {
-        if (
-          !engineState.handInProgress &&
-          engineState.handNumber > this.state.committedThroughHand
-        ) {
-          this.commitCurrentHand(engineState, this.buildFinishUpdate("FINISHED"));
+        this.state.presentationPhase = "BETWEEN_HANDS";
+        const completedNewHand = engineState.handNumber > this.state.committedThroughHand;
+        const needsShowdownDisplay =
+          completedNewHand &&
+          engineState.handNumber > this.state.showdownDisplayedThroughHand &&
+          this.hasPendingShowdownEvents();
+        if (completedNewHand) {
+          this.commitCurrentHand(
+            engineState,
+            engineState.phase === "finished" ? this.buildFinishUpdate("FINISHED") : undefined,
+          );
         }
-        this.finalizeTournament();
-        return;
+        // 旧手尾部事件必须先以旧 handId 发完，再由权威 Snapshot 进入展示窗口。
+        this.emitNewEvents();
+        if (needsShowdownDisplay) {
+          this.enterShowdownDisplay(engineState.handNumber);
+          return;
+        }
+        if (engineState.phase === "finished") {
+          this.finalizeTournament();
+          return;
+        }
       }
       if (this.state.status !== "RUNNING") return;
       if (engineState.handInProgress) {
-        this.setActionTimer();
+        if (this.state.presentationPhase === "ACTION_OPEN") this.setActionTimer();
         return;
-      }
-      if (engineState.handNumber > this.state.committedThroughHand) {
-        this.commitCurrentHand(engineState);
       }
       // stopAfterCurrentHand（优雅关停/完整性隔离，不可恢复）、backpressurePaused（背压，可恢复）
       // 或同步 hard 背压（isBackpressurePaused）都停在此边界——同步检查覆盖「手末 bundle 自身
@@ -321,11 +340,10 @@ export class TournamentExecutor {
       ) {
         return;
       }
-      // 先用旧 handId 发完刚结束一手的尾部事件；否则 startNextHand 后投影会把旧事件
-      // 与下一手盲注座位组合到同一个 patch，破坏事件/handId 的权威边界。
-      this.emitNewEvents();
       this.state.currentHandId = this.state.ids.uuid();
       this.state.currentHandStartedAt = this.state.clock();
+      this.state.presentationPhase = "DEALING";
+      this.state.showdownDisplayUntil = null;
       try {
         this.state.engine.startNextHand();
       } catch (error) {
@@ -334,6 +352,12 @@ export class TournamentExecutor {
         return;
       }
       this.scheduleBlindTimer();
+      if (this.state.engine.getState().handInProgress) {
+        // HAND_STARTED/发牌事件可见，但 actor、LegalActions 与行动时钟保持关闭。
+        this.emitNewEvents();
+        this.schedulePresentationPhase("DEALING", DEALING_DISPLAY_MS);
+        return;
+      }
     }
   }
 
@@ -378,6 +402,9 @@ export class TournamentExecutor {
     if (viaAction !== "continue") return viaAction;
     if (this.state.status !== "RUNNING") {
       return this.rejected("TOURNAMENT_NOT_ACTIVE", command.requestId, command.actionId);
+    }
+    if (this.state.presentationPhase !== "ACTION_OPEN") {
+      return this.rejected("NOT_YOUR_TURN", command.requestId, command.actionId);
     }
 
     const expected = BigInt(command.expectedSequence);
@@ -454,6 +481,9 @@ export class TournamentExecutor {
     if (this.state.status !== "RUNNING") {
       return this.rejected("TOURNAMENT_NOT_ACTIVE", requestId);
     }
+    if (this.state.presentationPhase !== "ACTION_OPEN") {
+      return this.rejected("TIME_BANK_NOT_AVAILABLE", requestId);
+    }
     if (this.state.config.actionTime === "UNLIMITED") {
       return this.rejected("TIME_BANK_DISABLED", requestId);
     }
@@ -509,6 +539,7 @@ export class TournamentExecutor {
   ): void {
     const engineState = this.state.engine.getState();
     if (engineState.phase === "finished") return;
+    if (this.state.presentationPhase !== "ACTION_OPEN") return;
     const hand = engineState.hand;
     // 执行前复核固化的字段与 generation；任一不匹配 → stale no-op（§8.2）。
     if (hand === null || this.state.currentHandId !== command.handId) return;
@@ -527,6 +558,32 @@ export class TournamentExecutor {
       return;
     }
     this.afterEngineTransition();
+  }
+
+  private processPresentationPhaseTimer(
+    command: Extract<TournamentCommand, { type: "PRESENTATION_PHASE_TIMER" }>,
+  ): void {
+    if (command.tournamentId !== this.state.tournamentId) return;
+    if (command.handId !== this.state.currentHandId) return;
+    if (command.phase !== this.state.presentationPhase) return;
+    if (command.generation !== this.state.phaseTimerGeneration) return;
+    this.state.phaseTimerHandle = null;
+
+    if (command.phase === "SHOWDOWN_DISPLAY") {
+      this.state.presentationPhase = "BETWEEN_HANDS";
+      this.state.showdownDisplayUntil = null;
+      // 先公开 HAND_END，再推进终局或下一手；客户端不能自行越过展示阶段。
+      this.deps.output.requestGameSnapshots?.(this.state.tournamentId);
+      this.advance();
+      return;
+    }
+
+    const hand = this.state.engine.getState().hand;
+    if (hand === null || !this.state.engine.getState().handInProgress) return;
+    this.state.presentationPhase = "ACTION_OPEN";
+    this.setActionTimer();
+    // ACTION_OPENED 等价契约：同 sequence 的权威 Snapshot 原子公开 actor、LegalActions 与完整 deadline。
+    this.deps.output.requestGameSnapshots?.(this.state.tournamentId);
   }
 
   private processGraceTimer(command: Extract<TournamentCommand, { type: "GRACE_TIMER" }>): void {
@@ -661,6 +718,54 @@ export class TournamentExecutor {
 
   // ---- Timer 调度 ----
 
+  private hasPendingShowdownEvents(): boolean {
+    const emittedCount = this.state.lastWireSequence - this.state.engineEventBase;
+    return this.state.engine
+      .getEvents()
+      .slice(emittedCount)
+      .some((event) => event.type === "SHOWDOWN_STARTED");
+  }
+
+  private enterShowdownDisplay(handNumber: number): void {
+    this.state.presentationPhase = "SHOWDOWN_DISPLAY";
+    this.state.showdownDisplayedThroughHand = handNumber;
+    this.state.actionDeadline = null;
+    this.state.currentLegalActions = null;
+    this.state.showdownDisplayUntil = this.state.clock() + SHOWDOWN_DISPLAY_MS;
+    this.deps.output.requestGameSnapshots?.(this.state.tournamentId);
+    this.schedulePresentationPhase("SHOWDOWN_DISPLAY", SHOWDOWN_DISPLAY_MS);
+  }
+
+  private schedulePresentationPhase(
+    phase: "SHOWDOWN_DISPLAY" | "DEALING",
+    durationMs: number,
+  ): void {
+    this.clearPresentationPhaseTimer();
+    const handId = this.state.currentHandId;
+    if (handId === null) return;
+    this.state.phaseTimerGeneration += 1;
+    const generation = this.state.phaseTimerGeneration;
+    const tournamentId = this.state.tournamentId;
+    this.state.phaseTimerHandle = this.state.scheduler.setTimeout(() => {
+      this.submitInternal({
+        type: "PRESENTATION_PHASE_TIMER",
+        tournamentId,
+        handId,
+        phase,
+        generation,
+        firedAt: this.state.clock(),
+      });
+    }, durationMs);
+  }
+
+  private clearPresentationPhaseTimer(): void {
+    if (this.state.phaseTimerHandle !== null) {
+      this.state.scheduler.clearTimeout(this.state.phaseTimerHandle);
+      this.state.phaseTimerHandle = null;
+    }
+    this.state.phaseTimerGeneration += 1;
+  }
+
   private setActionTimer(): void {
     const engineState = this.state.engine.getState();
     const hand = engineState.hand;
@@ -748,8 +853,11 @@ export class TournamentExecutor {
 
   private cancelAllTimers(): void {
     this.clearActionTimer();
+    this.clearPresentationPhaseTimer();
     this.state.actionDeadline = null;
     this.state.currentLegalActions = null;
+    this.state.showdownDisplayUntil = null;
+    this.state.presentationPhase = "BETWEEN_HANDS";
     if (this.state.blindTimerHandle !== null) {
       this.state.scheduler.clearTimeout(this.state.blindTimerHandle);
       this.state.blindTimerHandle = null;
@@ -836,6 +944,8 @@ export class TournamentExecutor {
       engineState: effectiveEngineState,
       seatToPlayer: this.state.seatToPlayer,
       actionDeadline: this.state.actionDeadline,
+      showdownDisplayUntil: this.state.showdownDisplayUntil,
+      presentationPhase: this.state.presentationPhase,
       currentLegalActions: this.state.currentLegalActions,
       timeBankRemainingMs,
       viewerPlayerId,

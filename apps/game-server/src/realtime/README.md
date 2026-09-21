@@ -7,7 +7,7 @@ TEX-52：epoch 采用全局单调分配，只保存活跃连接映射；Room 关
 TEX-21 在 TEX-24 的同一 Gateway 上补齐完整生命周期：首帧强制认证、协议版本
 校验、`RECONNECT_RESULT` 中的 Room/Game 权威快照、Tournament 事件/时钟扇出与
 `REQUEST_SNAPSHOT` 重同步。Ready/离开仍经 Room/Tournament 串行权威路径处理；
-`COMMAND_RESULT` 仅是回执，绝不拼装或修改 Room/Game 投影。
+`COMMAND_RESULT` 仅是回执，绝不拼装或修改 Room/Game 投影。TEX-59 的展示阶段切换没有新增 Engine Event；`TournamentEventBus.requestGameSnapshots` 要求 Gateway 向该 Tournament 当前连接逐接收者投影并发送 `GAME_SNAPSHOT`，用于原子公开 `SHOWDOWN_DISPLAY` 或行动开放状态。
 
 每个 `(roomId, playerId)` 仅保留最新连接；被替换的连接收到
 `SESSION_REPLACED` 后关闭。连接 epoch 会在 Tournament 执行器真正处理命令时再

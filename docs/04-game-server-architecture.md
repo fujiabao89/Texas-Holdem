@@ -230,6 +230,8 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 - 把 Action（真人/AI/Timer）交给执行器（§7），Engine 产出 Events 后由执行器分配 `sequence` 并分发；
 - "提前结算 2"（所有剩余玩家已 All-in）：Engine 立即完成，server **不等待**客户端；前端按动画队列逐步展示（[01](./01-engine-spec.md) §6）；
+- Engine 启动新手后，server 先进入 4 秒 `DEALING` 展示窗；该窗内投影新手事件但隐藏 actor、LegalActions 和 `actionDeadline`。窗口到期后才以权威 Snapshot 原子开放行动并建立完整 `actionTime`。
+- 发生摊牌时，server 在旧手事件发完后进入 4 秒 `SHOWDOWN_DISPLAY`，窗口到期前不推进下一手；无摊牌的弃牌获胜跳过该窗口，但下一手仍经过 `DEALING`。
 - 每手结束触发 Snapshot 落盘（§12；《总规划》§7.2）。
 
 ### 6.3 盲注级别推进
@@ -316,6 +318,7 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 | Timer | 建立/重置 | 到期行为 | 依据 |
 | --- | --- | --- | --- |
 | 行动超时（`actionDeadline`） | 每次行动权转移时建立 | Check 合法则 Auto Check，否则 Auto Fold | 《总规划》§3.1 |
+| 展示阶段（`SHOWDOWN_DISPLAY` / `DEALING`） | 摊牌事件发完或新手发牌后建立，固定 4 秒 | 摊牌窗到期后推进手间边界；发牌窗到期后原子公开 actor/LegalActions 并建立完整行动时钟 | [02](./02-protocol-spec.md) §8.4；TEX-59 |
 | Time Bank | 玩家发起 Server 控制命令 `USE_TIME_BANK` | 在 Tournament 队列中校验并延长当前行动固定时段（如 30 秒）或剩余余额中较小者；余额 `timeBankRemainingMs` 由 server 权威维护，不进入 Engine Action 联合类型 | 《总规划》§3.1；[02](./02-protocol-spec.md) §8.1 |
 | 断线宽限 | WS 断开时启动；重连成功则取消 | 满 10 分钟 → `EXIT_PENDING`（§6.6） | 《总规划》§4.1 |
 | 定时升盲 | 按时间模式 | 到期后仅在当前 Hand 结束后应用（§6.3） | 《总规划》§2.3 |
@@ -323,8 +326,8 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 ### 8.2 Timer 也是队列任务
 
-- 行动超时产生的 Auto Check/Fold 以 `SYSTEM_TIMER` 源 Action 进入 Tournament 队列，与真人 Action 在 §7.2 的同一裁决点竞争。断线宽限与升盲 Timer 也只投递内部命令，不直接 mutate。
-- 每次建立/重置 Timer 都递增对应的 generation，并把 `tournamentId/handId/actor/deadline/generation` 固化进任务。**执行前必须再次校验**这些字段与当前状态；任一不匹配、Hand/Tournament 已结束或 Timer 已取消，任务即作为 stale no-op 丢弃。
+- 行动超时产生的 Auto Check/Fold 以 `SYSTEM_TIMER` 源 Action 进入 Tournament 队列，与真人 Action 在 §7.2 的同一裁决点竞争。展示阶段、断线宽限与升盲 Timer 也只投递内部命令，不直接 mutate。
+- 每次建立/重置 Timer 都递增对应的 generation。行动 Timer 固化 `handId/actor/deadline/generation`；展示 Timer 固化 `tournamentId/handId/phase/generation`。**执行前必须再次校验**这些字段与当前状态；任一不匹配、Hand/Tournament 已结束或 Timer 已取消，任务即作为 stale no-op 丢弃。
 - 取消 Timer 只使旧 generation 失效，不依赖底层 `clearTimeout` 一定来得及；即使回调已在事件循环等待，也不能产生副作用。
 
 ### 8.3 模式差异
