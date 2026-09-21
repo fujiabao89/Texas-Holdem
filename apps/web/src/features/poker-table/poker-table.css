@@ -113,20 +113,40 @@
   background: none;
   padding: 0;
   font-family: Arial, sans-serif;
-  font-size: 16px;
   letter-spacing: -0.05em;
   gap: 1px;
 }
-.rr-table-page .table-card-corner > span:last-child { font-size: 12px; }
+.rr-table-page [data-card-variant="board"] .table-card-corner,
+.rr-table-page [data-card-variant="hole"] .table-card-corner { font-size: 12px; }
+.rr-table-page [data-card-variant="board"] .table-card-corner > span:last-child,
+.rr-table-page [data-card-variant="hole"] .table-card-corner > span:last-child { font-size: 9px; }
+.rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 8px; }
+.rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 7px; }
+.rr-table-page .table-card-content { inset: 20% 22%; pointer-events: none; }
+.rr-table-page [data-card-variant="seat"] .table-card-content { inset: 21% 22%; }
+.rr-table-page .table-card-pip { font-size: 11px; }
+.rr-table-page [data-card-rank="7"] .table-card-pip,
+.rr-table-page [data-card-rank="8"] .table-card-pip,
+.rr-table-page [data-card-rank="9"] .table-card-pip,
+.rr-table-page [data-card-rank="10"] .table-card-pip { font-size: 7px; }
+.rr-table-page [data-card-variant="seat"] .table-card-pip { font-size: 7px; }
+.rr-table-page [data-card-variant="seat"][data-card-rank="7"] .table-card-pip,
+.rr-table-page [data-card-variant="seat"][data-card-rank="8"] .table-card-pip,
+.rr-table-page [data-card-variant="seat"][data-card-rank="9"] .table-card-pip { font-size: 6px; }
+.rr-table-page [data-card-variant="seat"][data-card-rank="10"] .table-card-pip { font-size: 5px; }
+.rr-table-page .table-card-ace { font-size: 30px; }
+.rr-table-page [data-card-variant="seat"] .table-card-ace { font-size: 18px; }
 .rr-table-page .table-card-court {
-  width: 42%;
-  min-height: 56%;
+  inset: 8% 20%;
   border-radius: 2px;
-  border: 1px solid currentColor;
+  border-color: #c8c2ae;
   background: repeating-linear-gradient(45deg, transparent 0 5px, #c9bd991c 5px 6px);
-  font-size: 24px;
-  padding: 4px 0;
+  font-size: 16px;
+  padding: 1px 0;
 }
+.rr-table-page .table-card-court > span:last-child { font-size: 10px; }
+.rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 10px; }
+.rr-table-page [data-card-variant="seat"] .table-card-court > span:last-child { font-size: 7px; }
 .rr-table-page .table-card-back {
   border: 2px solid #e0dfc4;
   background: #254837;
@@ -176,6 +196,30 @@
   .rr-table-page .table-seat { width: 96px; }
   .rr-table-page .rr-table-felt { aspect-ratio: 1.25; }
 }
+@media (min-width: 640px) {
+  .rr-table-page [data-card-variant="board"] .table-card-corner,
+  .rr-table-page [data-card-variant="hole"] .table-card-corner { font-size: 16px; }
+  .rr-table-page [data-card-variant="board"] .table-card-corner > span:last-child,
+  .rr-table-page [data-card-variant="hole"] .table-card-corner > span:last-child { font-size: 12px; }
+  .rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 10px; }
+  .rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 8px; }
+  .rr-table-page .table-card-pip { font-size: 14px; }
+  .rr-table-page [data-card-rank="7"] .table-card-pip,
+  .rr-table-page [data-card-rank="8"] .table-card-pip,
+  .rr-table-page [data-card-rank="9"] .table-card-pip,
+  .rr-table-page [data-card-rank="10"] .table-card-pip { font-size: 9px; }
+  .rr-table-page [data-card-variant="seat"] .table-card-pip { font-size: 9px; }
+  .rr-table-page [data-card-variant="seat"][data-card-rank="7"] .table-card-pip,
+  .rr-table-page [data-card-variant="seat"][data-card-rank="8"] .table-card-pip,
+  .rr-table-page [data-card-variant="seat"][data-card-rank="9"] .table-card-pip { font-size: 8px; }
+  .rr-table-page [data-card-variant="seat"][data-card-rank="10"] .table-card-pip { font-size: 7px; }
+  .rr-table-page .table-card-ace { font-size: 42px; }
+  .rr-table-page [data-card-variant="seat"] .table-card-ace { font-size: 28px; }
+  .rr-table-page .table-card-court { font-size: 24px; padding: 2px 0; }
+  .rr-table-page .table-card-court > span:last-child { font-size: 14px; }
+  .rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 16px; }
+  .rr-table-page [data-card-variant="seat"] .table-card-court > span:last-child { font-size: 10px; }
+}
 @media (min-width: 640px) and (max-width: 760px) {
   .rr-table-page .table-seat { width: 80px; }
   .rr-table-page .rr-table-felt { aspect-ratio: 1.05; }
@@ -202,12 +246,6 @@
   .rr-table-page .table-pot-list { top: calc(50% + 54px); width: 85%; }
   .rr-table-page .table-watermark { top: 63%; font-size: 8px; }
   .rr-table-page .table-actor-caption { top: auto; bottom: 20%; font-size: 10px; }
-  .rr-table-page .table-card-corner { font-size: 12px; }
-  .rr-table-page .table-card-corner > span:last-child { font-size: 10px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 8px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 7px; }
-  .rr-table-page .table-card-court { font-size: 18px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 12px; }
   .rr-table-page .table-card-seal { font-size: 10px; }
   .rr-table-page .rr-betting-panel { padding: 12px; }
   .rr-table-page .table-primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
