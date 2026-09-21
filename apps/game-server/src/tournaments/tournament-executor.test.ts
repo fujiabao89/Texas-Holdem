@@ -16,6 +16,8 @@ import {
   type TournamentRuntimeState,
 } from "./tournament-runtime";
 import {
+  DEALING_DISPLAY_MS,
+  SHOWDOWN_DISPLAY_MS,
   TournamentExecutor,
   type TournamentExecutorDeps,
   type TournamentOutputSink,
@@ -34,6 +36,7 @@ interface RecordingSink extends TournamentOutputSink {
   readonly clockUpdates: ClockUpdatedPayload[];
   readonly bundles: HandCommitBundle[];
   readonly roomCommands: RoomCommand[];
+  readonly snapshotRequests: string[];
 }
 
 function makeConfig(overrides: Partial<TournamentConfig> = {}): TournamentConfig {
@@ -75,16 +78,21 @@ function recordingSink(): RecordingSink {
   const clockUpdates: ClockUpdatedPayload[] = [];
   const bundles: HandCommitBundle[] = [];
   const roomCommands: RoomCommand[] = [];
+  const snapshotRequests: string[] = [];
   return {
     events,
     clockUpdates,
     bundles,
     roomCommands,
+    snapshotRequests,
     emitEvents(messages) {
       events.push(...messages);
     },
     emitClockUpdated(payload) {
       clockUpdates.push(payload);
+    },
+    requestGameSnapshots(tournamentId) {
+      snapshotRequests.push(tournamentId);
     },
     enqueueCommitBundles(batch) {
       bundles.push(...batch);
@@ -138,6 +146,8 @@ function currentActor(harness: Harness): string | null {
 
 async function start(harness: Harness): Promise<void> {
   await harness.executor.submit({ type: "START" });
+  harness.clock.advance(DEALING_DISPLAY_MS);
+  await Promise.resolve();
 }
 
 function submitAction(
@@ -787,7 +797,7 @@ describe("事件 sequence 与 Commit Bundle", () => {
 });
 
 /** 通过最简合法动作推进一手直到产生手末 Commit Bundle（CHECK → CALL → FOLD）。 */
-async function playHandToCompletion(harness: Harness): Promise<void> {
+async function playUntilHandSettles(harness: Harness): Promise<void> {
   let guard = 0;
   for (;;) {
     if (guard++ > 60) throw new Error("test hand did not settle");
@@ -807,6 +817,137 @@ async function playHandToCompletion(harness: Harness): Promise<void> {
     if (result.status === "REJECTED") return; // 动作非法 → 停止推进（不应发生）
   }
 }
+
+/** 跨过服务端展示窗口，使旧测试继续在“下一个可行动点”断言。 */
+async function finishPresentation(harness: Harness): Promise<void> {
+  for (let guard = 0; guard < 3; guard++) {
+    const phase = harness.executor.getView().presentationPhase;
+    if (phase === "SHOWDOWN_DISPLAY") {
+      harness.clock.advance(SHOWDOWN_DISPLAY_MS);
+      await Promise.resolve();
+      continue;
+    }
+    if (phase === "DEALING") {
+      harness.clock.advance(DEALING_DISPLAY_MS);
+      await Promise.resolve();
+      continue;
+    }
+    return;
+  }
+}
+
+async function playHandToCompletion(harness: Harness): Promise<void> {
+  await playUntilHandSettles(harness);
+  await finishPresentation(harness);
+}
+
+describe("展示阶段与行动时钟（TEX-59）", () => {
+  it("新手发牌期间不公开行动权，窗口结束后才给满额时钟", async () => {
+    const harness = makeHarness({ config: { actionTime: 15 } });
+    await harness.executor.submit({ type: "START" });
+
+    const dealing = harness.executor.getView();
+    expect(dealing).toMatchObject({
+      presentationPhase: "DEALING",
+      actionDeadline: null,
+      currentLegalActions: null,
+    });
+    const handStarted = harness.output.events.find(
+      (message) =>
+        message.payload.event.type === "HAND_STARTED" &&
+        message.payload.patch.viewer?.playerId === "p0",
+    );
+    expect(handStarted?.payload.patch).toMatchObject({
+      currentActorPlayerId: null,
+      actionDeadline: null,
+      viewer: { legalActions: null },
+    });
+
+    const rejected = (await submitAction(harness, {
+      playerId: currentActor(harness)!,
+      action: call(),
+    })) as { status: string; error?: { code: string } };
+    expect(rejected).toMatchObject({ status: "REJECTED", error: { code: "NOT_YOUR_TURN" } });
+
+    harness.clock.advance(DEALING_DISPLAY_MS - 1);
+    await Promise.resolve();
+    expect(harness.executor.getView().actionDeadline).toBeNull();
+    harness.clock.advance(1);
+    await Promise.resolve();
+
+    const opened = harness.executor.getView();
+    expect(opened.presentationPhase).toBe("ACTION_OPEN");
+    expect(opened.currentLegalActions).not.toBeNull();
+    expect(opened.actionDeadline).toBe(harness.clock.now() + 15_000);
+    expect(harness.output.snapshotRequests).toEqual(["t1"]);
+  });
+
+  it("摊牌窗口内不开新手时钟，结束后仍先发牌再开放行动", async () => {
+    const harness = makeHarness({ config: { actionTime: 15 } });
+    await start(harness);
+    await playUntilHandSettles(harness);
+
+    const showdown = harness.executor.getView();
+    expect(showdown).toMatchObject({
+      presentationPhase: "SHOWDOWN_DISPLAY",
+      actionDeadline: null,
+      currentLegalActions: null,
+      showdownDisplayUntil: harness.clock.now() + SHOWDOWN_DISPLAY_MS,
+    });
+    const completedHandId = showdown.currentHandId;
+
+    harness.clock.advance(SHOWDOWN_DISPLAY_MS - 1);
+    await Promise.resolve();
+    expect(harness.executor.getView().currentHandId).toBe(completedHandId);
+    expect(harness.executor.getView().presentationPhase).toBe("SHOWDOWN_DISPLAY");
+
+    harness.clock.advance(1);
+    await Promise.resolve();
+    const dealing = harness.executor.getView();
+    expect(dealing.presentationPhase).toBe("DEALING");
+    expect(dealing.currentHandId).not.toBe(completedHandId);
+    expect(dealing.actionDeadline).toBeNull();
+
+    harness.clock.advance(DEALING_DISPLAY_MS);
+    await Promise.resolve();
+    expect(harness.executor.getView()).toMatchObject({
+      presentationPhase: "ACTION_OPEN",
+      actionDeadline: harness.clock.now() + 15_000,
+    });
+  });
+
+  it("无摊牌的弃牌获胜直接进入下一手发牌阶段", async () => {
+    const harness = makeHarness({ seats: 3 });
+    await start(harness);
+    for (let guard = 0; harness.output.bundles.length === 0 && guard < 3; guard++) {
+      await submitAction(harness, { playerId: currentActor(harness)!, action: fold() });
+    }
+    expect(harness.output.bundles).toHaveLength(1);
+    expect(harness.executor.getView()).toMatchObject({
+      presentationPhase: "DEALING",
+      actionDeadline: null,
+      showdownDisplayUntil: null,
+    });
+  });
+
+  it("迟到的发牌阶段回调不能重置已开放的行动机会", async () => {
+    const harness = makeHarness();
+    const timerSpy = vi.spyOn(harness.clock, "setTimeout");
+    await harness.executor.submit({ type: "START" });
+    const staleCallback = timerSpy.mock.calls[0]![0];
+    harness.clock.advance(DEALING_DISPLAY_MS);
+    await Promise.resolve();
+    const opened = harness.executor.getView();
+
+    staleCallback();
+    await Promise.resolve();
+    expect(harness.executor.getView()).toMatchObject({
+      currentHandId: opened.currentHandId,
+      presentationPhase: "ACTION_OPEN",
+      actionDeadline: opened.actionDeadline,
+    });
+  });
+});
 
 describe("PAUSE_AFTER_HAND 背压暂停/恢复（§12.2）", () => {
   it("hard 暂停：当前手结算并停在手间边界，不自动推进下一手", async () => {
@@ -925,6 +1066,8 @@ describe("终局只读保留与执行器卸载（TEX-52，§13.2）", () => {
     });
     let lastAction: Extract<TournamentCommand, { type: "SUBMIT_ACTION" }> | undefined;
     for (let index = 0; index < 30 && h.executor.getView().status === "RUNNING"; index++) {
+      await finishPresentation(h);
+      if (h.executor.getView().status !== "RUNNING") break;
       lastAction = {
         type: "SUBMIT_ACTION",
         playerId: currentActor(h)!,
@@ -1032,15 +1175,17 @@ describe("终局只读保留与执行器卸载（TEX-52，§13.2）", () => {
     await start(h);
     await h.executor.submit({ type: "CONNECTION_CHANGED", playerId: "p0", connected: false });
     const callbacks = timerSpy.mock.calls.map(([callback]) => callback);
-    expect(callbacks).toHaveLength(3);
+    expect(callbacks).toHaveLength(4);
     const actionGeneration = h.runtime.actionTimerGeneration;
     const blindGeneration = h.runtime.blindTimerGeneration;
+    const phaseGeneration = h.runtime.phaseTimerGeneration;
     const graceGeneration = h.runtime.players.get("p0")!.graceGeneration;
     const state = h.executor.getEngineState();
     const eventCount = h.output.events.length;
     await h.executor.dispose();
     expect(h.runtime.actionTimerGeneration).toBeGreaterThan(actionGeneration);
     expect(h.runtime.blindTimerGeneration).toBeGreaterThan(blindGeneration);
+    expect(h.runtime.phaseTimerGeneration).toBeGreaterThan(phaseGeneration);
     expect(h.runtime.players.get("p0")!.graceGeneration).toBeGreaterThan(graceGeneration);
     for (const callback of callbacks) callback();
     await Promise.resolve();

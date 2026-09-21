@@ -20,6 +20,7 @@ import { evaluateHand, handRankName } from "@texas-holdem/poker-engine";
 import type { Card as WireCard, GameEvent, LegalActions, PlayerView, PlayerViewPatch } from "@texas-holdem/protocol";
 import type { Card, PokerEvent, TournamentState } from "@texas-holdem/poker-engine";
 import { compactPublicStandings } from "./tournament-result";
+import type { TournamentPresentationPhase } from "../tournaments/tournament-runtime";
 
 /** 由协议 Schema 推导的类型（协议包不单独导出这些视图子类型）。 */
 type HandRankView = Extract<GameEvent, { type: "PLAYER_REVEALED" }>["payload"]["handRank"];
@@ -38,8 +39,10 @@ export interface ProjectionInput {
   readonly seatToPlayer: ReadonlyMap<number, string>;
   /** 当前行动截止线（Epoch ms）；无限时/无行动机会为 null。 */
   readonly actionDeadline: number | null;
-  /** 摊牌展示截止线（Epoch ms）；非摊牌展示阶段为 null（TEX-58 契约预留，TEX-59 实现运行时调度）。 */
+  /** 摊牌展示截止线（Epoch ms）；非摊牌展示阶段为 null。 */
   readonly showdownDisplayUntil?: number | null;
+  /** 服务端展示相态；DEALING/SHOWDOWN_DISPLAY 期间不公开行动权。 */
+  readonly presentationPhase?: TournamentPresentationPhase;
   /** 当前行动者合法动作集合（Engine 输出）；当前 actor 且有限时才有。 */
   readonly currentLegalActions: LegalActions | null;
   /** playerId → timeBankRemainingMs（服务器权威，§8.4）。 */
@@ -65,7 +68,14 @@ export function projectPlayerView(input: ProjectionInput): PlayerView {
   const handSeatBySeat = new Map(hand?.seats.map((s) => [s.seatIndex, s]) ?? []);
   const revealed = revealedSeats(hand);
   const potViews = projectPots(hand, input.seatToPlayer);
-  const currentActorSeat = hand?.currentActor ?? null;
+  const actionOpen = input.presentationPhase === undefined || input.presentationPhase === "ACTION_OPEN";
+  const currentActorSeat = actionOpen ? (hand?.currentActor ?? null) : null;
+  const handPhase =
+    input.presentationPhase === "SHOWDOWN_DISPLAY"
+      ? "SHOWDOWN_DISPLAY"
+      : hand?.phase !== undefined
+        ? wireHandPhase(hand.phase)
+        : null;
 
   const players = state.participants.map((participant) => {
     const seatIndex = participant.seatIndex;
@@ -98,7 +108,7 @@ export function projectPlayerView(input: ProjectionInput): PlayerView {
   return {
     handId: input.handId,
     tournamentStatus: state.phase === "finished" ? "FINISHED" : "RUNNING",
-    handPhase: hand?.phase !== undefined ? wireHandPhase(hand.phase) : null,
+    handPhase,
     blindLevel: {
       index: state.blindLevel,
       smallBlind: state.smallBlind,
@@ -113,7 +123,7 @@ export function projectPlayerView(input: ProjectionInput): PlayerView {
     currentActorPlayerId:
       currentActorSeat !== null ? (input.seatToPlayer.get(currentActorSeat) ?? null) : null,
     actionDeadline: input.actionDeadline,
-    // TEX-58: 协议契约与投影字段；运行时展示定时器与手间延迟切换由 TEX-59 实现编排，未启用时默认为 null。
+    // TEX-58 定义 wire 契约；TEX-59 由运行时在摊牌阶段填入权威截止线。
     showdownDisplayUntil: input.showdownDisplayUntil ?? null,
     players,
     viewer: {

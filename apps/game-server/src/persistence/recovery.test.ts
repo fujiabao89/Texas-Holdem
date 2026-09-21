@@ -17,7 +17,12 @@ import type {
 } from "../tournaments/tournament-manager";
 import { createTournamentManager } from "../tournaments/tournament-manager";
 import { createTournamentRuntimeState, type PlayerSeed } from "../tournaments/tournament-runtime";
-import { TournamentExecutor, type TournamentOutputSink } from "../tournaments/tournament-executor";
+import {
+  DEALING_DISPLAY_MS,
+  SHOWDOWN_DISPLAY_MS,
+  TournamentExecutor,
+  type TournamentOutputSink,
+} from "../tournaments/tournament-executor";
 import type {
   ClockUpdatedPayload,
   GameEventMessage,
@@ -454,6 +459,12 @@ async function playHandThroughExecutor(
   const startHand = executor.getView().engineState.handNumber;
   let guard = 0;
   while (guard++ < 100) {
+    const phase = executor.getView().presentationPhase;
+    if (phase === "SHOWDOWN_DISPLAY" || phase === "DEALING") {
+      clock.advance(phase === "SHOWDOWN_DISPLAY" ? SHOWDOWN_DISPLAY_MS : DEALING_DISPLAY_MS);
+      await Promise.resolve();
+      continue;
+    }
     const state = executor.getEngineState();
     const hand = state.hand;
     if (state.handNumber !== startHand) break; // 本手已结束并推进到下一手
@@ -483,6 +494,15 @@ async function playHandThroughManager(
   while (guard++ < 100) {
     const view = manager.getView("t1");
     if (view === undefined) break;
+    if (view.presentationPhase === "SHOWDOWN_DISPLAY" || view.presentationPhase === "DEALING") {
+      clock.advance(
+        view.presentationPhase === "SHOWDOWN_DISPLAY"
+          ? SHOWDOWN_DISPLAY_MS
+          : DEALING_DISPLAY_MS,
+      );
+      await Promise.resolve();
+      continue;
+    }
     if (view.engineState.handNumber !== startHand) break;
     const hand = view.engineState.hand;
     if (hand === null || hand.currentActor === null) break;
@@ -526,6 +546,8 @@ describe("崩溃恢复 Time Bank 保留（P1-B）", () => {
     );
     const executor = new TournamentExecutor(runtime, { output: sink });
     await executor.submit({ type: "START" });
+    clock.advance(DEALING_DISPLAY_MS);
+    await Promise.resolve();
     const state = executor.getEngineState();
     const actorSeat = state.hand?.currentActor;
     expect(actorSeat).not.toBeNull();

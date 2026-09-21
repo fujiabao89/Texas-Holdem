@@ -5,7 +5,11 @@ import { createFakeClock } from "../../../../tests/support/fake-clock";
 import { createFakeCommitRepository } from "../../tests/fixtures/persistence";
 import type { HandCommitBundle } from "../infrastructure/persistence/repositories/hand-commit";
 import { createPersistenceWriter } from "../persistence/persistence-writer";
-import type { TournamentOutputSink } from "./tournament-executor";
+import {
+  DEALING_DISPLAY_MS,
+  SHOWDOWN_DISPLAY_MS,
+  type TournamentOutputSink,
+} from "./tournament-executor";
 import {
   createTournamentManager,
   TOURNAMENT_RETENTION_MS,
@@ -88,11 +92,20 @@ function makeHarness(
 async function finish(
   manager: TournamentManager,
   tournamentId: string,
-  now: () => number,
+  clock: ReturnType<typeof createFakeClock>,
 ): Promise<void> {
   for (let step = 0; step < 50; step++) {
     const view = manager.getView(tournamentId)!;
     if (view.status === "FINISHED") return;
+    if (view.presentationPhase === "SHOWDOWN_DISPLAY" || view.presentationPhase === "DEALING") {
+      clock.advance(
+        view.presentationPhase === "SHOWDOWN_DISPLAY"
+          ? SHOWDOWN_DISPLAY_MS
+          : DEALING_DISPLAY_MS,
+      );
+      await Promise.resolve();
+      continue;
+    }
     const playerId = view.seatToPlayer.get(view.engineState.hand!.currentActor!)!;
     const result = await manager.submit(tournamentId, {
       type: "SUBMIT_ACTION",
@@ -101,7 +114,7 @@ async function finish(
       actionId: `${tournamentId}-action-${step}`,
       expectedSequence: String(view.lastWireSequence),
       action: view.currentLegalActions?.canAllIn ? { type: "ALL_IN" } : { type: "CALL" },
-      receivedAt: now(),
+      receivedAt: clock.now(),
       ingressOrdinal: step,
     });
     expect(result).toMatchObject({ status: "APPLIED" });
@@ -120,7 +133,7 @@ describe("TournamentManager lifecycle（TEX-52，§13.2）", () => {
     });
     await h.create("old");
     expect(h.manager.activeTournamentIds()).toEqual(["old"]);
-    await finish(h.manager, "old", h.clock.now);
+    await finish(h.manager, "old", h.clock);
     expect(h.manager.runtimeCounts()).toEqual({
       registered: 1,
       running: 0,
@@ -147,7 +160,7 @@ describe("TournamentManager lifecycle（TEX-52，§13.2）", () => {
     const h = makeHarness({ retentionMs: 10 });
     const timers = vi.spyOn(h.clock, "setTimeout");
     await h.create("old");
-    await finish(h.manager, "old", h.clock.now);
+    await finish(h.manager, "old", h.clock);
     const oldExpiry = timers.mock.calls.find(([, delay]) => delay === 10)![0];
     await h.create("new");
     const newState = h.manager.getView("new")!.engineState;
@@ -172,7 +185,7 @@ describe("TournamentManager lifecycle（TEX-52，§13.2）", () => {
   it("CLOSED Room 同时清理本房终局与进行中比赛，其他房间保持运行", async () => {
     const h = makeHarness();
     await h.create("finished", "closed-room");
-    await finish(h.manager, "finished", h.clock.now);
+    await finish(h.manager, "finished", h.clock);
     await h.create("running", "closed-room");
     await h.manager.setConnection("running", "p0", false);
     await h.create("other", "open-room");
@@ -187,8 +200,10 @@ describe("TournamentManager lifecycle（TEX-52，§13.2）", () => {
       frozen: 0,
     });
     expect(h.unloaded.mock.calls.map(([id]) => id).sort()).toEqual(["finished", "running"]);
-    expect(h.clock.pendingTimers()).toBe(0);
+    // open-room 中仍在运行的比赛保留一个发牌展示 timer。
+    expect(h.clock.pendingTimers()).toBe(1);
     await h.manager.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
   });
 
   it("同 id 重复注册被拒绝；shutdown 清理已排队 START，拒绝新比赛且不重复卸载", async () => {
@@ -281,15 +296,16 @@ describe("TournamentManager lifecycle（TEX-52，§13.2）", () => {
     const seed = makeHarness();
     for (let index = 0; index < 100; index++) {
       const id = `round-${index}`;
-      commit.failTransient = 1;
+      commit.alwaysFail = true;
       manager.create(seed.input(id));
       await Promise.resolve();
-      await finish(manager, id, clock.now);
+      await finish(manager, id, clock);
       clock.advance(10);
       await until(() => manager.runtimeCounts().registered === 0);
       expect(writer.pendingCount()).toBeGreaterThan(0);
       expect(writer.queueCount()).toBe(1);
-      clock.advance(250);
+      commit.alwaysFail = false;
+      clock.advance(30_000);
       await until(() => writer.queueCount() === 0);
       expect(writer.pendingCount()).toBe(0);
       expect(clock.pendingTimers()).toBe(0);

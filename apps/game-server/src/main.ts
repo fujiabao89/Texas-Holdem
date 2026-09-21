@@ -123,6 +123,7 @@ tournamentManager = createTournamentManager({
     // 事件/计时输出供 TEX-21 连接层订阅、Commit Bundle 交 TEX-22 Writer 处理。
     emitEvents: tournamentEvents.emitEvents,
     emitClockUpdated: tournamentEvents.emitClockUpdated,
+    requestGameSnapshots: tournamentEvents.requestGameSnapshots,
     enqueueCommitBundles: (bundles) => writer.enqueue(bundles),
     submitRoomCommand: (roomId, command) => {
       void roomManager.submitCommand(roomId, command).catch((error: unknown) => {

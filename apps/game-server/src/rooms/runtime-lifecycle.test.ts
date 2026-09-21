@@ -15,6 +15,10 @@ import {
   TOURNAMENT_RETENTION_MS,
 } from "../tournaments/tournament-manager";
 import {
+  DEALING_DISPLAY_MS,
+  SHOWDOWN_DISPLAY_MS,
+} from "../tournaments/tournament-executor";
+import {
   createRoomManager,
   CLOSED_ROOM_RETENTION_MS,
   type RoomManager,
@@ -190,6 +194,15 @@ function lifecycle() {
         return;
       }
       expect(view.status).toBe("RUNNING");
+      if (view.presentationPhase === "SHOWDOWN_DISPLAY" || view.presentationPhase === "DEALING") {
+        clock.advance(
+          view.presentationPhase === "SHOWDOWN_DISPLAY"
+            ? SHOWDOWN_DISPLAY_MS
+            : DEALING_DISPLAY_MS,
+        );
+        await Promise.resolve();
+        continue;
+      }
       const actor = view.seatToPlayer.get(view.engineState.hand!.currentActor!)!;
       const legal = view.currentLegalActions!;
       const result = (await tournaments.submit(tournamentId, {

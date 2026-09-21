@@ -15,6 +15,7 @@ import { fakePersistence, fakeRoomRepository } from "../../rooms/test-support";
 import type { TournamentCommand } from "../../tournaments/tournament-commands";
 import { TournamentDomainError } from "../../tournaments/tournament-errors";
 import {
+  DEALING_DISPLAY_MS,
   TournamentExecutor,
   type TournamentOutputSink,
 } from "../../tournaments/tournament-executor";
@@ -185,6 +186,8 @@ async function setupTournamentGateway(
   );
   const executor = new TournamentExecutor(runtime, { output });
   await executor.submit({ type: "START" });
+  clock.advance(DEALING_DISPLAY_MS);
+  await Promise.resolve();
   const submitted: TournamentCommand[] = [];
   let rejectTimeBank = false;
   const tournaments: TournamentManager = {
@@ -288,7 +291,7 @@ function authenticate(
 
 describe("LobbyGateway", () => {
   it("keeps authoritative D/SB/BB through INITIAL, GAP resync and a new authenticated connection", async () => {
-    const { host, handler, executor } = await setupTournamentGateway();
+    const { host, handler, executor, events } = await setupTournamentGateway();
     const hand = executor.getView().engineState.hand!;
     const expected = { dealerSeat: hand.dealerSeat, smallBlindSeat: hand.sbSeat, bigBlindSeat: hand.bbSeat };
     const first = new FakeSocket();
@@ -299,6 +302,19 @@ describe("LobbyGateway", () => {
     first.receive({ type: "REQUEST_SNAPSHOT", requestId: "00000000-0000-4000-8000-000000000030", payload: { tournamentId: "t1", lastSequence: "0", reason: "GAP" } });
     await flush();
     expect(first.sent).toContainEqual(expect.objectContaining({ type: "GAME_SNAPSHOT", payload: expect.objectContaining({ reason: "RESYNC", sequence: String(executor.getView().lastWireSequence), ...expected }) }));
+    const beforePhaseSnapshot = first.sent.length;
+    events.requestGameSnapshots("t1");
+    expect(first.sent.slice(beforePhaseSnapshot)).toContainEqual(
+      expect.objectContaining({
+        type: "GAME_SNAPSHOT",
+        payload: expect.objectContaining({
+          reason: "RESYNC",
+          currentActorPlayerId: expect.any(String),
+          actionDeadline: executor.getView().actionDeadline,
+          ...expected,
+        }),
+      }),
+    );
     first.close();
     await flush();
     const second = new FakeSocket();
