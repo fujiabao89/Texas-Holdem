@@ -12,4 +12,4 @@ TEX-44：`page.tsx` 为已确认的产品首页；`layout.tsx` 在原 Provider �
 
 TEX-45：`globals.css` 仅新增对 `features/poker-table/poker-table.css` 的导入。新样式全部限制于牌桌根节点，不改变既有全局动效、声音或路由行为。
 
-TEX-46：`features/poker-table/poker-table.css` 增加两条**牌桌路由专属**的站点层规则——`.rr-site:has(.rr-table-page)` 与 `.rr-site:has(.rr-table-page) #page-content`。它们用 `:has()` 把站点容器改为占满一个 `100dvh` 的 flex 列、并让 `#page-content` 填充页头之外的剩余高度，从而把牌桌路由固定为单视口。两条规则只在页面内存在 `.rr-table-page` 时生效，其他路由的滚动布局与 `SiteChrome` 结构不变；牌桌路由也不再有页脚。
+TEX-46：`features/poker-table/poker-table.css` 的**牌桌路由专属**站点层规则使用 `:has()` 将站点容器改为占满一个 `100dvh` 的 flex 列，让 `#page-content` 填充页头之外的剩余高度，并使顶栏铺满视口、品牌标识靠左。规则只在页面内存在 `.rr-table-page` 时生效，其他路由的滚动布局与 `SiteChrome` 结构不变；牌桌路由也不再有页脚。

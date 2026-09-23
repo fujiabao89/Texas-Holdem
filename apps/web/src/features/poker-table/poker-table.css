@@ -11,10 +11,20 @@
   height: 100dvh;
   overflow: hidden;
 }
+.rr-site:has(.rr-table-page) > .rr-header {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  margin-inline: 0;
+  padding-inline: 24px;
+}
 .rr-site:has(.rr-table-page) #page-content {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+}
+@media (max-width: 360px) {
+  .rr-site:has(.rr-table-page) > .rr-header { padding-inline: 16px; }
 }
 .rr-table-page {
   --table-gold: #dfc88e;
