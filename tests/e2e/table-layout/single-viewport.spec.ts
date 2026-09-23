@@ -576,6 +576,66 @@ test.describe("按需行动区", () => {
   });
 });
 
+test.describe("牌桌中央留白", () => {
+  for (const viewport of [...VIEWPORTS, { name: "1467x897", width: 1467, height: 897 }]) {
+    for (const count of [2, 10]) {
+      test(`${viewport.name} ${count} 人桌底池与本人手牌分层`, async ({ page }, testInfo) => {
+        await page.setViewportSize(viewport);
+        const seats = contiguousSeats(count);
+        const push = await openTable(page, seats);
+        await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
+        await expect(page.locator("[data-pot-total][data-pot-index='0']")).toHaveCount(1);
+        await expect(page.locator(".table-pot-list")).toHaveCount(0);
+
+        const found = await boxes(page, {
+          board: ".table-board-zone",
+          viewer: "[data-viewer='true']",
+          dock: ".table-action-dock",
+        });
+        // Measure the rotated faces, not only the untransformed hand container.
+        const handTop = await page.locator("[data-viewer='true'] [data-card-variant='hole']").evaluateAll(
+          (cards) => Math.min(...cards.map((card) => card.getBoundingClientRect().top)),
+        );
+        expect(handTop - found.board!.bottom, "公共牌与本人手牌之间保留至少 16px").toBeGreaterThanOrEqual(16);
+        expect(found.dock!.y - found.viewer!.bottom, "本人座位不得挤入操作区").toBeGreaterThanOrEqual(8);
+        // Seat wrappers include empty space beside their narrow bet badges;
+        // compare the rendered cards/plates/badges, not that transparent area.
+        const seatRects = await page.locator("[data-seat-chips], [data-seat-cards] [data-card-variant], [data-seat-chips] ~ div > span").evaluateAll((elements) => elements.map((element) => {
+          const r = element.getBoundingClientRect();
+          return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+        }));
+        const info = await boxes(page, { phase: ".table-phase", pot: "[data-pot-total]", actor: ".table-actor-caption" });
+        for (const [name, part] of Object.entries(info)) {
+          expect(seatRects.some((seat) => overlaps(seat, part!)), `${name} 不能被座位遮住`).toBe(false);
+        }
+        const muck = await boxes(page, { muck: "[data-muck]" });
+        expect(Object.values(info).some((part) => overlaps(part!, muck.muck!)), "弃牌标记不遮挡中央提示").toBe(false);
+        if (count === 2 && viewport.width >= 1366) {
+          await captureEvidence(page, testInfo, `${viewport.name}-center-spacing`);
+        }
+
+        if (count === 10) {
+          const game = gameSnapshot(seats);
+          push({
+            type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: 2,
+            payload: { ...game, reason: "RESYNC", sequence: "2", pots: [
+              { amount: 90, eligiblePlayerIds: game.pots[0]!.eligiblePlayerIds },
+              { amount: 60, eligiblePlayerIds: ["player-1", "player-2", "player-3"] },
+              { amount: 30, eligiblePlayerIds: ["player-1", "player-2"] },
+            ] },
+          });
+          await expect(page.locator("[data-pot-total]")).toContainText("180");
+          await expect(page.locator(".table-pot-list [data-pot-index]")).toHaveCount(3);
+          const after = await boxes(page, { pots: ".table-pot-list", viewer: "[data-viewer='true']" });
+          expect(after.viewer).toEqual(found.viewer);
+          expect(handTop - after.pots!.bottom, "边池明细与手牌之间保留空隙").toBeGreaterThanOrEqual(8);
+          expect(after.pots!.y - found.board!.bottom, "边池明细不压住公共牌").toBeGreaterThanOrEqual(8);
+        }
+      });
+    }
+  }
+});
+
 test.describe("展开态行动区", () => {
   // 矮桌面同样必须一次展示快捷额、金额调整、返回、精确输入、全下与提交；
   // scrollHeight 单独通过不足以证明面板未越过预留带或控件未被裁切。

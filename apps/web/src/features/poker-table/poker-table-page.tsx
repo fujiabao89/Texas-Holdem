@@ -21,8 +21,8 @@ import { actionFeedback, awardedTo, feedbackFlight, potName, publicHandRankName,
 import { canSubmitTableAction, remainingTimeMs, seatBadges, tableSeatSlots, tableSeats, type SeatBadge } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
-// The viewer Seat is pinned to this slot and anchored by its bottom edge, so the
-// card never spills past the felt into the action dock (docs/05 §7.5 TEX-46).
+// The viewer Seat is pinned to this slot and anchored by its bottom edge;
+// responsive CSS keeps its cards clear of the Board and action dock.
 const VIEWER_SEAT_SLOT = 5;
 type TerminalError = Extract<ErrorCode, "AUTH_FAILED" | "UNSUPPORTED_PROTOCOL_VERSION" | "SESSION_REPLACED">;
 
@@ -167,22 +167,21 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
       <DealerDeck onElement={setDeckElement} />
       <div ref={setTableElement} data-presentation-mode={presentation.mode} className="rr-table-felt table-presentation relative mx-auto rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:border-[18px]">
         <div aria-hidden="true" className="table-stitch absolute inset-[4%] rounded-[46%] border border-emerald-300/25 bg-[radial-gradient(ellipse_at_center,rgba(20,148,111,0.28),transparent_65%)]" />
-        <p aria-hidden="true" className="table-watermark absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none whitespace-nowrap font-serif text-3xl font-semibold tracking-[0.2em] text-emerald-200/10 sm:text-6xl">TEXAS HOLD&apos;EM</p>
         <div className="table-center-info absolute left-1/2 top-[31%] z-20 flex -translate-x-1/2 items-center gap-2 text-center sm:top-[34%]">
           <span className="table-phase rounded-full bg-emerald-100/35 px-2.5 py-1 text-[10px] font-semibold text-emerald-50 backdrop-blur sm:px-3 sm:text-xs">{phaseName(game.handPhase)}</span>
-          <span data-pot-total className="table-pot-total rounded-full bg-amber-300/85 px-2.5 py-1 text-[10px] font-bold text-amber-950 shadow-sm sm:px-3 sm:text-xs"><span className="table-pot-label">{message("table.pot")}</span><strong>{game.pots.reduce((total, pot) => total + pot.amount, 0).toLocaleString("zh-CN")}</strong></span>
+          <span data-pot-total data-pot-index={game.pots.length === 1 ? 0 : undefined} data-awarded={game.pots.length === 1 && presentation.overlay?.event.type === "POT_AWARDED" && presentation.overlay.event.payload.potIndex === 0} className="table-pot-total rounded-full bg-amber-300/85 px-2.5 py-1 text-[10px] font-bold text-amber-950 shadow-sm sm:px-3 sm:text-xs"><span className="table-pot-label">{message("table.pot")}</span><strong>{game.pots.reduce((total, pot) => total + pot.amount, 0).toLocaleString("zh-CN")}</strong></span>
+          <span className="table-actor-caption text-[10px] font-medium text-emerald-100/75" title={`${message("table.currentActor")}：${actorName(canonicalGame) ?? message("table.waiting")}`}>
+            <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{actorName(canonicalGame) ?? message("table.waiting")}</span>
+          </span>
         </div>
         <div className="table-board-zone absolute left-1/2 top-1/2 z-20 w-[94%] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-emerald-100/10 bg-emerald-100/20 p-2.5 shadow-inner sm:w-auto sm:p-3" aria-label={message("table.board")}>
           <p className="sr-only">{message("table.board")}</p>
           <CommunityCards cards={game.board} overlay={presentation.overlay} deckElement={deckElement} />
         </div>
-        <div className="table-pot-list absolute left-1/2 top-[63%] z-20 flex w-[68%] -translate-x-1/2 flex-wrap justify-center gap-1" aria-label={message("table.pot")}>
+        {game.pots.length > 1 && <div className="table-pot-list absolute left-1/2 top-[63%] z-20 flex w-[68%] -translate-x-1/2 flex-wrap justify-center gap-1" aria-label={message("table.pot")}>
           {game.pots.map((pot, index) => <span data-pot-index={index} className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold sm:text-[11px] ${presentation.overlay?.event.type === "POT_AWARDED" && presentation.overlay.event.payload.potIndex === index ? "border-amber-200 bg-amber-100 text-amber-950" : "border-emerald-100/25 bg-emerald-950/65 text-emerald-50"}`} key={index}>{potName(index)} · {pot.amount}</span>)}
-        </div>
+        </div>}
         <div data-muck className="pointer-events-none absolute left-[23%] top-[20%] rounded-lg border border-dashed border-emerald-100/20 px-2 py-1 text-[8px] text-emerald-100/60 sm:text-[10px]" aria-label={message("table.feedback.muck")}>{message("table.feedback.muck")}</div>
-        <div className="table-actor-caption absolute bottom-[8%] left-1/2 z-20 -translate-x-1/2 text-center text-[10px] font-medium text-emerald-100/75 sm:text-xs">
-          <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{actorName(canonicalGame) ?? message("table.waiting")}</span>
-        </div>
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
           {tableSeats(game).map((player, seat) => <SeatCard game={game} currentActorPlayerId={canonicalGame.currentActorPlayerId} holeDeal={presentation.holeDeal} revealedPlayerIds={presentation.revealedPlayerIds} overlay={presentation.overlay} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
         </div>
@@ -391,7 +390,7 @@ function CardPips({ card, variant }: { readonly card: Card; readonly variant: "b
 }
 
 function cardDimensions(variant: "board" | "seat" | "hole"): string {
-  return variant === "board" ? "h-16 w-12 sm:h-24 sm:w-[4.3rem]" : variant === "hole" ? "h-[4.5rem] w-[3.2rem] sm:h-24 sm:w-[4.3rem]" : "h-10 w-[1.875rem] sm:h-16 sm:w-[2.875rem]";
+  return variant === "board" ? "h-16 w-12 sm:h-24 sm:w-[4.3rem]" : variant === "hole" ? "h-[var(--hole-card-height)] w-[var(--hole-card-width)]" : "h-10 w-[1.875rem] sm:h-16 sm:w-[2.875rem]";
 }
 
 type PipPosition = { readonly x: number; readonly y: number; readonly inverted?: boolean };
