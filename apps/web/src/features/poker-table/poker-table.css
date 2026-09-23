@@ -52,7 +52,7 @@
 .rr-table-page {
   --table-gold: #dfc88e;
   --felt-ratio: 1.72;
-  --dock-reserve: 104px;
+  --dock-reserve: 124px;
   flex: 1 1 auto;
   max-width: 1240px;
   min-height: 0;
@@ -234,6 +234,7 @@
   inset-inline: 0;
   bottom: 0;
   display: flex;
+  align-items: flex-end;
   justify-content: center;
   height: var(--dock-reserve);
   padding-inline: 6px;
@@ -252,32 +253,125 @@
 .rr-table-page .table-notices:empty,
 .rr-table-page .table-post-hand:empty { display: none; }
 .rr-table-page .rr-betting-panel {
+  isolation: isolate;
   width: 100%;
-  max-width: 640px;
-  max-height: 100%;
-  overflow-y: auto;
-  padding: 12px;
-  border: 1px solid #d9ddcb;
-  border-radius: 16px;
-  background: #fffef8;
-  box-shadow: 0 10px 28px #293f2912;
+  max-width: 760px;
+  padding: 10px;
+  border: 1px solid #ffffffb8;
+  border-radius: 36px;
+  background:
+    radial-gradient(ellipse at 8% 0%, #ffffffc9, transparent 48%),
+    radial-gradient(ellipse at 95% 105%, #9bb7ab70, transparent 60%),
+    linear-gradient(120deg, #d9e5df73, #ffffff38 48%, #b6cbc273);
+  box-shadow: inset 0 2px 2px #fffffff0, inset 2px 0 4px #ffffffa6,
+    inset 0 -2px 3px #708f8152, 0 2px 3px #183e2720, 0 12px 28px #183e2729;
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  backdrop-filter: blur(20px) saturate(1.8);
 }
-.rr-table-page .table-action-heading { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #4f5f4d; }
+.rr-table-page .rr-betting-panel::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  border: 1px solid #ffffff70;
+  border-radius: inherit;
+  box-shadow: inset 0 0 9px #ffffff55;
+  pointer-events: none;
+}
+.rr-table-page .rr-betting-panel[data-wager-open="true"] { max-width: 960px; border-radius: 32px; }
+.rr-table-page .table-action-heading { display: flex; align-items: center; justify-content: space-between; padding-inline: 12px; font-size: 11px; color: #40584c; }
 .rr-table-page .table-action-heading h2 { font-weight: 600; }
-.rr-table-page .table-action-heading > span { color: #3b623e; }
-.rr-table-page .table-primary-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.rr-table-page .table-primary-actions > .rr-action-neutral { padding: 6px; min-height: 44px; background: #f1f3e8; font-size: 12px; }
-.rr-table-page .table-wager-editor { background: #f0f2e7; }
+.rr-table-page .table-action-heading > span { color: #285b42; }
+.rr-table-page .table-action-heading > span::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 6px; border-radius: 50%; background: #387551; }
+.rr-table-page .table-primary-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.rr-table-page .table-primary-actions:has(> .rr-action-neutral) { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.rr-table-page .rr-betting-panel .rr-action,
+.rr-table-page .table-wager-back,
+.rr-table-page .table-wager-exact-toggle {
+  min-height: 44px;
+  min-width: 0;
+  padding: 6px 12px;
+  border: 1px solid #ffffff9c;
+  border-radius: 999px;
+  color: #254637;
+  background: linear-gradient(165deg, #ffffff9c, #ffffff26 55%, #ffffff61);
+  box-shadow: inset 0 1px 1px #fffffff0, inset 0 -1px 2px #44614c26,
+    0 2px 4px #1f3c2814;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.rr-table-page .rr-betting-panel .rr-action:hover:not(:disabled),
+.rr-table-page .table-wager-back:hover,
+.rr-table-page .table-wager-exact-toggle:hover {
+  translate: none;
+  background-color: #ffffff80;
+  box-shadow: inset 0 1px 2px #fff, 0 3px 8px #1f3c2826;
+}
+.rr-table-page .rr-betting-panel :is(button, input):focus-visible { outline: 2px solid #265f49; outline-offset: 2px; }
+.rr-table-page .rr-betting-panel .rr-action:active:not(:disabled) { transform: scale(.97); }
+.rr-table-page .table-primary-actions > .rr-action { min-height: 52px; font-size: 15px; }
+.rr-table-page .rr-betting-panel .rr-action-fold { color: #5d5c51; }
+.rr-table-page .rr-betting-panel .rr-action-call { background-color: #93bfa256; }
+.rr-table-page .rr-betting-panel .rr-action-bet {
+  color: #fff;
+  border-color: #93bfa5b0;
+  background: linear-gradient(165deg, #7fba9a 0%, #3e8764 28%, #286046 62%, #417f5c 100%);
+  box-shadow: inset 0 1px 2px #deffedba, inset 0 -2px 4px #103e3590, 0 3px 7px #1b523534;
+  text-shadow: 0 1px 2px #173d32;
+}
+.rr-table-page .rr-betting-panel .rr-action-allin { color: #8b3d28; background-color: #e9b69e54; }
+.rr-table-page .rr-betting-panel[data-all-in-confirm="true"] .rr-action-allin {
+  background: linear-gradient(165deg, #c87c55, #9c4025 70%);
+  color: #fff;
+  border-color: #edb698;
+}
+.rr-table-page .table-wager-editor {
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
 /* The wager editor replaces the primary row at every width, so its exit must
    remain available at every width too. */
-.rr-table-page .table-wager-back { display: inline-flex; }
-.rr-table-page .table-wager-editor output { margin-left: auto; font-size: 20px; font-variant-numeric: tabular-nums; }
+.rr-table-page .table-wager-back { display: inline-flex; align-items: center; justify-content: center; }
+.rr-table-page .table-wager-editor output { margin-left: 2px; min-width: 3ch; color: #204a39; font-size: 25px; letter-spacing: -.04em; text-align: center; font-variant-numeric: tabular-nums; }
 .rr-table-page .table-wager-editor input { min-width: 0; max-width: 100%; }
-.rr-table-page .rr-action-allin { background: #f7e7db; border-color: #d5af91; color: #934024; }
-.rr-table-page .rr-action-allin:hover:not(:disabled) { background: #f0d9c7; }
+.rr-table-page .table-wager-slider { gap: 8px; padding-inline: 4px; }
+.rr-table-page .table-wager-slider > .rr-action { flex: 0 0 44px; width: 44px; padding: 0; font-size: 22px; }
+.rr-table-page .table-wager-slider input[type="range"] {
+  appearance: none;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.rr-table-page .table-wager-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #438268 var(--wager-progress), #42624c25 var(--wager-progress));
+  box-shadow: inset 0 1px 2px #1a3d302e, 0 1px #ffffffce;
+}
+.rr-table-page .table-wager-slider input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -10px;
+  border: 1px solid #ffffffdb;
+  border-radius: 50%;
+  background: linear-gradient(150deg, #fff, #dcebe2 70%, #b7cfc1);
+  box-shadow: inset 0 1px 2px #fff, 0 2px 5px #123e3b40;
+}
+.rr-table-page .table-wager-slider input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: #42624c25; }
+.rr-table-page .table-wager-slider input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: #438268; }
+.rr-table-page .table-wager-slider input[type="range"]::-moz-range-thumb { width: 26px; height: 26px; border: 1px solid #fff; border-radius: 50%; background: linear-gradient(150deg, #fff, #dcebe2); box-shadow: 0 2px 5px #123e3b40; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .rr-table-page .rr-betting-panel { background: #f3f6ee; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rr-table-page .rr-betting-panel { background: #f3f6ee; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 @media (min-width: 640px) {
-  /* Fit the tallest dock state — heading plus the three-row wager editor — so
-     every projected control stays reachable without a nested scroll. */
+  /* Two wager rows fit the same reserved strip on short and tall desktops. */
   .rr-table-page { padding: 16px; gap: 12px; }
   /* The one-viewport felt is shorter than the TEX-45 scroll layout, so an
      eight-plus handed table compresses the Seat card and pulls the upper flank
@@ -307,8 +401,9 @@
   /* Height is the scarce axis on a phone: the dock reserve plus the header are
      subtracted first, and the felt then takes whatever width they leave. */
   .rr-table-page { --felt-ratio: 0.8; --dock-reserve: 176px; gap: 6px; padding: 8px; }
-  /* The delay button no longer claims a full row, so five actions fit two rows. */
-  .rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: auto; padding: 4px 6px; font-size: 11px; }
+  /* Four main actions form a balanced 2x2 group; time bank gets its own row. */
+  .rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: 1 / -1; padding: 4px 6px; font-size: 11px; }
+  .rr-table-page .table-primary-actions:has(> .rr-action-neutral) > .rr-action { min-height: 44px; }
   .rr-table-page .table-seat { width: 76px; }
   .rr-table-page .table-player-name { font-size: 10px; }
   .rr-table-page .table-player-stack { font-size: 11px; gap: 3px; }
@@ -327,8 +422,9 @@
   .rr-table-page .table-card-court { font-size: 18px; }
   .rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 12px; }
   .rr-table-page .table-card-seal { font-size: 10px; }
-  .rr-table-page .rr-betting-panel { padding: 10px; gap: 6px; }
-  .rr-table-page .table-primary-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rr-table-page .rr-betting-panel { padding: 7px; gap: 6px; }
+  .rr-table-page .table-primary-actions,
+  .rr-table-page .table-primary-actions:has(> .rr-action-neutral) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rr-table-page .table-wager-back { display: inline-flex; }
   .rr-table-page .rr-action { min-height: 44px; padding: 8px 6px; font-size: 12px; }
   /* Phone action dock keeps only submittable controls: the heading becomes
@@ -378,21 +474,25 @@
 }
 
 /* 展开金额面板时替换主操作行，使行动区不超过 --dock-reserve。全下入口同步放入
-   编辑器第三行，保留“普通加注 ↔ 全下确认”的双向切换能力。 */
+   编辑器末行，保留“普通加注 ↔ 全下确认”的双向切换能力。 */
 .rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
-/* 紧凑三行金额编辑器在各宽度通用：桌面同时保留主操作行时内容实测高达 377px，
-   远超行动区预留带，必然产生面板内部滚动（docs/05 §8.1）。 */
+/* 手机三行、桌面两行；展开态替换主操作，始终完整呈现全部控件。 */
 .rr-table-page .table-wager-editor {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: minmax(44px, auto);
-  gap: 4px;
-  padding: 4px;
+  gap: 8px;
+  padding: 0;
 }
 .rr-table-page .table-wager-editor > p { display: none; }
 .rr-table-page .table-quick-amounts {
   grid-area: 1 / 1 / 2 / -1;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
 }
+.rr-table-page .table-quick-amounts .table-quick-amount { display: grid; align-content: center; gap: 1px; padding: 4px; }
+.rr-table-page .table-quick-amount > span { font-size: 10px; font-weight: 500; white-space: nowrap; }
+.rr-table-page .table-quick-amount > strong { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.rr-table-page .table-quick-amount[aria-pressed="true"] { background-color: #78b49a55; border-color: #55977991; box-shadow: inset 0 1px #ffffffba, inset 0 0 0 1px #4f8a6e38; }
 .rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
 .rr-table-page .table-wager-meta { display: contents; }
 .rr-table-page .table-wager-back { grid-area: 3 / 1 / 4 / 2; }
@@ -415,10 +515,31 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.rr-table-page .table-exact-amount > input { flex: 1; min-width: 0; }
+.rr-table-page .table-exact-amount > input { flex: 1; min-width: 0; height: 44px; border-radius: 999px; border: 1px solid #ffffffad; background: #ffffff6b; box-shadow: inset 0 1px 4px #163c2926; padding: 6px 16px; color: #204a39; font-size: 18px; font-variant-numeric: tabular-nums; }
 .rr-table-page .table-exact-error { font-size: 10px; white-space: nowrap; }
 .rr-table-page .table-wager-output { font-size: 16px; }
 .rr-table-page .table-wager-editor:has(.table-exact-amount) .table-quick-amounts { display: none; }
+
+@media (min-width: 640px) {
+  .rr-table-page [data-wager-open="true"] .table-action-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .rr-table-page .table-wager-editor { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .rr-table-page .table-quick-amounts { grid-area: 1 / 1 / 2 / 5; }
+  .rr-table-page .table-wager-slider { grid-area: 1 / 5 / 2 / -1; }
+  .rr-table-page .table-exact-amount { grid-area: 1 / 1 / 2 / 5; }
+  .rr-table-page .table-wager-back { grid-area: 2 / 1 / 3 / 3; }
+  .rr-table-page .table-wager-exact-toggle { grid-area: 2 / 3 / 3 / 5; }
+  .rr-table-page .table-wager-allin { grid-area: 2 / 5 / 3 / 7; }
+  .rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 2 / 7 / 3 / 9; }
+}
 
 @media (max-width: 639px) {
   .rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; }
@@ -431,11 +552,4 @@
     font-size: 11px;
     line-height: 1.15;
   }
-}
-
-/* 展开态行动区需约 203px。高度充裕的桌面/平板视口放大预留带；1366×768
-   无法在不压缩牌桌到座位相交的前提下提供同等高度，残留边界记录在
-   docs/03-engineering/TEX-46-findings-ledger.md。 */
-@media (min-width: 640px) and (min-height: 900px) {
-  .rr-table-page { --dock-reserve: 208px; }
 }

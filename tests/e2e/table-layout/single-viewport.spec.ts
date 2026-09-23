@@ -577,24 +577,64 @@ test.describe("按需行动区", () => {
 });
 
 test.describe("展开态行动区", () => {
-  // 展开时以三行金额编辑器替换主操作行，并在第三行保留返回与全下入口。面板一旦
-  // overflow-y:auto 就是内部滚动，违反验收条件。覆盖能承受 208px 预留带的
-  // 高视口；1366×768 的残留见台账未解决项。
-  for (const viewport of VIEWPORTS.filter((item) => item.width >= 640 && item.height >= 900)) {
-    test(`${viewport.name} 展开金额面板不产生内部滚动`, async ({ page }) => {
+  // 矮桌面同样必须一次展示快捷额、金额调整、返回、精确输入、全下与提交；
+  // scrollHeight 单独通过不足以证明面板未越过预留带或控件未被裁切。
+  for (const viewport of [
+    ...VIEWPORTS,
+    { name: "640x800", width: 640, height: 800 },
+    { name: "1467x897", width: 1467, height: 897 },
+  ]) {
+    test(`${viewport.name} 展开金额面板全部控件无需滚动`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await openTable(page, contiguousSeats(6));
       await page.getByRole("button", { name: "加注" }).click();
       const panel = page.locator(".rr-betting-panel");
       await expect(panel).toBeVisible();
-      const metrics = await panel.evaluate((element) => ({
-        scrollHeight: element.scrollHeight,
-        clientHeight: element.clientHeight,
-      }));
-      expect(
-        metrics.scrollHeight,
-        `展开态行动区不得内部滚动（需要 ${metrics.scrollHeight}px，实际 ${metrics.clientHeight}px）`,
-      ).toBeLessThanOrEqual(metrics.clientHeight + 1);
+      if (viewport.name === "1366x768" || viewport.name === "1467x897") {
+        await captureEvidence(page, testInfo, `${viewport.name}-wager`);
+      }
+      for (const exact of [false, true]) {
+        if (exact) {
+          await page.getByRole("button", { name: "输入精确金额" }).click();
+          await page.getByRole("textbox", { name: "输入精确下注额" }).fill("99999");
+          await expect(panel.locator(".table-exact-error")).toBeVisible();
+        }
+        const measured = await panel.evaluate((element) => {
+          const dock = element.closest(".table-action-dock");
+          if (dock === null) throw new Error("missing action dock");
+          const panelRect = element.getBoundingClientRect();
+          const dockRect = dock.getBoundingClientRect();
+          const controls = Array.from(element.querySelectorAll("button, input, output"))
+            .filter((control) => {
+              const style = getComputedStyle(control);
+              const rect = control.getBoundingClientRect();
+              return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+            })
+            .map((control) => {
+              const rect = control.getBoundingClientRect();
+              return { name: control.getAttribute("aria-label") ?? control.textContent ?? control.tagName, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+            });
+          return {
+            scrollHeight: element.scrollHeight,
+            clientHeight: element.clientHeight,
+            panel: { left: panelRect.left, right: panelRect.right, top: panelRect.top, bottom: panelRect.bottom },
+            dock: { top: dockRect.top, bottom: dockRect.bottom },
+            pageScrollHeight: document.documentElement.scrollHeight,
+            controls,
+          };
+        });
+        expect(measured.scrollHeight, "金额面板不得内部滚动").toBeLessThanOrEqual(measured.clientHeight + 1);
+        expect(measured.panel.top, "金额面板不得越过行动区预留带").toBeGreaterThanOrEqual(measured.dock.top - 1);
+        expect(measured.panel.bottom, "金额面板必须留在视口内").toBeLessThanOrEqual(measured.dock.bottom + 1);
+        expect(measured.pageScrollHeight, "展开金额面板不得使页面滚动").toBeLessThanOrEqual(viewport.height + 1);
+        expect(measured.controls.length, "全部下注控件必须呈现").toBeGreaterThanOrEqual(7);
+        for (const control of measured.controls) {
+          expect(control.left, `${control.name} 左侧不得裁切`).toBeGreaterThanOrEqual(measured.panel.left - 1);
+          expect(control.right, `${control.name} 右侧不得裁切`).toBeLessThanOrEqual(measured.panel.right + 1);
+          expect(control.top, `${control.name} 上方不得裁切`).toBeGreaterThanOrEqual(measured.panel.top - 1);
+          expect(control.bottom, `${control.name} 下方不得裁切`).toBeLessThanOrEqual(measured.panel.bottom + 1);
+        }
+      }
       await expect(page.getByRole("button", { name: "返回操作" })).toBeVisible();
       await page.getByRole("button", { name: "返回操作" }).click();
       await expect(panel).toHaveAttribute("data-wager-open", "false");
