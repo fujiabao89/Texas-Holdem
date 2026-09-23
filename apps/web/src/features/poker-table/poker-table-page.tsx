@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import type { Card, ErrorCode, GameSnapshot, SubmitAction } from "@texas-holdem/protocol";
 
@@ -54,6 +55,8 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   // sessionStorage is deliberately client-only. Keep SSR and hydration output
   // identical until React has switched to the browser snapshot.
   const isBrowser = useSyncExternalStore(subscribeNever, () => true, () => false);
+  const headingSlot = useSyncExternalStore(subscribeNever, getTableHeadingSlot, () => null);
+  const actionsSlot = useSyncExternalStore(subscribeNever, getTableActionsSlot, () => null);
 
   useLobbyConnection(roomId);
 
@@ -142,14 +145,18 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const occupiedSeats = game.players.filter((player) => player.seat >= 0 && player.seat < 10).length;
 
   return <TableFrame reducedMotion={presentation.reducedMotion} density={seatDensity(occupiedSeats)}>
-    <header className="rr-table-header mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 shadow-sm sm:px-4">
-      <div className="table-heading"><span className="table-heading-mark" aria-hidden="true">♠</span><div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="table-subtitle">{message("table.gameType")}<span aria-hidden="true"> · </span>{formatMessage("table.blinds", { small: canonicalGame.blindLevel.smallBlind, big: canonicalGame.blindLevel.bigBlind })}</p></div></div>
-      <div className="flex flex-wrap items-center gap-2">
+    {headingSlot !== null && createPortal(
+      <div className="table-heading"><span className="table-heading-mark" aria-hidden="true">♠</span><div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="table-subtitle">{message("table.gameType")}<span aria-hidden="true"> · </span>{formatMessage("table.blinds", { small: canonicalGame.blindLevel.smallBlind, big: canonicalGame.blindLevel.bigBlind })}</p></div></div>,
+      headingSlot,
+    )}
+    {actionsSlot !== null && createPortal(
+      <div className="table-header-actions">
         <button className={buttonClass} onClick={() => setHistoryOpen(true)} ref={historyButtonRef} type="button">{message("history.open")}</button>
         <button className={buttonClass} aria-label={message("table.soundLabel")} aria-pressed={soundEnabled} onClick={() => { void audio.unlock(); setSoundEnabled(!soundEnabled); }} type="button">{soundEnabled ? message("table.soundOn") : message("table.soundOff")}</button>
         <ConnectionStatus connectionState={connectionState} syncing={state.actionsDisabled} />
-      </div>
-    </header>
+      </div>,
+      actionsSlot,
+    )}
     {canonicalGame.viewer.role === "ELIMINATED_SPECTATOR" && (
       <p className="mx-auto w-full max-w-6xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
         {message("spectator.banner")}
@@ -647,3 +654,5 @@ function seatPosition(slot: number): CSSProperties {
   return { "--seat-left": position.left, "--seat-top": position.top } as CSSProperties;
 }
 function subscribeNever(): () => void { return () => undefined; }
+function getTableHeadingSlot(): HTMLElement | null { return document.getElementById("table-heading-slot"); }
+function getTableActionsSlot(): HTMLElement | null { return document.getElementById("table-actions-slot"); }

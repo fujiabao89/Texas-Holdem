@@ -144,7 +144,7 @@ async function openTable(
 ): Promise<(payload: unknown) => void> {
   let push: ((payload: unknown) => void) | undefined;
   await seedTableSession(page);
-  await page.routeWebSocket("/api/v1/ws", (socket) => {
+  await page.routeWebSocket("**/api/v1/ws", (socket) => {
     push = (payload) => socket.send(JSON.stringify(payload));
     socket.onMessage((raw) => {
       const incoming = JSON.parse(raw.toString()) as { type: string };
@@ -243,6 +243,58 @@ function overlaps(left: Box, right: Box): boolean {
     right.y < left.bottom - gap
   );
 }
+
+test.describe("牌桌顶栏", () => {
+  for (const viewport of VIEWPORTS) {
+    test(`${viewport.name} 标题与控件位于顶栏且互不遮挡`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await openTable(page, contiguousSeats(2));
+
+      const header = page.locator(".rr-header");
+      await expect(header.getByRole("heading", { name: "牌桌" })).toBeVisible();
+      await expect(header.getByRole("button", { name: "牌局记录" })).toBeVisible();
+      await expect(header.getByRole("button", { name: "全局音效" })).toBeVisible();
+      await expect(header.getByRole("status")).toContainText("实时连接正常");
+
+      const found = await boxes(page, {
+        header: ".rr-header",
+        heading: ".rr-table-heading-slot",
+        actions: ".rr-table-actions-slot",
+      });
+      expect(found.header).not.toBeNull();
+      expect(found.heading).not.toBeNull();
+      expect(found.actions).not.toBeNull();
+      for (const name of ["heading", "actions"] as const) {
+        expect(found[name]!.x).toBeGreaterThanOrEqual(0);
+        expect(found[name]!.right).toBeLessThanOrEqual(viewport.width);
+        expect(found[name]!.y).toBeGreaterThanOrEqual(found.header!.y);
+        expect(found[name]!.bottom).toBeLessThanOrEqual(found.header!.bottom);
+      }
+      expect(overlaps(found.heading!, found.actions!)).toBe(false);
+      if (viewport.width > 1100) {
+        expect(Math.abs((found.heading!.x + found.heading!.right) / 2 - viewport.width / 2)).toBeLessThan(2);
+      }
+    });
+  }
+
+  test("顶栏中的音效和牌局记录按钮保持可操作", async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.route("**/api/v1/tournaments/tournament-1/hands?*", (route) => route.fulfill({
+      json: { data: { tournamentId: "tournament-1", items: [], nextCursor: null } },
+    }));
+    await openTable(page, contiguousSeats(2));
+    const sound = page.locator(".rr-header").getByRole("button", { name: "全局音效" });
+    const oldPressed = await sound.getAttribute("aria-pressed");
+    await sound.click();
+    await expect(sound).toHaveAttribute("aria-pressed", oldPressed === "true" ? "false" : "true");
+
+    const history = page.locator(".rr-header").getByRole("button", { name: "牌局记录" });
+    await history.click();
+    await expect(page.getByRole("dialog", { name: "牌局记录" })).toBeVisible();
+    await page.getByRole("button", { name: "关闭" }).click();
+    await expect(history).toBeFocused();
+  });
+});
 
 test.describe("单视口牌桌", () => {
   for (const viewport of VIEWPORTS) {

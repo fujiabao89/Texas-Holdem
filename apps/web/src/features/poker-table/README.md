@@ -24,6 +24,8 @@ TEX-45：`poker-table.css` 是仅限 `.rr-table-page` 的静态视觉样式，�
 
 TEX-46：牌桌页收敛为单一视口，操作区按需出现在本人 Seat 前方的牌桌下沿。
 
+牌桌标题、权威盲注、牌局记录、音效开关与连接状态通过 React Portal 渲染到 `SiteChrome` 顶栏；原独立白色页头已移除。历史抽屉和音效状态仍由 `PokerTablePage` 持有，关闭抽屉后焦点返回顶栏的记录按钮。窄屏顶栏换行，不改变操作区准入或牌桌投影。
+
 `.rr-site:has(.rr-table-page)` 把站点页头之外的剩余高度交给页面，`#page-content` 改为 flex 填充且页面本身不滚动；牌桌容器以 `container-type: size` 按 `--felt-ratio` 在剩余空间内取最大可用尺寸，并用 `min-height` 兜底，避免中央信息溢出到页面背景。牌桌容器始终为操作区预留 `--dock-reserve`，行动区（`.table-action-dock`）只在该预留带内出现或消失，因此不改变牌桌几何、不产生布局跳动。
 
 行动区仍只在服务端投影表明本人是当前行动者且 `viewer.legalActions` 非空时渲染——`table-state.ts` 的准入条件（当前行动者、连接、无 pending、无同步禁用）未变；等待、观战、淘汰、断线与 pending 期间不渲染任何可提交控件。金额编辑器在所有视口替换主操作行时都保留“返回操作”，玩家可取消 Bet/Raise 草稿并重新选择其他合法动作。
