@@ -51,10 +51,14 @@
 }
 .rr-table-page {
   --table-gold: #dfc88e;
-  --felt-ratio: 1.72;
+  --felt-ratio: 1.85;
   --dock-reserve: 124px;
-  --hole-card-height: 96px;
-  --hole-card-width: 4.3rem;
+  --hole-card-height: 88px;
+  --hole-card-width: 63px;
+  --seat-card-height: 42px;
+  --seat-card-width: 30px;
+  --board-card-height: 88px;
+  --board-card-width: 63px;
   flex: 1 1 auto;
   max-width: 1240px;
   min-height: 0;
@@ -85,11 +89,10 @@
   justify-content: center;
   width: 100%;
   max-width: 1060px;
-  /* Floor the felt so the centre stack (street, pot, board) can never spill
-     outside the felt onto the page background on a very short viewport. */
-  min-height: 220px;
+  /* Reserve room for seats straddling the rail as well as the action dock. */
+  min-height: 0;
   margin-inline: auto;
-  padding-bottom: var(--dock-reserve);
+  padding: 42px 48px calc(var(--dock-reserve) + 68px);
   container-type: size;
 }
 .rr-table-page .rr-table-felt {
@@ -107,7 +110,8 @@
     inset 0 0 65px #061b2366, 0 4px 0 #152c22, 0 22px 38px #203b2926;
 }
 .rr-table-page .table-stitch { border: 1px dashed #c1c9a23d; background: none; }
-.rr-table-page .table-center-info { top: auto; bottom: calc(50% + 80px); width: max-content; max-width: 78%; gap: 12px; }
+.rr-table-page [data-muck] { left: -40px; top: 24px; border-color: #31533c33; color: #4f6658; }
+.rr-table-page .table-center-info { top: auto; bottom: calc(50% + 68px); width: max-content; max-width: 78%; gap: 12px; }
 .rr-table-page .table-phase {
   padding: 0;
   border-radius: 0;
@@ -144,8 +148,25 @@
 .rr-table-page .table-pot-list { top: calc(50% + 56px); }
 
 .rr-table-page .table-actor-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rr-table-page .table-seat { width: 128px; }
+.rr-table-page .table-phase, .rr-table-page .table-pot-total { flex-shrink: 0; }
+.rr-table-page .table-seat { left: var(--seat-left); top: var(--seat-top); width: 82px; transform: translate(-50%, -50%); }
+.rr-table-page [data-viewer="true"] { width: 106px; }
+.rr-table-page [data-seat-cards] { min-height: var(--seat-card-height); margin-bottom: 4px; }
+.rr-table-page [data-viewer="true"] [data-seat-cards] { min-height: var(--hole-card-height); }
+.rr-table-page .table-seat-status { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 9px; color: #fdf3d2; background: #244c35; border-radius: 6px; padding: 1px 4px; }
+/* Keep persistent status below transient action feedback without resizing seats. */
+.rr-table-page .table-seat:has(.table-action-badge) .table-seat-status { top: calc(100% + 32px); }
+.rr-table-page .table-seat-bet { position: absolute; left: var(--bet-left); top: var(--bet-top); transform: translate(-50%, -50%); display: flex; align-items: center; gap: 4px; padding: 2px 5px; border-radius: 999px; background: #123a2eeb; color: #fff0c5; font: 600 11px/1.3 monospace; white-space: nowrap; box-shadow: 0 2px 4px #122e2626; }
+.rr-table-page .table-bet-chip { width: 12px; height: 12px; border: 2px dashed #f8ecc5; border-radius: 50%; background: #a78443; box-shadow: 0 2px #806638; }
+.rr-table-page[data-table-layout="6"] [data-seat-slot="1"] { --layout-x: 94%; --layout-y: 24%; --layout-bet-x: 78%; --layout-bet-y: 26%; }
+.rr-table-page[data-table-layout="6"] [data-seat-slot="3"] { --layout-x: 94%; --layout-y: 76%; --layout-bet-x: 78%; --layout-bet-y: 74%; }
+.rr-table-page[data-table-layout="6"] [data-seat-slot="7"] { --layout-x: 6%; --layout-y: 76%; --layout-bet-x: 22%; --layout-bet-y: 74%; }
+.rr-table-page[data-table-layout="6"] [data-seat-slot="9"] { --layout-x: 6%; --layout-y: 24%; --layout-bet-x: 22%; --layout-bet-y: 26%; }
+.rr-table-page[data-table-layout="6"] .table-seat { left: var(--layout-x, var(--seat-left)); top: var(--layout-y, var(--seat-top)); }
+.rr-table-page[data-table-layout="6"] .table-seat-bet { left: var(--layout-bet-x, var(--bet-left)); top: var(--layout-bet-y, var(--bet-top)); }
+.rr-table-page .table-landscape-hint { display: none; }
 .rr-table-page [data-seat-chips] {
+  padding: 4px 5px;
   border-color: #81967a66;
   background: linear-gradient(180deg, #244638, #193b2e);
   border-radius: 12px;
@@ -155,7 +176,8 @@
 .rr-table-page [data-viewer="true"] .table-player-name { color: #254731; }
 .rr-table-page [data-viewer="true"] .table-player-stack { color: #31523a; }
 .rr-table-page [data-active="true"] [data-seat-chips] { outline: 2px solid var(--table-gold); outline-offset: 3px; }
-.rr-table-page .table-player-name { font-size: 12px; line-height: 1.5; }
+.rr-table-page .table-player-name { font-size: 11px; line-height: 1.4; }
+.rr-table-page [data-seat-badge] { height: 16px; min-width: 16px; padding-inline: 2px; font-size: 8px; }
 .rr-table-page .table-player-stack {
   display: flex;
   align-items: center;
@@ -189,6 +211,8 @@
   gap: 1px;
 }
 .rr-table-page .table-card-corner > span:last-child { font-size: 12px; }
+.rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 10px; }
+.rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 8px; }
 .rr-table-page .table-card-court {
   width: 42%;
   min-height: 56%;
@@ -198,6 +222,7 @@
   font-size: 24px;
   padding: 4px 0;
 }
+.rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 14px; padding-block: 1px; }
 .rr-table-page .table-card-back {
   border: 2px solid #e0dfc4;
   background: #254837;
@@ -296,7 +321,7 @@
   background: linear-gradient(165deg, #ffffff9c, #ffffff26 55%, #ffffff61);
   box-shadow: inset 0 1px 1px #fffffff0, inset 0 -1px 2px #44614c26,
     0 2px 4px #1f3c2814;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -370,53 +395,54 @@
   .rr-table-page .rr-betting-panel { background: #f3f6ee; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (min-width: 640px) {
-  /* Two wager rows fit the same reserved strip on short and tall desktops. */
   .rr-table-page { padding: 16px; gap: 12px; }
-  /* Keep full-size hole cards below the centre stack even on short desktops.
-     The name plate can straddle the lower rail, but stays above the dock. */
-  .rr-table-page [data-seat-slot="5"] { top: max(93%, calc(50% + 260px)); }
-  /* The one-viewport felt is shorter than the TEX-45 scroll layout, so an
-     eight-plus handed table compresses the Seat card and pulls the upper flank
-     Seats inwards; no two Seat rectangles may intersect (docs/05 §7.5/§16). */
-  .rr-table-page[data-seat-density] .table-seat { width: 112px; }
-  .rr-table-page[data-seat-density] [data-seat-cards] { min-height: 40px; }
-  .rr-table-page[data-seat-density] [data-seat-chips] { padding: 3px 6px; }
-  .rr-table-page[data-seat-density] .table-player-name { font-size: 11px; line-height: 1.4; }
-  .rr-table-page[data-seat-density] .table-player-stack { margin-top: 0; font-size: 12px; }
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="1"] { left: 70%; }
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="9"] { left: 30%; }
-  .rr-table-page[data-seat-density] [data-seat-slot="3"],
-  .rr-table-page[data-seat-density] [data-seat-slot="7"] { top: 70%; }
 }
 @media (min-width: 640px) and (max-width: 1000px) {
-  .rr-table-page .table-seat { width: 96px; }
   .rr-table-page { --felt-ratio: 1.25; }
 }
 @media (min-width: 640px) and (max-width: 760px) {
-  .rr-table-page .table-seat { width: 80px; }
   .rr-table-page { --felt-ratio: 1.05; }
-  .rr-table-page [data-seat-slot="2"], .rr-table-page [data-seat-slot="8"] { top: 25%; }
-  .rr-table-page [data-seat-slot="3"], .rr-table-page [data-seat-slot="7"] { top: 75%; }
 }
 @media (min-width: 640px) and (max-height: 820px) {
-  /* Preserve a separate hand zone without spending the action dock's space. */
-  .rr-table-page { --hole-card-height: 80px; --hole-card-width: 3.6rem; }
-  .rr-table-page [data-seat-slot="5"] { top: max(93%, calc(50% + 226px)); }
+  .rr-table-page { --hole-card-height: 76px; --hole-card-width: 54px; }
   .rr-table-page .table-board-zone { top: calc(50% - 16px); padding-block: 6px; }
   .rr-table-page .table-pot-list { top: calc(50% + 47px); }
 }
 @media (max-width: 639px) {
   /* Height is the scarce axis on a phone: the dock reserve plus the header are
      subtracted first, and the felt then takes whatever width they leave. */
-  .rr-table-page { --felt-ratio: 0.8; --dock-reserve: 176px; --hole-card-height: 72px; --hole-card-width: 3.2rem; gap: 6px; padding: 8px; }
+  .rr-table-page { --felt-ratio: 0.8; --dock-reserve: 176px; --hole-card-height: 66px; --hole-card-width: 47px; --seat-card-height: 28px; --seat-card-width: 20px; --board-card-height: 56px; --board-card-width: 40px; gap: 6px; padding: 8px; }
+  .rr-site:has(.rr-table-page) > .rr-header { grid-template-rows: 26px 34px 44px; row-gap: 2px; padding-block: 4px; }
+  .rr-site:has(.rr-table-page) .table-heading h1 { line-height: 20px; }
+  .rr-site:has(.rr-table-page) .table-subtitle { line-height: 14px; }
+  .rr-site:has(.rr-table-page) .rr-brand small { display: none; }
+  .rr-table-page .table-stage { padding: 32px 24px calc(var(--dock-reserve) + 58px); }
+  .rr-table-page [data-muck] { top: 8px; }
+  .rr-table-page .table-seat { width: 56px; }
+  .rr-table-page [data-viewer="true"] { width: 84px; }
+  .rr-table-page [data-seat-chips] { padding: 3px; }
+  .rr-table-page .table-landscape-hint { display: inline; width: 100%; text-align: center; font-size: 10px; color: #4f6658; }
+  .rr-table-page .table-seat-bet { font-size: 9px; padding: 1px 3px; gap: 3px; }
+  .rr-table-page .table-bet-chip { width: 9px; height: 9px; }
   /* Four main actions form a balanced 2x2 group; time bank gets its own row. */
   .rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: 1 / -1; padding: 4px 6px; font-size: 11px; }
   .rr-table-page .table-primary-actions:has(> .rr-action-neutral) > .rr-action { min-height: 44px; }
-  .rr-table-page .table-seat { width: 76px; }
   .rr-table-page .table-player-name { font-size: 10px; }
   .rr-table-page .table-player-stack { font-size: 11px; gap: 3px; }
   .rr-table-page .table-chip { width: 8px; height: 8px; }
-  .rr-table-page .table-center-info { bottom: calc(50% + 60px); display: grid; grid-template-columns: auto auto; max-width: 60%; gap: 4px 8px; }
+  .rr-table-page .table-center-info { bottom: calc(50% + 48px); display: grid; grid-template-columns: auto auto; max-width: 60%; gap: 4px 8px; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="1"] { left: 82%; top: 12%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="9"] { left: 18%; top: 12%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="4"] { left: 82%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="6"] { left: 18%; }
+  .rr-table-page .table-seat-bet[data-seat-slot="0"] { left: 50%; top: 14%; }
+  .rr-table-page[data-table-layout="10"] .table-seat-bet[data-seat-slot="1"] { left: 80%; top: 25%; }
+  .rr-table-page[data-table-layout="10"] .table-seat-bet[data-seat-slot="9"] { left: 20%; top: 25%; }
+  .rr-table-page .table-seat-bet[data-seat-slot="5"] { left: 50%; top: 76%; }
+  .rr-table-page .table-seat-bet:is([data-seat-slot="2"], [data-seat-slot="3"]) { left: 78%; }
+  .rr-table-page .table-seat-bet:is([data-seat-slot="7"], [data-seat-slot="8"]) { left: 22%; }
+  .rr-table-page .table-seat-bet:is([data-seat-slot="2"], [data-seat-slot="8"]) { top: 30%; }
+  .rr-table-page .table-seat-bet:is([data-seat-slot="4"], [data-seat-slot="6"]) { top: 76%; }
   .rr-table-page .table-pot-total { grid-column: 1 / -1; grid-row: 1; justify-self: center; }
   .rr-table-page .table-phase { grid-column: 1; grid-row: 2; }
   .rr-table-page .table-actor-caption { grid-column: 2; grid-row: 2; }
@@ -451,30 +477,9 @@
   /* The phone felt is narrow, so the deck shrinks into the top-left arc and the
      two upper Seats move inwards to keep their rectangles clear of it. */
   .rr-table-page .table-deck { left: 4px; top: 2px; height: 40px; width: 28px; }
-  /* Stable clockwise slots reuse five vertical bands on the shorter phone felt, so no
-     two Seat rectangles intersect (docs/05 §7.5/§16). */
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="1"],
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="9"] { top: 13%; }
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="2"],
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="8"] { top: 37%; }
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="3"],
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="7"] { top: 61%; }
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="4"],
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { top: 87%; }
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="4"] { left: 74%; }
-  .rr-table-page[data-seat-density="stacked"] [data-seat-slot="6"] { left: 26%; }
-  /* A crowded phone table compresses each Seat card; docs/05 §7.5 allows the
-     10-player phone layout to shorten names and stacks. Density comes from the
-     occupied-seat count, so a sparse six-handed table compresses too. */
-  .rr-table-page[data-seat-density] .table-seat { width: 62px; }
-  /* The base negative margin compacts the Seat, while the visual 1px lift keeps
-     the 40px hole-card box clear of the role-badge row without changing layout. */
-  .rr-table-page[data-seat-density] [data-seat-cards] { min-height: 26px; transform: translateY(-1px); }
-  .rr-table-page[data-seat-density] [data-seat-chips] { padding: 2px 3px; }
-  .rr-table-page[data-seat-density] .table-player-name { font-size: 9px; line-height: 1.3; }
-  .rr-table-page[data-seat-density] .table-player-stack { margin-top: 0; font-size: 10px; gap: 2px; }
-  .rr-table-page[data-seat-density] .table-chip { width: 7px; height: 7px; }
-  .rr-table-page[data-seat-density] [data-seat-chips] + div { margin-top: 0; }
+  .rr-table-page .table-player-name { font-size: 9px; line-height: 1.3; }
+  .rr-table-page .table-player-stack { margin-top: 0; font-size: 9px; gap: 2px; }
+  .rr-table-page .table-chip { width: 7px; height: 7px; }
   /* The phone wager panel is exactly three rows — shortcuts, the amount row,
      then back/exact next to submit — so every control stays inside the
      reserved strip with no panel-level scrolling. The exact-amount field is a
@@ -561,4 +566,74 @@
     font-size: 11px;
     line-height: 1.15;
   }
+}
+
+/* Landscape phones keep the felt and a complete, touch-sized action panel side
+   by side. The reserved right column stays in place between turns. */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 640px) {
+  .rr-site:has(.rr-table-page) > .rr-header { grid-template-rows: 44px; grid-template-columns: auto auto 1fr; column-gap: 12px; padding: 0 12px; min-height: 44px; }
+  .rr-site:has(.rr-table-page) .rr-brand { grid-column: 1; grid-row: 1; font-size: 16px; gap: 6px; }
+  .rr-site:has(.rr-table-page) .rr-brand-symbol { font-size: 24px; }
+  .rr-site:has(.rr-table-page) .rr-brand small,
+  .rr-site:has(.rr-table-page) .table-heading-mark { display: none; }
+  .rr-site:has(.rr-table-page) .rr-table-heading-slot { grid-column: 2; grid-row: 1; }
+  .rr-site:has(.rr-table-page) .table-heading h1 { font-size: 14px; }
+  .rr-site:has(.rr-table-page) .table-subtitle { margin: 0; font-size: 9px; }
+  .rr-site:has(.rr-table-page) .rr-header-end { grid-column: 3; grid-row: 1; gap: 8px; }
+  .rr-site:has(.rr-table-page) .rr-table-actions-slot .rr-button { min-height: 44px; padding: 6px; font-size: 11px; }
+  .rr-site:has(.rr-table-page) .rr-table-actions-slot [role="status"],
+  .rr-site:has(.rr-table-page) .rr-nav { font-size: 10px; }
+  .rr-table-page { --felt-ratio: 1.85; --dock-reserve: 0px; --hole-card-height: 60px; --hole-card-width: 43px; --seat-card-height: 28px; --seat-card-width: 20px; --board-card-height: 48px; --board-card-width: 34px; padding: 4px 12px; gap: 2px; position: relative; }
+  .rr-table-page .table-stage { padding: 32px 292px 52px 38px; max-width: none; }
+  .rr-table-page .table-clock-bar { position: absolute; right: 12px; bottom: 24px; width: 252px; }
+  .rr-table-page .table-notices { position: absolute; right: 12px; bottom: 4px; width: 252px; }
+  .rr-table-page .rr-table-felt { border-width: 10px; }
+  .rr-table-page .table-seat { width: 58px; }
+  .rr-table-page [data-viewer="true"] { width: 82px; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="1"] { left: 82%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="9"] { left: 18%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="4"] { left: 82%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="6"] { left: 18%; }
+  .rr-table-page [data-seat-chips] { padding: 2px 3px; }
+  .rr-table-page .table-player-name { font-size: 9px; }
+  .rr-table-page .table-player-stack { font-size: 9px; margin-top: 0; }
+  .rr-table-page [data-seat-badge] { height: 14px; min-width: 14px; font-size: 7px; }
+  .rr-table-page .table-chip { width: 7px; height: 7px; }
+  .rr-table-page .table-center-info { bottom: calc(50% + 38px); gap: 6px; max-width: 72%; }
+  .rr-table-page .table-phase, .rr-table-page .table-pot-label, .rr-table-page .table-actor-caption { font-size: 9px; }
+  .rr-table-page .table-pot-total { padding: 2px 8px; gap: 6px; }
+  .rr-table-page .table-pot-total strong { font-size: 17px; }
+  .rr-table-page .table-board-zone { top: calc(50% - 12px); padding: 4px; }
+  .rr-table-page .table-pot-list { top: calc(50% + 26px); }
+  .rr-table-page .table-pot-list > span { padding: 1px 4px; font-size: 8px; }
+  .rr-table-page .table-seat-bet { font-size: 9px; padding: 1px 3px; gap: 2px; }
+  .rr-table-page .table-seat-bet[data-seat-slot="0"] { left: 65%; top: 13%; }
+  .rr-table-page .table-seat-bet[data-seat-slot="5"] { left: 66%; top: 92%; }
+  .rr-table-page[data-table-layout="10"] .table-seat-bet:is([data-seat-slot="1"], [data-seat-slot="9"]) { top: 13%; }
+  .rr-table-page .table-bet-chip { width: 8px; height: 8px; }
+  .rr-table-page .table-card-corner { font-size: 10px; }
+  .rr-table-page .table-card-corner > span:last-child { font-size: 8px; }
+  .rr-table-page .table-card-court { font-size: 16px; }
+  .rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 7px; }
+  .rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 6px; }
+  .rr-table-page .table-deck { width: 24px; height: 34px; left: 2px; top: 2px; }
+  .rr-table-page [data-muck] { top: 16px; }
+  .rr-table-page .table-action-dock { inset: 0 0 0 auto; width: 252px; height: 100%; padding: 0; align-items: center; }
+  .rr-table-page .rr-betting-panel { padding: 8px; gap: 8px; }
+  .rr-table-page .rr-action { min-height: 44px; padding: 5px; font-size: 11px; }
+  .rr-table-page .table-primary-actions,
+  .rr-table-page .table-primary-actions:has(> .rr-action-neutral) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: 1 / -1; }
+  .rr-table-page .table-action-heading { font-size: 10px; }
+  .rr-table-page .table-wager-editor { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .rr-table-page .table-quick-amounts, .rr-table-page .table-exact-amount { grid-area: 1 / 1 / 2 / -1; }
+  .rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
+  .rr-table-page .table-wager-back { grid-area: 3 / 1 / 4 / 2; }
+  .rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; }
+  .rr-table-page .table-wager-allin { grid-area: 3 / 3 / 4 / 4; }
+  .rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 4 / 4 / 5; }
+  .rr-table-page .table-quick-amount > strong { font-size: 14px; }
+  .rr-table-page .table-clock-bar { padding: 0; min-height: 0; }
+  .rr-table-page .table-clock-bar p, .rr-table-page .table-notices { font-size: 9px; line-height: 12px; }
+  .rr-table-page .table-notices { gap: 2px; }
 }

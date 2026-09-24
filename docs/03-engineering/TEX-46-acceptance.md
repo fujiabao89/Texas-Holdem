@@ -67,6 +67,32 @@ CI run `35451002198` 的 mock `e2e` 为 136 passed / 2 failed；两项失败均�
 
 Codex / CodeRabbit / Greptile 的 9 条意见逐项核验与处置见 [TEX-46-findings-ledger.md](./TEX-46-findings-ledger.md)。
 
+## 用户批准的整体布局调整（2026-09-24）
+
+本节为 2026-09-23 用户追加、次日完成收尾的牌桌布局范围；上文为各历史阶段记录。开始前已按要求单独提交上一轮中央留白调整：`1b176956 feat(TEX-46): separate board and viewer hand zones`，未推送。本轮整体布局保留为未提交改动，等待用户确认视觉效果。
+
+- 对手信息卡与底牌约缩小三分之一，本人手牌只轻微缩小且明显大于对手；座位跨坐桌沿，为公共牌与底池释放空间。
+- 本街投入拆为独立桌面筹码标记，带玩家名称的辅助标签；下注出现/清零不再改变 Seat 高度。持久玩家状态与临时动作反馈分开显示。
+- 完整参赛名单选择 2/6/10 人模板，连续与稀疏物理座位均按相对本人顺时针顺序排列。弃牌、全下、淘汰与撤回不筛除名单，因此不会换位；实际名单变化才允许重新分配。该项按用户批准取代 TEX-47 的统一偏移公式，权威说明见 [前端规格 §7.2](../05-frontend-spec.md)。
+- 手机短横屏使用左侧牌桌、右侧完整操作列，竖屏保留可操作回退与非阻断横屏提示；不强制锁定方向。中央留白、边池明细和玻璃行动区仍保留。
+- 没有修改规则引擎、通信 Schema、服务端裁决、命令或动画时序；未触发外部审查、提交牌局操作或推送当前改动。
+
+文档同步：已更新 `apps/web`、牌桌、路由样式、文案及 E2E 目录 README，前端/测试权威规格和本任务验收记录；架构、协议、安全、部署及运维文档**已检查，无需更新**，原因是本轮仅改变前端布局与对应测试，不新增接口、权限、运行配置或产品范围。更广路线图也无需调整，本次仍属 TEX-46 的用户批准追加布局验收。
+
+本地验证（复用 TEX-46 的 3000 端口服务）：
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm typecheck` | 通过，6 个工作区任务及测试 TypeScript 检查 |
+| `pnpm exec eslint`（本轮修改的 TS/TSX 与 E2E 文件） | 通过 |
+| `pnpm exec vitest run --project unit apps/web/src/features/poker-table --maxWorkers 1` | 3 files / 18 tests passed |
+| `TEX_E2E_BASE_URL=http://127.0.0.1:3000 TEX_E2E_PORT=3000 pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout seats --workers=2 --reporter=json` | 168 passed，0 failed / 0 flaky |
+| `git diff --check` | 通过 |
+
+浏览器结果与截图保留在未纳入版本控制的 `output/playwright/`：`TEX-46-full-layout-results.json`、`TEX-46-1366x768-10p.png`、`TEX-46-360x800-10p-rail.png`、`TEX-46-800x360-10p-rail.png` 等。验证期间没有修改页面缩放、提交真实牌局动作或改变游戏规则。
+
+验证边界：浏览器视口覆盖 360×800、390×844、768×1024、1366×768、1920×1080、844×390、800×360，并包含 640×800/1467×897 边界用例；当前真实双人房间已做只读视觉检查。没有运行全量跨模块 E2E、真实服务端/数据库联调套件、生产构建或 Android/iPhone 实机旋转验收，不将本轮结果等同于发布验收。
+
 ## 未运行项与已知边界
 
 - **交付状态（2026-09-17 更新）**：已推送并创建 PR [#56](https://github.com/fujiabao89/Texas-Holdem/pull/56)，目标分支 `main`（分支已 rebase 到 `main@5567e4fb`）。CI 已在该分支运行，`quality`、`e2e`、`e2e-real`、`perf-smoke`、CodeQL、`branch-and-pr-policy`、`repository-hygiene`、`workflow-lint` 全部通过。上一条「未推送、未创建 PR、CI 未运行过」仅适用于 2026-09-16 记录成文时点。

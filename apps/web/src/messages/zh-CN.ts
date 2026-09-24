@@ -245,6 +245,7 @@ export const zhCN = {
       },
     },
     title: "牌桌",
+    landscapeHint: "横屏对局，视野更开阔 ↔",
     loading: "正在加载牌桌…",
     missingSession: "未找到此房间的身份凭证，请重新加入。",
     roomClosed: "房间已关闭。",

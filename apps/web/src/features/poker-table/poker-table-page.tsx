@@ -18,12 +18,9 @@ import type { PendingCommand as TransportPendingCommand } from "../../protocol/w
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
 import { actionFeedback, awardedTo, feedbackFlight, potName, publicHandRankName, publicPlayerName, relativeCenter, type Point } from "./event-feedback";
-import { canSubmitTableAction, remainingTimeMs, seatBadges, tableSeatSlots, tableSeats, type SeatBadge } from "./table-state";
+import { canSubmitTableAction, remainingTimeMs, seatBadges, tableLayout, tableSeatSlots, tableSeats, type SeatBadge, type TableLayout } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
-// The viewer Seat is pinned to this slot and anchored by its bottom edge;
-// responsive CSS keeps its cards clear of the Board and action dock.
-const VIEWER_SEAT_SLOT = 5;
 type TerminalError = Extract<ErrorCode, "AUTH_FAILED" | "UNSUPPORTED_PROTOCOL_VERSION" | "SESSION_REPLACED">;
 
 export function PokerTablePage({ roomId }: { readonly roomId: string }) {
@@ -144,7 +141,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   // crowded layout on seat numbers would pick the wrong geometry.
   const occupiedSeats = game.players.filter((player) => player.seat >= 0 && player.seat < 10).length;
 
-  return <TableFrame reducedMotion={presentation.reducedMotion} density={seatDensity(occupiedSeats)}>
+  return <TableFrame reducedMotion={presentation.reducedMotion} layout={tableLayout(occupiedSeats)}>
     {headingSlot !== null && createPortal(
       <div className="table-heading"><span className="table-heading-mark" aria-hidden="true">♠</span><div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{message("table.title")}</h1><p className="table-subtitle">{message("table.gameType")}<span aria-hidden="true"> · </span>{formatMessage("table.blinds", { small: canonicalGame.blindLevel.smallBlind, big: canonicalGame.blindLevel.bigBlind })}</p></div></div>,
       headingSlot,
@@ -181,9 +178,15 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         {game.pots.length > 1 && <div className="table-pot-list absolute left-1/2 top-[63%] z-20 flex w-[68%] -translate-x-1/2 flex-wrap justify-center gap-1" aria-label={message("table.pot")}>
           {game.pots.map((pot, index) => <span data-pot-index={index} className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold sm:text-[11px] ${presentation.overlay?.event.type === "POT_AWARDED" && presentation.overlay.event.payload.potIndex === index ? "border-amber-200 bg-amber-100 text-amber-950" : "border-emerald-100/25 bg-emerald-950/65 text-emerald-50"}`} key={index}>{potName(index)} · {pot.amount}</span>)}
         </div>}
-        <div data-muck className="pointer-events-none absolute left-[23%] top-[20%] rounded-lg border border-dashed border-emerald-100/20 px-2 py-1 text-[8px] text-emerald-100/60 sm:text-[10px]" aria-label={message("table.feedback.muck")}>{message("table.feedback.muck")}</div>
+        <div data-muck className="pointer-events-none absolute left-0 -top-6 rounded-lg border border-dashed border-emerald-100/20 px-2 py-1 text-[8px] text-emerald-100/60 sm:text-[10px]" aria-label={message("table.feedback.muck")}>{message("table.feedback.muck")}</div>
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
           {tableSeats(game).map((player, seat) => <SeatCard game={game} currentActorPlayerId={canonicalGame.currentActorPlayerId} holeDeal={presentation.holeDeal} revealedPlayerIds={presentation.revealedPlayerIds} overlay={presentation.overlay} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
+        </div>
+        <div className="table-bets pointer-events-none absolute inset-0 z-20" aria-label={message("table.streetBet")}>
+          {game.players.filter((player) => player.streetBet > 0).map((player) => {
+            const slot = seatSlots[player.seat];
+            return slot === null || slot === undefined ? null : <span data-seat-bet={player.seat} data-seat-slot={slot} style={seatPosition(slot)} className="table-seat-bet" aria-label={`${player.displayName}，${message("table.streetBet")} ${player.streetBet}`} key={player.playerId}><span aria-hidden="true" className="table-bet-chip" />{player.streetBet.toLocaleString("zh-CN")}</span>;
+          })}
         </div>
         {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} tableElement={tableElement} deckElement={deckElement} key={presentation.overlay.eventKey} />}
       </div>
@@ -200,6 +203,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     </section>
     <section className="table-clock-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-center text-xs shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus hasActor={canonicalGame.currentActorPlayerId !== null} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${canonicalGame.handId}:${canonicalGame.currentActorPlayerId ?? "none"}`} /></section>
     <div className="table-notices mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-amber-900">
+      <span className="table-landscape-hint">{message("table.landscapeHint")}</span>
       {state.actionsDisabled && <span className="rounded bg-amber-50 px-2 py-1" role="status">{message("table.syncing")}</span>}
       {presentation.notice === "SYNCED" && <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-900" role="status">{message("table.progressSynced")}</span>}
       {connectionState !== "CONNECTED" && <span className="rounded bg-amber-50 px-2 py-1" role="status" aria-live="polite">{message("table.reconnectingNotice")}</span>}
@@ -267,8 +271,8 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
   const eventText = playerEvent === null ? null : actionFeedback(playerEvent.event);
   const departing = playerEvent?.event.type === "PLAYER_ELIMINATED" || playerEvent?.event.type === "PLAYER_WITHDRAWN";
   const badges = seatBadges(game, player.seat);
-  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} data-viewer={viewer} data-active={active ? "true" : "false"} className={`table-seat absolute z-30 w-[4.75rem] -translate-x-1/2 text-center sm:w-36 ${slot === VIEWER_SEAT_SLOT ? "-translate-y-full" : "-translate-y-1/2"}`} aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
-    <div data-seat-cards className={`relative z-10 mx-auto -mb-1 flex min-h-8 justify-center sm:min-h-14 ${playerEvent?.event.type === "PLAYER_FOLDED" ? "opacity-35" : ""}`}>
+  return <article style={seatPosition(slot)} data-seat={seat} data-seat-slot={slot} data-viewer={viewer} data-active={active ? "true" : "false"} className="table-seat absolute z-30 text-center" aria-label={`${player.displayName}，${formatMessage("table.seat", { position: seat + 1 })}${active ? `，${message("table.currentActor")}` : ""}`}>
+    <div data-seat-cards className={`relative z-10 mx-auto flex justify-center ${playerEvent?.event.type === "PLAYER_FOLDED" ? "opacity-35" : ""}`}>
       {revealCards === null
         ? stagedCardCount === null
           ? <CardRow cards={cards} hiddenCount={viewer ? Math.max(0, 2 - cards.length) : player.hasHoleCards ? Math.max(0, 2 - cards.length) : 0} variant={viewer ? "hole" : "seat"} />
@@ -286,7 +290,7 @@ function SeatCard({ game, currentActorPlayerId, holeDeal, revealedPlayerIds, ove
       {award !== null && <span key={overlay?.eventKey} className="table-seat-award absolute -right-2 -top-3 rounded-full border border-amber-100 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-950" style={{ "--feedback-duration": `${animationTimings.winner}ms` } as CSSProperties}>{formatMessage("table.feedback.winnerAmount", { amount: award })}</span>}
     </div>
     {eventText !== null && <span className={`table-action-badge absolute left-1/2 top-full z-50 mt-1 w-max max-w-36 -translate-x-1/2 rounded-full px-2 py-1 text-[9px] font-semibold shadow sm:text-xs ${playerEvent?.event.type === "PLAYER_ALL_IN" ? "bg-amber-200 text-amber-950" : "bg-white text-slate-900"}`} style={{ "--feedback-duration": `${playerEvent?.durationMs ?? 0}ms` } as CSSProperties} key={playerEvent?.eventKey}>{eventText}</span>}
-    {(player.streetBet > 0 || status !== null) && <div className="mt-1 flex flex-col items-center gap-0.5"><span className="rounded-full bg-[#244c35] px-1.5 py-0.5 text-[8px] font-semibold text-amber-200 shadow sm:px-2 sm:text-[10px]">{player.streetBet > 0 ? `${message("table.streetBet")} ${player.streetBet}` : status}</span>{player.streetBet > 0 && status !== null && <span className="text-[8px] font-medium text-emerald-100 sm:text-[10px]">{status}</span>}</div>}
+    {status !== null && <span className="table-seat-status">{status}</span>}
   </article>;
 }
 
@@ -298,7 +302,7 @@ function CommunityCards({ cards, overlay, deckElement }: { readonly cards: reado
     const dealingCard = dealingIndex >= 0 ? dealingBoard?.boardCards[dealingIndex] : undefined;
     return card !== undefined ? <CardFace card={card} variant="board" key={`${card.rank}-${card.suit}-${index}`} />
       : dealingCard !== undefined ? <BoardDealCard card={dealingCard} index={dealingIndex} deckElement={deckElement} key={`${dealingBoard?.eventKey}:${index}`} />
-        : <span aria-hidden="true" className="table-card-slot h-16 w-12 rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10 sm:h-24 sm:w-[4.3rem]" key={`empty-${index}`} />;
+        : <span aria-hidden="true" className={`table-card-slot ${cardDimensions("board")} rounded-lg border-2 border-dashed border-emerald-200/15 bg-emerald-950/10`} key={`empty-${index}`} />;
   })}</div>;
 }
 
@@ -314,7 +318,7 @@ function BoardDealCard({ card, index, deckElement }: { readonly card: Card; read
     setOrigin({ x: deck.x + deck.width / 2 - slot.x - slot.width / 2, y: deck.y + deck.height / 2 - slot.y - slot.height / 2 });
   }, [deckElement]);
   const interval = animationTimings.flopCard + animationTimings.flopInterval;
-  return <span ref={slotRef} className="relative block h-16 w-12 sm:h-24 sm:w-[4.3rem]">
+  return <span ref={slotRef} className={`relative block ${cardDimensions("board")}`}>
     {origin !== null && <span role="img" className="board-deal-flight relative block h-full w-full" style={{ "--deal-delay": `${index * interval}ms`, "--board-origin-x": `${origin.x}px`, "--board-origin-y": `${origin.y}px` } as CSSProperties} aria-label={cardName(card)}>
     <span className="board-deal-flip relative block h-full w-full">
       <CardBack variant="board" className="board-deal-back !absolute inset-0" />
@@ -327,12 +331,12 @@ function BoardDealCard({ card, index, deckElement }: { readonly card: Card; read
 function CardRow({ cards, hiddenCount = 0, variant = "seat" }: { readonly cards: readonly Card[]; readonly hiddenCount?: number; readonly variant?: "seat" | "hole" }) {
   if (cards.length === 0 && hiddenCount === 0) return null;
   const fan = variant === "hole" ? "first:-rotate-6 last:rotate-6" : "first:-rotate-3 last:rotate-3";
-  const spacing = variant === "hole" ? "-space-x-5 sm:-space-x-7" : "-space-x-3 sm:-space-x-5";
+  const spacing = variant === "hole" ? "-space-x-5 sm:-space-x-6" : "-space-x-2 sm:-space-x-3";
   return <div className={`flex justify-center ${spacing}`}>{cards.map((card, index) => <CardFace card={card} variant={variant} className={fan} key={`${card.rank}-${card.suit}-${index}`} />)}{Array.from({ length: hiddenCount }, (_, index) => <CardBack variant={variant} className={fan} key={`hidden-${index}`} />)}</div>;
 }
 
 function HoleDealBacks({ landedCount, variant }: { readonly landedCount: number; readonly variant: "seat" | "hole" }) {
-  const spacing = variant === "hole" ? "-space-x-5 sm:-space-x-7" : "-space-x-3 sm:-space-x-5";
+  const spacing = variant === "hole" ? "-space-x-5 sm:-space-x-6" : "-space-x-2 sm:-space-x-3";
   const rotation = variant === "hole" ? ["-rotate-6", "rotate-6"] : ["-rotate-3", "rotate-3"];
   return <div className={`flex justify-center ${spacing}`}>{[0, 1].map((index) => <span data-hole-slot={index} className={`relative block ${cardDimensions(variant)} shrink-0 ${rotation[index]}`} key={index}>
     {index < landedCount && <CardBack variant={variant} className="!absolute inset-0" />}
@@ -340,7 +344,7 @@ function HoleDealBacks({ landedCount, variant }: { readonly landedCount: number;
 }
 
 function HoleCardsReveal({ cards, landedCount }: { readonly cards: readonly Card[]; readonly landedCount: number }) {
-  return <div className="flex justify-center -space-x-5 sm:-space-x-7">{cards.map((card, index) => {
+  return <div className="flex justify-center -space-x-5 sm:-space-x-6">{cards.map((card, index) => {
     const arrivesWithFinalFlight = index >= landedCount;
     const style = {
       "--hole-arrival-delay": `${animationTimings.deal}ms`,
@@ -390,7 +394,7 @@ function CardPips({ card, variant }: { readonly card: Card; readonly variant: "b
 }
 
 function cardDimensions(variant: "board" | "seat" | "hole"): string {
-  return variant === "board" ? "h-16 w-12 sm:h-24 sm:w-[4.3rem]" : variant === "hole" ? "h-[var(--hole-card-height)] w-[var(--hole-card-width)]" : "h-10 w-[1.875rem] sm:h-16 sm:w-[2.875rem]";
+  return variant === "board" ? "h-[var(--board-card-height)] w-[var(--board-card-width)]" : variant === "hole" ? "h-[var(--hole-card-height)] w-[var(--hole-card-width)]" : "h-[var(--seat-card-height)] w-[var(--seat-card-width)]";
 }
 
 type PipPosition = { readonly x: number; readonly y: number; readonly inverted?: boolean };
@@ -591,15 +595,7 @@ function isProjectedBestCard(bestFiveCards: readonly Card[], candidate: Card): b
 function RankingSummary({ game }: { readonly game: GameSnapshot }) { const players = new Map(game.players.map((player) => [player.playerId, player.displayName])); return <section aria-labelledby="rankings-heading" className="mx-auto w-full max-w-xl rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><h2 id="rankings-heading" className="font-semibold">{message("table.tournamentFinished")}</h2><ol className="mt-2 list-decimal pl-5">{game.rankings.map((ranking) => <li key={ranking.playerId}>{players.get(ranking.playerId) ?? message("table.player")} · {formatMessage("table.rank", { position: ranking.placement.from })}</li>)}</ol></section>; }
 type ButtonTone = "neutral" | "fold" | "call" | "bet" | "allIn";
 function ActionButton({ label, onClick, disabled = false, ariaLabel, tone = "neutral" }: { readonly label: string; readonly onClick: () => void; readonly disabled?: boolean; readonly ariaLabel?: string; readonly tone?: ButtonTone }) { return <button aria-label={ariaLabel} className={`${actionButtonClass} ${buttonToneClass[tone]}`} disabled={disabled} onClick={onClick}>{label}</button>; }
-/** Seat density is derived from the occupied-seat count alone. Physical Seats may
-    be non-contiguous, so the crowded layout must never be keyed on seat numbers. */
-function seatDensity(occupiedSeats: number): "stacked" | undefined {
-  // TEX-47 的槽位映射自本人起顺时针连续占位，故三人起左侧侧翼即开始聚集；
-  // 分层（stacked）几何必须覆盖整个聚集区间，否则相邻座位卡片会相交。
-  if (occupiedSeats >= 3) return "stacked";
-  return undefined;
-}
-function TableFrame({ children, reducedMotion = false, density }: { readonly children: ReactNode; readonly reducedMotion?: boolean; readonly density?: "stacked" }) { return <main data-reduced-motion={reducedMotion} data-seat-density={density} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-2 overflow-hidden bg-[#f7faf8] p-2 text-slate-900 sm:gap-3 sm:p-4">{children}</main>; }
+function TableFrame({ children, reducedMotion = false, layout }: { readonly children: ReactNode; readonly reducedMotion?: boolean; readonly layout?: TableLayout }) { return <main data-reduced-motion={reducedMotion} data-table-layout={layout} style={tableMotionStyle} className="rr-table-page table-controls mx-auto flex w-full max-w-[1440px] flex-col gap-2 overflow-hidden bg-[#f7faf8] p-2 text-slate-900 sm:gap-3 sm:p-4">{children}</main>; }
 const tableMotionStyle = {
   "--board-flight-duration": `${visualTimings.boardFlight}ms`,
   "--board-flip-duration": `${visualTimings.boardFlip}ms`,
@@ -637,8 +633,16 @@ function suitName(suit: Card["suit"]): string {
   }
 }
 const tableSeatPositions = [
-  { left: "50%", top: "8%" }, { left: "76%", top: "14%" }, { left: "91%", top: "34%" }, { left: "91%", top: "64%" }, { left: "73%", top: "83%" },
-  { left: "50%", top: "93%" }, { left: "27%", top: "83%" }, { left: "9%", top: "64%" }, { left: "9%", top: "34%" }, { left: "24%", top: "14%" },
+  { left: "50%", top: "0%", betLeft: "62%", betTop: "13%" },
+  { left: "76%", top: "8%", betLeft: "71%", betTop: "26%" },
+  { left: "98%", top: "33%", betLeft: "84%", betTop: "34%" },
+  { left: "98%", top: "67%", betLeft: "84%", betTop: "66%" },
+  { left: "76%", top: "92%", betLeft: "72%", betTop: "68%" },
+  { left: "50%", top: "100%", betLeft: "64%", betTop: "86%" },
+  { left: "24%", top: "92%", betLeft: "28%", betTop: "68%" },
+  { left: "2%", top: "67%", betLeft: "16%", betTop: "66%" },
+  { left: "2%", top: "33%", betLeft: "16%", betTop: "34%" },
+  { left: "24%", top: "8%", betLeft: "29%", betTop: "26%" },
 ] as const;
 const buttonClass = "rr-button";
 const actionButtonClass = "rr-action";
@@ -650,7 +654,7 @@ const seatBadgeLabel: Record<SeatBadge, MessageKey> = { D: "table.badges.dealer"
 
 function seatPosition(slot: number): CSSProperties {
   const position = tableSeatPositions[slot] ?? tableSeatPositions[0]!;
-  return { "--seat-left": position.left, "--seat-top": position.top } as CSSProperties;
+  return { "--seat-left": position.left, "--seat-top": position.top, "--bet-left": position.betLeft, "--bet-top": position.betTop } as CSSProperties;
 }
 function subscribeNever(): () => void { return () => undefined; }
 function getTableHeadingSlot(): HTMLElement | null { return document.getElementById("table-heading-slot"); }

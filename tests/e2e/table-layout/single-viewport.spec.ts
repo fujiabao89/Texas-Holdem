@@ -17,6 +17,8 @@ const VIEWPORTS = [
   { name: "768x1024", width: 768, height: 1024 },
   { name: "1366x768", width: 1366, height: 768 },
   { name: "1920x1080", width: 1920, height: 1080 },
+  { name: "844x390", width: 844, height: 390 },
+  { name: "800x360", width: 800, height: 360 },
 ] as const;
 
 const SEAT_COUNTS = [2, 3, 6, 10] as const;
@@ -597,7 +599,7 @@ test.describe("牌桌中央留白", () => {
           (cards) => Math.min(...cards.map((card) => card.getBoundingClientRect().top)),
         );
         expect(handTop - found.board!.bottom, "公共牌与本人手牌之间保留至少 16px").toBeGreaterThanOrEqual(16);
-        expect(found.dock!.y - found.viewer!.bottom, "本人座位不得挤入操作区").toBeGreaterThanOrEqual(8);
+        expect(overlaps(found.dock!, found.viewer!), "本人座位不得挤入操作区").toBe(false);
         // Seat wrappers include empty space beside their narrow bet badges;
         // compare the rendered cards/plates/badges, not that transparent area.
         const seatRects = await page.locator("[data-seat-chips], [data-seat-cards] [data-card-variant], [data-seat-chips] ~ div > span").evaluateAll((elements) => elements.map((element) => {
@@ -631,6 +633,55 @@ test.describe("牌桌中央留白", () => {
           expect(handTop - after.pots!.bottom, "边池明细与手牌之间保留空隙").toBeGreaterThanOrEqual(8);
           expect(after.pots!.y - found.board!.bottom, "边池明细不压住公共牌").toBeGreaterThanOrEqual(8);
         }
+      });
+    }
+  }
+});
+
+test.describe("桌沿人数模板", () => {
+  for (const viewport of [VIEWPORTS[0], VIEWPORTS[3], VIEWPORTS[5], VIEWPORTS[6]]) {
+    for (const count of [2, 6, 10]) {
+      test(`${viewport.name} ${count} 人桌紧凑座位与独立下注`, async ({ page }, testInfo) => {
+        await page.setViewportSize(viewport);
+        const seats = contiguousSeats(count);
+        const push = await openTable(page, seats);
+        await expect(page.locator(".rr-table-page")).toHaveAttribute("data-table-layout", String(count));
+        await expect(page.locator("[data-seat-bet]")).toHaveCount(count);
+        await expect(page.locator("[data-seat] [data-seat-bet]")).toHaveCount(0);
+        const found = await boxes(page, {
+          viewer: "[data-viewer='true']", opponent: "[data-viewer='false']",
+          hand: "[data-viewer='true'] [data-card-variant='hole']", back: "[data-viewer='false'] [data-card-variant='seat']",
+          felt: ".rr-table-felt", board: ".table-board-zone", pot: "[data-pot-total]", info: ".table-center-info", dock: ".table-action-dock",
+        });
+        expect(found.hand!.height).toBeGreaterThan(found.back!.height * 1.5);
+        expect(found.opponent!.width).toBeLessThanOrEqual(viewport.height <= 500 || viewport.width < 640 ? 60 : 84);
+        expect(found.viewer!.bottom).toBeGreaterThan(found.felt!.bottom - 4);
+        if (count === 2) await expect(page.locator("[data-viewer='false']")).toHaveAttribute("data-seat-slot", "0");
+        const bets = await page.locator("[data-seat-bet]").evaluateAll((elements) => elements.map((element) => {
+          const r = element.getBoundingClientRect();
+          return { name: element.getAttribute("aria-label"), x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+        }));
+        const occupied = await page.locator("[data-seat]").evaluateAll((elements) => elements.map((element) => {
+          const r = element.getBoundingClientRect();
+          return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+        }));
+        for (const bet of bets) {
+          expect(bet.name).toMatch(/玩家.*本街投入/);
+          expect(overlaps(bet, found.board!), `${bet.name} 不遮挡公共牌`).toBe(false);
+          expect(overlaps(bet, found.info!), `${bet.name} 不遮挡中央状态`).toBe(false);
+          expect(occupied.some((seat) => overlaps(bet, seat)), `${bet.name} 脱离玩家卡片`).toBe(false);
+        }
+        if (viewport.height <= 500) {
+          expect(found.dock!.x).toBeGreaterThan(found.felt!.right);
+          await expect(page.getByText("横屏对局，视野更开阔 ↔")).toBeHidden();
+        }
+        await captureEvidence(page, testInfo, `${viewport.name}-${count}p-rail`);
+        const game = gameSnapshot(seats);
+        push({ type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: {
+          ...game, reason: "RESYNC", sequence: "2", players: game.players.map((player) => ({ ...player, streetBet: 0 })),
+        } });
+        await expect(page.locator("[data-seat-bet]")).toHaveCount(0);
+        expect((await boxes(page, { viewer: "[data-viewer='true']" })).viewer).toEqual(found.viewer);
       });
     }
   }
