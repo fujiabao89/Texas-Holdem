@@ -25,7 +25,7 @@ test("Heads-up 的 D=SB 同座显示，弃牌与跨手盲注移动不改变座�
   const table = await installSeatTable(page, seatTableSnapshot({ playerCount: 2, viewerSeat: 0, dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1, currentActorSeat: 0 }));
   await table.open();
   const before = await seatSlots(page);
-  expect(before).toEqual({ "0": "5", "1": "6" });
+  expect(before).toEqual({ "0": "5", "1": "0" });
 
   await expectBadgeName(page, 0, "D", message("table.badges.dealer"));
   await expectBadgeName(page, 0, "SB", message("table.badges.smallBlind"));
@@ -54,7 +54,7 @@ test("6 人桌按相对 seatIndex 顺时针固定映射，行动者切换与淘�
   const table = await installSeatTable(page, seatTableSnapshot({ playerCount: 6, viewerSeat: 2, dealerSeat: 1, smallBlindSeat: 2, bigBlindSeat: 3, currentActorSeat: 4 }));
   await table.open();
   const before = await seatSlots(page);
-  expect(before).toEqual({ "0": "3", "1": "4", "2": "5", "3": "6", "4": "7", "5": "8" });
+  expect(before).toEqual({ "0": "1", "1": "3", "2": "5", "3": "7", "4": "9", "5": "0" });
 
   await expect(badge(page, 1, "D")).toHaveCount(1);
   await expect(badge(page, 2, "SB")).toHaveCount(1);

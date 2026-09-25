@@ -1,0 +1,755 @@
+import { resolve } from "node:path";
+
+import { PROTOCOL_VERSION } from "../../../packages/protocol/src";
+import { expect, test } from "../fixtures/observability";
+import type { Page, TestInfo } from "@playwright/test";
+
+/**
+ * TEX-46 单视口牌桌与按需行动区回归。
+ *
+ * 权威：docs/05-frontend-spec.md §7.5/§8.1/§16、docs/06-testing-strategy.md §3.3/§9。
+ * 使用既有 WS 投影夹具驱动真实浏览器布局；不依赖真实 game-server、DB 或 sleep。
+ */
+
+const VIEWPORTS = [
+  { name: "360x800", width: 360, height: 800 },
+  { name: "390x844", width: 390, height: 844 },
+  { name: "768x1024", width: 768, height: 1024 },
+  { name: "1366x768", width: 1366, height: 768 },
+  { name: "1920x1080", width: 1920, height: 1080 },
+  { name: "844x390", width: 844, height: 390 },
+  { name: "800x360", width: 800, height: 360 },
+] as const;
+
+const SEAT_COUNTS = [2, 3, 6, 10] as const;
+
+/**
+ * 物理座位可以非连续：房间允许 CHANGE_SEAT 到任意空座。布局分支因此必须按
+ * 已入座人数选择，稀疏排布也要满足全部布局不变量。
+ */
+const SPARSE_SEATS = [0, 2, 4, 6, 8, 9] as const;
+
+/** 连续入座：从 0 号位起依次坐满。 */
+function contiguousSeats(count: number): readonly number[] {
+  return Array.from({ length: count }, (_, seat) => seat);
+}
+
+const ARRANGEMENTS = [
+  ...SEAT_COUNTS.map((count) => ({ name: `${count} 人桌`, seats: contiguousSeats(count) })),
+  { name: "6 人稀疏座位", seats: [...SPARSE_SEATS] },
+];
+
+function roomSnapshot(seats: readonly number[]) {
+  return {
+    snapshotVersion: 1,
+    roomId: "room-1",
+    roomRevision: "1",
+    status: "IN_GAME",
+    inviteCode: "ABC234",
+    hostPlayerId: "player-1",
+    config: {
+      maxPlayers: seats.length,
+      startingStack: 1000,
+      smallBlind: 5,
+      bigBlind: 10,
+      blindMode: "fixed",
+      blindStructure: [{ smallBlind: 5, bigBlind: 10 }],
+      actionTime: 30,
+      timeBank: 60,
+    },
+    activeTournamentId: "tournament-1",
+    players: seats.map((seat, index) => ({
+      playerId: `player-${index + 1}`,
+      displayName: `玩家${index + 1}`,
+      seat,
+      ready: true,
+      connectionStatus: "CONNECTED",
+      pokerStatus: "ACTIVE",
+    })),
+  };
+}
+
+function gameSnapshot(seats: readonly number[]) {
+  return {
+    snapshotVersion: 1,
+    reason: "INITIAL",
+    tournamentId: "tournament-1",
+    sequence: "1",
+    handId: "hand-1",
+    tournamentStatus: "RUNNING",
+    handPhase: "FLOP",
+    blindLevel: { index: 0, smallBlind: 5, bigBlind: 10, ante: 0 },
+    dealerSeat: seats[0]!,
+    smallBlindSeat: seats[1 % seats.length]!,
+    bigBlindSeat: seats[2 % seats.length]!,
+    board: [
+      { rank: "A", suit: "SPADES" },
+      { rank: "K", suit: "HEARTS" },
+      { rank: "2", suit: "CLUBS" },
+    ],
+    pots: [
+      {
+        amount: 90,
+        eligiblePlayerIds: seats.map((_, index) => `player-${index + 1}`),
+      },
+    ],
+    currentActorPlayerId: "player-1",
+    actionDeadline: 50_000,
+    showdownDisplayUntil: null,
+    players: seats.map((seat, index) => ({
+      playerId: `player-${index + 1}`,
+      displayName: `玩家${index + 1}`,
+      seat,
+      stack: 990 - seat,
+      streetBet: index === 0 ? 10 : 5,
+      totalCommitted: index === 0 ? 10 : 5,
+      pokerStatus: "ACTIVE",
+      hasHoleCards: true,
+      revealedCards: [],
+    })),
+    viewer: {
+      playerId: "player-1",
+      role: "PLAYER",
+      holeCards: [
+        { rank: "Q", suit: "SPADES" },
+        { rank: "J", suit: "SPADES" },
+      ],
+      legalActions: {
+        canFold: true,
+        canCheck: false,
+        canCall: true,
+        callAmount: 5,
+        canBet: false,
+        minBetTo: null,
+        canRaise: true,
+        minRaiseTo: 20,
+        maxRaiseTo: 990,
+        canAllIn: true,
+        allInTo: 1000,
+      },
+      timeBankRemainingMs: 60_000,
+    },
+    rankings: [],
+  };
+}
+
+async function seedTableSession(page: Page): Promise<void> {
+  await page.addInitScript(
+    'sessionStorage.setItem("texas-holdem:player-token:room-1", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");sessionStorage.setItem("texas-holdem:player-id:room-1", "player-1");',
+  );
+}
+
+async function openTable(
+  page: Page,
+  seats: readonly number[],
+  commands?: unknown[],
+): Promise<(payload: unknown) => void> {
+  let push: ((payload: unknown) => void) | undefined;
+  await seedTableSession(page);
+  await page.routeWebSocket("**/api/v1/ws", (socket) => {
+    push = (payload) => socket.send(JSON.stringify(payload));
+    socket.onMessage((raw) => {
+      const incoming = JSON.parse(raw.toString()) as { type: string };
+      commands?.push(incoming);
+      if (incoming.type !== "AUTHENTICATE") return;
+      socket.send(
+        JSON.stringify({
+          type: "RECONNECT_RESULT",
+          protocolVersion: PROTOCOL_VERSION,
+          serverTime: 1,
+          payload: {
+            connectionId: "connection-1",
+            resumed: true,
+            tookOver: false,
+            roomSnapshot: roomSnapshot(seats),
+            gameSnapshot: gameSnapshot(seats),
+          },
+        }),
+      );
+    });
+  });
+  await page.goto("/room/room-1/table");
+  // The socket callback runs after `goto`, so hand back a closure rather than
+  // capturing the binding's current (still undefined) value.
+  return (payload: unknown) => push!(payload);
+}
+
+/** 把手牌交还给服务端投影中的下一位行动者。 */
+function passTurn(): unknown {
+  return {
+    type: "GAME_EVENT",
+    protocolVersion: PROTOCOL_VERSION,
+    serverTime: 2,
+    payload: {
+      tournamentId: "tournament-1",
+      sequence: "2",
+      handId: "hand-1",
+      event: {
+        type: "PLAYER_CALLED",
+        payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET", amount: 5, betTo: 15 },
+      },
+      patch: { currentActorPlayerId: "player-2", viewer: { legalActions: null } },
+    },
+  };
+}
+
+type Box = {
+  readonly x: number;
+  readonly y: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly width: number;
+  readonly height: number;
+};
+
+async function boxes(
+  page: Page,
+  selectors: Readonly<Record<string, string>>,
+): Promise<Record<string, Box | null>> {
+  return page.evaluate(
+    (entries) => {
+      const read = (selector: string) => {
+        const element = document.querySelector(selector);
+        if (element === null) return null;
+        const rect = element.getBoundingClientRect();
+        return {
+          x: rect.x,
+          y: rect.y,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        };
+      };
+      return Object.fromEntries(
+        Object.entries(entries).map(([key, selector]) => [key, read(selector)]),
+      );
+    },
+    selectors as Record<string, string>,
+  );
+}
+
+/** 各目标视口的本地验收证据，沿用 TEX-38 的 `output/playwright/` 约定。 */
+async function captureEvidence(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const path = resolve("output", "playwright", `TEX-46-${name}.png`);
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(name, { path, contentType: "image/png" });
+}
+
+function overlaps(left: Box, right: Box): boolean {
+  const gap = 0.5;
+  return (
+    left.x < right.right - gap &&
+    right.x < left.right - gap &&
+    left.y < right.bottom - gap &&
+    right.y < left.bottom - gap
+  );
+}
+
+test.describe("牌桌顶栏", () => {
+  for (const viewport of VIEWPORTS) {
+    test(`${viewport.name} 标题与控件位于顶栏且互不遮挡`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await openTable(page, contiguousSeats(2));
+
+      const header = page.locator(".rr-header");
+      await expect(header.getByRole("heading", { name: "牌桌" })).toBeVisible();
+      await expect(header.getByRole("button", { name: "牌局记录" })).toBeVisible();
+      await expect(header.getByRole("button", { name: "全局音效" })).toBeVisible();
+      await expect(header.getByRole("status")).toContainText("实时连接正常");
+
+      const found = await boxes(page, {
+        header: ".rr-header",
+        heading: ".rr-table-heading-slot",
+        actions: ".rr-table-actions-slot",
+      });
+      expect(found.header).not.toBeNull();
+      expect(found.heading).not.toBeNull();
+      expect(found.actions).not.toBeNull();
+      for (const name of ["heading", "actions"] as const) {
+        expect(found[name]!.x).toBeGreaterThanOrEqual(0);
+        expect(found[name]!.right).toBeLessThanOrEqual(viewport.width);
+        expect(found[name]!.y).toBeGreaterThanOrEqual(found.header!.y);
+        expect(found[name]!.bottom).toBeLessThanOrEqual(found.header!.bottom);
+      }
+      expect(overlaps(found.heading!, found.actions!)).toBe(false);
+      if (viewport.width > 1100) {
+        expect(Math.abs((found.heading!.x + found.heading!.right) / 2 - viewport.width / 2)).toBeLessThan(2);
+      }
+    });
+  }
+
+  test("顶栏中的音效和牌局记录按钮保持可操作", async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.route("**/api/v1/tournaments/tournament-1/hands?*", (route) => route.fulfill({
+      json: { data: { tournamentId: "tournament-1", items: [], nextCursor: null } },
+    }));
+    await openTable(page, contiguousSeats(2));
+    const sound = page.locator(".rr-header").getByRole("button", { name: "全局音效" });
+    const oldPressed = await sound.getAttribute("aria-pressed");
+    await sound.click();
+    await expect(sound).toHaveAttribute("aria-pressed", oldPressed === "true" ? "false" : "true");
+
+    const history = page.locator(".rr-header").getByRole("button", { name: "牌局记录" });
+    await history.click();
+    await expect(page.getByRole("dialog", { name: "牌局记录" })).toBeVisible();
+    await page.getByRole("button", { name: "关闭" }).click();
+    await expect(history).toBeFocused();
+  });
+});
+
+test.describe("单视口牌桌", () => {
+  for (const viewport of VIEWPORTS) {
+    for (const arrangement of ARRANGEMENTS) {
+      test(`${viewport.name} ${arrangement.name}在行动时不需要页面滚动`, async ({ page }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await openTable(page, arrangement.seats);
+        await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
+
+        const metrics = await page.evaluate(() => ({
+          scrollHeight: document.documentElement.scrollHeight,
+          scrollWidth: document.documentElement.scrollWidth,
+          innerHeight: window.innerHeight,
+          innerWidth: window.innerWidth,
+        }));
+        expect(metrics.scrollHeight, "页面不得纵向滚动").toBeLessThanOrEqual(
+          metrics.innerHeight + 1,
+        );
+        expect(metrics.scrollWidth, "页面不得横向滚动").toBeLessThanOrEqual(metrics.innerWidth + 1);
+        await expect(page.locator("[data-seat]")).toHaveCount(arrangement.seats.length);
+
+        const found = await boxes(page, {
+          felt: ".rr-table-felt",
+          board: ".table-board-zone",
+          pot: "[data-pot-total]",
+          dock: ".table-action-dock",
+          panel: ".rr-betting-panel",
+        });
+
+        for (const [name, box] of Object.entries(found)) {
+          expect(box, `${name} 必须存在`).not.toBeNull();
+          expect(box!.x, `${name} 不得横向溢出`).toBeGreaterThanOrEqual(-1);
+          expect(box!.right, `${name} 不得横向溢出`).toBeLessThanOrEqual(viewport.width + 1);
+          expect(box!.y, `${name} 不得纵向溢出`).toBeGreaterThanOrEqual(-1);
+          expect(box!.bottom, `${name} 必须完整落在视口内`).toBeLessThanOrEqual(
+            viewport.height + 1,
+          );
+        }
+
+        // 行动区不得遮挡公共牌、底池或任何座位（docs/05 §7.3/§8.1）。
+        expect(overlaps(found.dock!, found.board!), "行动区不得遮挡公共牌").toBe(false);
+        expect(overlaps(found.dock!, found.pot!), "行动区不得遮挡底池").toBe(false);
+        const seatsUnderDock = await page.locator("[data-seat]").evaluateAll(
+          (elements, dock) =>
+            elements
+              .filter((element) => {
+                const rect = element.getBoundingClientRect();
+                const gap = 0.5;
+                return (
+                  rect.left < dock.right - gap &&
+                  dock.x < rect.right - gap &&
+                  rect.top < dock.bottom - gap &&
+                  dock.y < rect.bottom - gap
+                );
+              })
+              .map((element) => element.getAttribute("aria-label") ?? "?"),
+          found.dock!,
+        );
+        expect(seatsUnderDock, "行动区不得遮挡座位").toEqual([]);
+      });
+
+      test(`${viewport.name} ${arrangement.name}座位卡片互不重叠`, async ({ page }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await openTable(page, arrangement.seats);
+        await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
+        // Wait for the whole Seat ring before measuring; a partially painted
+        // ring would report boxes that later move.
+        await expect(page.locator("[data-seat]")).toHaveCount(arrangement.seats.length);
+
+        const seatsBoxes = await page.locator("[data-seat]").evaluateAll((elements) =>
+          elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              name: element.getAttribute("aria-label") ?? "?",
+              x: rect.x,
+              y: rect.y,
+              right: rect.right,
+              bottom: rect.bottom,
+              width: rect.width,
+              height: rect.height,
+            };
+          }),
+        );
+
+        const intersecting = seatsBoxes.flatMap((seat, index) =>
+          seatsBoxes
+            .slice(index + 1)
+            .filter((other) => overlaps(seat, other))
+            .map((other) => `${seat.name} 与 ${other.name} 相交`),
+        );
+        expect(intersecting, "座位卡片不得相交").toEqual([]);
+      });
+
+      test(`${viewport.name} ${arrangement.name}全部合法操作在行动区内可达`, async ({ page }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await openTable(page, arrangement.seats);
+        const panel = page.locator(".rr-betting-panel");
+        await expect(panel).toBeVisible();
+
+        for (const name of ["弃牌", "跟注 5", "加注", "全下至 1000", "使用延时"]) {
+          const button = page.getByRole("button", { name });
+          await expect(button, `${name} 必须可见`).toBeVisible();
+          const box = await button.boundingBox();
+          expect(box, `${name} 必须有布局`).not.toBeNull();
+          expect(box!.x, `${name} 不得横向溢出`).toBeGreaterThanOrEqual(-1);
+          expect(box!.x + box!.width, `${name} 不得横向溢出`).toBeLessThanOrEqual(
+            viewport.width + 1,
+          );
+          expect(box!.y, `${name} 不得纵向溢出`).toBeGreaterThanOrEqual(-1);
+          expect(box!.y + box!.height, `${name} 必须完整落在视口内`).toBeLessThanOrEqual(
+            viewport.height + 1,
+          );
+        }
+
+        // 只与视口比较会漏掉 `overflow-y: auto` 的裁切：Playwright 的可见性
+        // 判定不计祖先裁切，被裁掉的控件仍可能落在视口内。行动区必须一次
+        // 呈现全部已投影操作，不得依赖内部滚动。
+        const panelMetrics = await panel.evaluate((element) => ({
+          scrollHeight: element.scrollHeight,
+          clientHeight: element.clientHeight,
+        }));
+        expect(panelMetrics.scrollHeight, "行动区不得内部滚动").toBeLessThanOrEqual(
+          panelMetrics.clientHeight + 1,
+        );
+      });
+    }
+  }
+});
+
+test.describe("验收证据", () => {
+  for (const viewport of VIEWPORTS) {
+    test(`${viewport.name} 十人桌行动中`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await openTable(page, contiguousSeats(10));
+      await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
+      await expect(page.locator("[data-seat]")).toHaveCount(10);
+      await captureEvidence(page, testInfo, `${viewport.name}-10p`);
+    });
+  }
+
+  test("390x844 金额面板展开", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openTable(page, contiguousSeats(6));
+    await page.getByRole("button", { name: "加注" }).click();
+    await expect(page.locator(".table-wager-editor")).toBeVisible();
+    await captureEvidence(page, testInfo, "390x844-wager");
+  });
+});
+
+test.describe("按需行动区", () => {
+  test("行动区随行动权出现和消失，且不改变牌桌几何", async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    const push = await openTable(page, contiguousSeats(6));
+    const felt = page.locator(".rr-table-felt");
+    await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
+    const acting = await felt.boundingBox();
+
+    push(passTurn());
+
+    await expect(page.locator(".table-action-dock")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+    expect(await felt.boundingBox(), "行动区消失不得改变牌桌几何").toEqual(acting);
+  });
+
+  test("非本人回合不渲染任何可提交控件", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const push = await openTable(page, contiguousSeats(3));
+    await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
+    push(passTurn());
+    await expect(page.locator(".rr-betting-panel")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "弃牌" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "使用延时" })).toHaveCount(0);
+  });
+
+  for (const viewport of [
+    { name: "360x800", width: 360, height: 800 },
+    { name: "390x844", width: 390, height: 844 },
+  ] as const) {
+    test(`${viewport.name} 精确金额模式既不滚动页面也不滚动面板`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await openTable(page, contiguousSeats(6));
+
+      await page.getByRole("button", { name: "加注" }).click();
+      await page.getByRole("button", { name: "输入精确金额" }).click();
+      const field = page.getByRole("textbox", { name: "输入精确下注额" });
+      await expect(field).toBeVisible();
+      await field.fill("42");
+
+      // 面板不得内部溢出：所有可见控件的矩形必须完整位于面板矩形内。
+      const measured = await page.evaluate(() => {
+        const panel = document.querySelector(".rr-betting-panel");
+        if (panel === null) throw new Error("missing wager panel");
+        const panelRect = panel.getBoundingClientRect();
+        const controls = Array.from(panel.querySelectorAll("button, input, output"))
+          .filter((element) => {
+            const style = getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden") return false;
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          })
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              name: element.getAttribute("aria-label") ?? element.textContent ?? element.tagName,
+              top: rect.top,
+              bottom: rect.bottom,
+              left: rect.left,
+              right: rect.right,
+            };
+          });
+        return {
+          panelScrollHeight: panel.scrollHeight,
+          panelClientHeight: panel.clientHeight,
+          panel: {
+            top: panelRect.top,
+            bottom: panelRect.bottom,
+            left: panelRect.left,
+            right: panelRect.right,
+          },
+          documentScrollHeight: document.documentElement.scrollHeight,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+          controls,
+        };
+      });
+
+      expect(measured.panelScrollHeight, "精确金额面板不得内部滚动").toBeLessThanOrEqual(
+        measured.panelClientHeight + 1,
+      );
+      expect(measured.documentScrollHeight, "页面不得滚动").toBeLessThanOrEqual(
+        measured.viewportHeight + 1,
+      );
+      expect(measured.controls.length, "面板内必须有可见控件").toBeGreaterThan(0);
+      for (const control of measured.controls) {
+        expect(control.top, `${control.name} 必须完整位于面板内`).toBeGreaterThanOrEqual(
+          measured.panel.top - 1,
+        );
+        expect(control.bottom, `${control.name} 必须完整位于面板内`).toBeLessThanOrEqual(
+          measured.panel.bottom + 1,
+        );
+        expect(control.left, `${control.name} 必须完整位于面板内`).toBeGreaterThanOrEqual(
+          measured.panel.left - 1,
+        );
+        expect(control.right, `${control.name} 必须完整位于面板内`).toBeLessThanOrEqual(
+          measured.panel.right + 1,
+        );
+        expect(control.bottom, `${control.name} 必须完整位于视口内`).toBeLessThanOrEqual(
+          measured.viewportHeight + 1,
+        );
+      }
+    });
+  }
+
+  test("精确金额可返回主操作行，并可提交", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const commands: { type: string; payload?: { action?: { type: string; raiseTo?: number } } }[] =
+      [];
+    await openTable(page, contiguousSeats(6), commands);
+    const panel = page.locator(".rr-betting-panel");
+
+    // 打开精确输入后仍可退回主操作行。
+    await page.getByRole("button", { name: "加注" }).click();
+    await page.getByRole("button", { name: "输入精确金额" }).click();
+    await expect(page.getByRole("textbox", { name: "输入精确下注额" })).toBeVisible();
+    await page.getByRole("button", { name: "返回操作" }).click();
+    await expect(panel).toHaveAttribute("data-wager-open", "false");
+    await expect(page.getByRole("button", { name: "全下至 1000" })).toBeEnabled();
+
+    // 重新进入并把仍聚焦的合法草稿在当前交互中提交。
+    await page.getByRole("button", { name: "加注" }).click();
+    await page.getByRole("button", { name: "输入精确金额" }).click();
+    await page.getByRole("textbox", { name: "输入精确下注额" }).fill("42");
+    // 按钮文案跟随滑杆值，精确草稿在提交时被采用（TEX-25 既有契约）。
+    await page.getByRole("button", { name: /确认加注至/ }).click();
+    await expect.poll(() => commands.filter(({ type }) => type === "SUBMIT_ACTION").length).toBe(1);
+    expect(commands.find(({ type }) => type === "SUBMIT_ACTION")).toMatchObject({
+      payload: { action: { type: "RAISE", raiseTo: 42 } },
+    });
+  });
+});
+
+test.describe("牌桌中央留白", () => {
+  for (const viewport of [...VIEWPORTS, { name: "1467x897", width: 1467, height: 897 }]) {
+    for (const count of [2, 10]) {
+      test(`${viewport.name} ${count} 人桌底池与本人手牌分层`, async ({ page }, testInfo) => {
+        await page.setViewportSize(viewport);
+        const seats = contiguousSeats(count);
+        const push = await openTable(page, seats);
+        await expect(page.getByRole("button", { name: "跟注 5" })).toBeVisible();
+        await expect(page.locator("[data-pot-total][data-pot-index='0']")).toHaveCount(1);
+        await expect(page.locator(".table-pot-list")).toHaveCount(0);
+
+        const found = await boxes(page, {
+          board: ".table-board-zone",
+          viewer: "[data-viewer='true']",
+          dock: ".table-action-dock",
+        });
+        // Measure the rotated faces, not only the untransformed hand container.
+        const handTop = await page.locator("[data-viewer='true'] [data-card-variant='hole']").evaluateAll(
+          (cards) => Math.min(...cards.map((card) => card.getBoundingClientRect().top)),
+        );
+        expect(handTop - found.board!.bottom, "公共牌与本人手牌之间保留至少 16px").toBeGreaterThanOrEqual(16);
+        expect(overlaps(found.dock!, found.viewer!), "本人座位不得挤入操作区").toBe(false);
+        // Seat wrappers include empty space beside their narrow bet badges;
+        // compare the rendered cards/plates/badges, not that transparent area.
+        const seatRects = await page.locator("[data-seat-chips], [data-seat-cards] [data-card-variant], [data-seat-chips] ~ div > span").evaluateAll((elements) => elements.map((element) => {
+          const r = element.getBoundingClientRect();
+          return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+        }));
+        const info = await boxes(page, { phase: ".table-phase", pot: "[data-pot-total]", actor: ".table-actor-caption" });
+        for (const [name, part] of Object.entries(info)) {
+          expect(seatRects.some((seat) => overlaps(seat, part!)), `${name} 不能被座位遮住`).toBe(false);
+        }
+        const muck = await boxes(page, { muck: "[data-muck]" });
+        expect(Object.values(info).some((part) => overlaps(part!, muck.muck!)), "弃牌标记不遮挡中央提示").toBe(false);
+        if (count === 2 && viewport.width >= 1366) {
+          await captureEvidence(page, testInfo, `${viewport.name}-center-spacing`);
+        }
+
+        if (count === 10) {
+          const game = gameSnapshot(seats);
+          push({
+            type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: 2,
+            payload: { ...game, reason: "RESYNC", sequence: "2", pots: [
+              { amount: 90, eligiblePlayerIds: game.pots[0]!.eligiblePlayerIds },
+              { amount: 60, eligiblePlayerIds: ["player-1", "player-2", "player-3"] },
+              { amount: 30, eligiblePlayerIds: ["player-1", "player-2"] },
+            ] },
+          });
+          await expect(page.locator("[data-pot-total]")).toContainText("180");
+          await expect(page.locator(".table-pot-list [data-pot-index]")).toHaveCount(3);
+          const after = await boxes(page, { pots: ".table-pot-list", viewer: "[data-viewer='true']" });
+          expect(after.viewer).toEqual(found.viewer);
+          expect(handTop - after.pots!.bottom, "边池明细与手牌之间保留空隙").toBeGreaterThanOrEqual(8);
+          expect(after.pots!.y - found.board!.bottom, "边池明细不压住公共牌").toBeGreaterThanOrEqual(8);
+        }
+      });
+    }
+  }
+});
+
+test.describe("桌沿人数模板", () => {
+  for (const viewport of [VIEWPORTS[0], VIEWPORTS[3], VIEWPORTS[5], VIEWPORTS[6]]) {
+    for (const count of [2, 6, 10]) {
+      test(`${viewport.name} ${count} 人桌紧凑座位与独立下注`, async ({ page }, testInfo) => {
+        await page.setViewportSize(viewport);
+        const seats = contiguousSeats(count);
+        const push = await openTable(page, seats);
+        await expect(page.locator(".rr-table-page")).toHaveAttribute("data-table-layout", String(count));
+        await expect(page.locator("[data-seat-bet]")).toHaveCount(count);
+        await expect(page.locator("[data-seat] [data-seat-bet]")).toHaveCount(0);
+        const found = await boxes(page, {
+          viewer: "[data-viewer='true']", opponent: "[data-viewer='false']",
+          hand: "[data-viewer='true'] [data-card-variant='hole']", back: "[data-viewer='false'] [data-card-variant='seat']",
+          felt: ".rr-table-felt", board: ".table-board-zone", pot: "[data-pot-total]", info: ".table-center-info", dock: ".table-action-dock",
+        });
+        expect(found.hand!.height).toBeGreaterThan(found.back!.height * 1.5);
+        expect(found.opponent!.width).toBeLessThanOrEqual(viewport.height <= 500 || viewport.width < 640 ? 60 : 84);
+        expect(found.viewer!.bottom).toBeGreaterThan(found.felt!.bottom - 4);
+        if (count === 2) await expect(page.locator("[data-viewer='false']")).toHaveAttribute("data-seat-slot", "0");
+        const bets = await page.locator("[data-seat-bet]").evaluateAll((elements) => elements.map((element) => {
+          const r = element.getBoundingClientRect();
+          return { name: element.getAttribute("aria-label"), x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+        }));
+        const occupied = await page.locator("[data-seat]").evaluateAll((elements) => elements.map((element) => {
+          const r = element.getBoundingClientRect();
+          return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+        }));
+        for (const bet of bets) {
+          expect(bet.name).toMatch(/玩家.*本街投入/);
+          expect(overlaps(bet, found.board!), `${bet.name} 不遮挡公共牌`).toBe(false);
+          expect(overlaps(bet, found.info!), `${bet.name} 不遮挡中央状态`).toBe(false);
+          expect(occupied.some((seat) => overlaps(bet, seat)), `${bet.name} 脱离玩家卡片`).toBe(false);
+        }
+        if (viewport.height <= 500) {
+          expect(found.dock!.x).toBeGreaterThan(found.felt!.right);
+          await expect(page.getByText("横屏对局，视野更开阔 ↔")).toBeHidden();
+        }
+        await captureEvidence(page, testInfo, `${viewport.name}-${count}p-rail`);
+        const game = gameSnapshot(seats);
+        push({ type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: {
+          ...game, reason: "RESYNC", sequence: "2", players: game.players.map((player) => ({ ...player, streetBet: 0 })),
+        } });
+        await expect(page.locator("[data-seat-bet]")).toHaveCount(0);
+        expect((await boxes(page, { viewer: "[data-viewer='true']" })).viewer).toEqual(found.viewer);
+      });
+    }
+  }
+});
+
+test.describe("展开态行动区", () => {
+  // 矮桌面同样必须一次展示快捷额、金额调整、返回、精确输入、全下与提交；
+  // scrollHeight 单独通过不足以证明面板未越过预留带或控件未被裁切。
+  for (const viewport of [
+    ...VIEWPORTS,
+    { name: "640x800", width: 640, height: 800 },
+    { name: "1467x897", width: 1467, height: 897 },
+  ]) {
+    test(`${viewport.name} 展开金额面板全部控件无需滚动`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await openTable(page, contiguousSeats(6));
+      await page.getByRole("button", { name: "加注" }).click();
+      const panel = page.locator(".rr-betting-panel");
+      await expect(panel).toBeVisible();
+      if (viewport.name === "1366x768" || viewport.name === "1467x897") {
+        await captureEvidence(page, testInfo, `${viewport.name}-wager`);
+      }
+      for (const exact of [false, true]) {
+        if (exact) {
+          await page.getByRole("button", { name: "输入精确金额" }).click();
+          await page.getByRole("textbox", { name: "输入精确下注额" }).fill("99999");
+          await expect(panel.locator(".table-exact-error")).toBeVisible();
+        }
+        const measured = await panel.evaluate((element) => {
+          const dock = element.closest(".table-action-dock");
+          if (dock === null) throw new Error("missing action dock");
+          const panelRect = element.getBoundingClientRect();
+          const dockRect = dock.getBoundingClientRect();
+          const controls = Array.from(element.querySelectorAll("button, input, output"))
+            .filter((control) => {
+              const style = getComputedStyle(control);
+              const rect = control.getBoundingClientRect();
+              return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+            })
+            .map((control) => {
+              const rect = control.getBoundingClientRect();
+              return { name: control.getAttribute("aria-label") ?? control.textContent ?? control.tagName, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+            });
+          return {
+            scrollHeight: element.scrollHeight,
+            clientHeight: element.clientHeight,
+            panel: { left: panelRect.left, right: panelRect.right, top: panelRect.top, bottom: panelRect.bottom },
+            dock: { top: dockRect.top, bottom: dockRect.bottom },
+            pageScrollHeight: document.documentElement.scrollHeight,
+            controls,
+          };
+        });
+        expect(measured.scrollHeight, "金额面板不得内部滚动").toBeLessThanOrEqual(measured.clientHeight + 1);
+        expect(measured.panel.top, "金额面板不得越过行动区预留带").toBeGreaterThanOrEqual(measured.dock.top - 1);
+        expect(measured.panel.bottom, "金额面板必须留在视口内").toBeLessThanOrEqual(measured.dock.bottom + 1);
+        expect(measured.pageScrollHeight, "展开金额面板不得使页面滚动").toBeLessThanOrEqual(viewport.height + 1);
+        expect(measured.controls.length, "全部下注控件必须呈现").toBeGreaterThanOrEqual(7);
+        for (const control of measured.controls) {
+          expect(control.left, `${control.name} 左侧不得裁切`).toBeGreaterThanOrEqual(measured.panel.left - 1);
+          expect(control.right, `${control.name} 右侧不得裁切`).toBeLessThanOrEqual(measured.panel.right + 1);
+          expect(control.top, `${control.name} 上方不得裁切`).toBeGreaterThanOrEqual(measured.panel.top - 1);
+          expect(control.bottom, `${control.name} 下方不得裁切`).toBeLessThanOrEqual(measured.panel.bottom + 1);
+        }
+      }
+      await expect(page.getByRole("button", { name: "返回操作" })).toBeVisible();
+      await page.getByRole("button", { name: "返回操作" }).click();
+      await expect(panel).toHaveAttribute("data-wager-open", "false");
+      await expect(page.locator(".table-primary-actions")).toBeVisible();
+    });
+  }
+});

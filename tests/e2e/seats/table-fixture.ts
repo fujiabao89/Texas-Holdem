@@ -91,7 +91,7 @@ export async function installSeatTable(page: Page, initialGame: GameSnapshot) {
   let latest = initialGame;
   let sendMessage: ((message: ServerMessage) => void) | undefined;
   const commands: Array<{ type: string }> = [];
-  await page.routeWebSocket("/api/v1/ws", (socket) => {
+  await page.routeWebSocket("**/api/v1/ws", (socket) => {
     sendMessage = (message) => socket.send(JSON.stringify(ServerMessageSchema.parse(message)));
     socket.onMessage((raw) => {
       const command = JSON.parse(raw.toString()) as { type: string };

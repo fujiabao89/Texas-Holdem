@@ -20,22 +20,35 @@ export function tableSeats(snapshot: GameSnapshot): readonly (typeof snapshot.pl
   return Array.from({ length: 10 }, (_, seat) => snapshot.players.find((player) => player.seat === seat) ?? null);
 }
 
-/** The viewer always sits at the bottom centre; every other seat keeps its clockwise offset. */
+/** The viewer always sits at the bottom centre; opponents retain clockwise order. */
 const VIEWER_SEAT_SLOT = 5;
 
-/**
- * Presentation-only seat mapping keyed by the server seatIndex. The viewer is
- * pinned to the bottom centre and each other seat keeps a fixed slot derived
- * from its clockwise offset, so updating actors, stacks, statuses or the set of
- * remaining players never reorders the seats still at the table (TEX-47).
- */
+export type TableLayout = "2" | "6" | "10";
+
+export function tableLayout(playerCount: number): TableLayout {
+  return playerCount <= 2 ? "2" : playerCount <= 6 ? "6" : "10";
+}
+
+// Clockwise visual slots, starting at the viewer. Eliminated/withdrawn players
+// stay in the full tournament roster and retain their places between hands.
+const slotsByPlayerCount: Readonly<Record<number, readonly number[]>> = {
+  1: [5], 2: [5, 0], 3: [5, 9, 1], 4: [5, 7, 0, 3],
+  5: [5, 7, 9, 1, 3], 6: [5, 7, 9, 0, 1, 3],
+  7: [5, 6, 8, 9, 1, 2, 4],
+  8: [5, 6, 7, 9, 0, 1, 3, 4],
+  9: [5, 6, 7, 8, 9, 1, 2, 3, 4],
+  10: [5, 6, 7, 8, 9, 0, 1, 2, 3, 4],
+};
+
+/** Presentation only: compact sparse physical seats without changing their order. */
 export function tableSeatSlots(snapshot: GameSnapshot): ReadonlyArray<number | null> {
   const slots = Array<number | null>(10).fill(null);
   const viewer = snapshot.players.find((player) => player.playerId === snapshot.viewer.playerId);
   if (viewer === undefined) return slots;
-  for (const player of snapshot.players) {
-    const offset = (player.seat - viewer.seat + 10) % 10;
-    slots[player.seat] = (VIEWER_SEAT_SLOT + offset) % 10;
+  const template = slotsByPlayerCount[snapshot.players.length] ?? [VIEWER_SEAT_SLOT];
+  const ordered = [...snapshot.players].sort((a, b) => (a.seat - viewer.seat + 10) % 10 - (b.seat - viewer.seat + 10) % 10);
+  for (const [index, player] of ordered.entries()) {
+    slots[player.seat] = template[index] ?? null;
   }
   return slots;
 }

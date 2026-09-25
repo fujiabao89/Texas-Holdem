@@ -1,15 +1,70 @@
 /* TEX-45: static table skin. Motion, timing and sound remain owned by TEX-38. */
+/* TEX-46: one viewport for the felt and the whole action set. The dock reserve
+   is always subtracted from the stage, so showing or hiding the action dock
+   never resizes the felt (docs/05 §7.5, §8.1). */
+/* TEX-46: the table route owns exactly one viewport. The site header sits above
+   `#page-content`, so the page fills what is left instead of assuming 100dvh.
+   Scoped with :has() so every other route keeps its current scrolling layout. */
+.rr-site:has(.rr-table-page) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+.rr-site:has(.rr-table-page) > .rr-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: 16px;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  margin-inline: 0;
+  padding-inline: 24px;
+}
+.rr-site:has(.rr-table-page) .rr-table-heading-slot { grid-column: 2; justify-self: center; }
+.rr-site:has(.rr-table-page) .rr-header-end { display: flex; grid-column: 3; align-items: center; justify-self: end; gap: 16px; }
+.rr-site:has(.rr-table-page) .rr-table-actions-slot .table-header-actions { display: flex; align-items: center; gap: 8px; }
+.rr-site:has(.rr-table-page) .rr-table-actions-slot .rr-button { min-height: 40px; padding: 8px 12px; white-space: nowrap; }
+.rr-site:has(.rr-table-page) .rr-table-actions-slot [role="status"] { white-space: nowrap; }
+.rr-site:has(.rr-table-page) #page-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+@media (max-width: 1100px) {
+  .rr-site:has(.rr-table-page) > .rr-header { grid-template-rows: auto auto; row-gap: 2px; padding-block: 6px; }
+  .rr-site:has(.rr-table-page) .rr-brand { grid-column: 1; grid-row: 1; }
+  .rr-site:has(.rr-table-page) .rr-table-heading-slot { grid-row: 1; }
+  .rr-site:has(.rr-table-page) .rr-header-end { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 639px) {
+  .rr-site:has(.rr-table-page) > .rr-header { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto; }
+  .rr-site:has(.rr-table-page) .rr-table-heading-slot { grid-column: 1 / -1; grid-row: 2; }
+  .rr-site:has(.rr-table-page) .rr-header-end { display: contents; }
+  .rr-site:has(.rr-table-page) .rr-nav { grid-column: 2; grid-row: 1; justify-self: end; }
+  .rr-site:has(.rr-table-page) .rr-table-actions-slot { grid-column: 1 / -1; grid-row: 3; justify-self: center; }
+  .rr-site:has(.rr-table-page) .rr-table-actions-slot .rr-button { min-height: 44px; padding: 6px 8px; font-size: 11px; }
+  .rr-site:has(.rr-table-page) .rr-table-actions-slot [role="status"] { padding: 4px 8px; font-size: 10px; }
+}
+@media (max-width: 360px) {
+  .rr-site:has(.rr-table-page) > .rr-header { padding-inline: 16px; }
+}
 .rr-table-page {
   --table-gold: #dfc88e;
+  --felt-ratio: 1.85;
+  --dock-reserve: 124px;
+  --hole-card-height: 88px;
+  --hole-card-width: 63px;
+  --seat-card-height: 42px;
+  --seat-card-width: 30px;
+  --board-card-height: 88px;
+  --board-card-width: 63px;
+  flex: 1 1 auto;
   max-width: 1240px;
-  gap: 16px;
+  min-height: 0;
 }
-.rr-table-page .rr-table-header {
-  border-color: #dcded1;
-  padding: 14px 20px;
-}
-.rr-table-page .table-heading { display: flex; align-items: center; gap: 14px; }
-.rr-table-page .table-heading-mark {
+.rr-table-heading-slot .table-heading { display: flex; align-items: center; gap: 14px; }
+.rr-table-heading-slot .table-heading-mark {
   display: grid;
   place-items: center;
   width: 42px;
@@ -20,9 +75,31 @@
   color: #31533c;
   font: 30px Georgia, serif;
 }
-.rr-table-page .table-subtitle { margin-top: 4px; font-size: 12px; color: #4f5f4d; }
-.rr-table-page .table-stage { max-width: 1060px; }
+.rr-table-heading-slot .table-subtitle { margin-top: 4px; font-size: 12px; color: #4f5f4d; }
+@media (max-width: 639px) {
+  .rr-table-heading-slot .table-heading-mark { display: none; }
+  .rr-table-heading-slot .table-heading h1 { font-size: 16px; }
+  .rr-table-heading-slot .table-subtitle { margin-top: 0; font-size: 10px; }
+}
+.rr-table-page .table-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 1060px;
+  /* Reserve room for seats straddling the rail as well as the action dock. */
+  min-height: 0;
+  margin-inline: auto;
+  padding: 42px 48px calc(var(--dock-reserve) + 68px);
+  container-type: size;
+}
 .rr-table-page .rr-table-felt {
+  --felt-height: min(100cqh, calc(100cqw / var(--felt-ratio)));
+  flex: none;
+  width: calc(var(--felt-height) * var(--felt-ratio));
+  height: var(--felt-height);
   border-color: #243b30;
   background-color: #285340;
   background-image:
@@ -33,13 +110,8 @@
     inset 0 0 65px #061b2366, 0 4px 0 #152c22, 0 22px 38px #203b2926;
 }
 .rr-table-page .table-stitch { border: 1px dashed #c1c9a23d; background: none; }
-.rr-table-page .table-watermark {
-  top: 73%;
-  font: 11px Georgia, serif;
-  letter-spacing: 0.32em;
-  color: #d9ddbf57;
-}
-.rr-table-page .table-center-info { top: auto; bottom: calc(50% + 68px); flex-direction: column; gap: 6px; }
+.rr-table-page [data-muck] { left: -40px; top: 24px; border-color: #31533c33; color: #4f6658; }
+.rr-table-page .table-center-info { top: auto; bottom: calc(50% + 68px); width: max-content; max-width: 78%; gap: 12px; }
 .rr-table-page .table-phase {
   padding: 0;
   border-radius: 0;
@@ -62,7 +134,10 @@
 }
 .rr-table-page .table-pot-label { font-size: 11px; font-weight: 500; color: #d6d5b7; }
 .rr-table-page .table-pot-total strong { font-size: 22px; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.rr-table-page .table-pot-total[data-awarded="true"] { border-color: #fde68a; background: #fef3c7; color: #451a03; }
+.rr-table-page .table-pot-total[data-awarded="true"] .table-pot-label { color: #78350f; }
 .rr-table-page .table-board-zone {
+  top: calc(50% - 12px);
   width: max-content;
   padding: 10px;
   background: #092d2224;
@@ -70,11 +145,28 @@
   box-shadow: inset 0 2px 8px #152b241c;
 }
 .rr-table-page .table-card-slot { border-width: 1px; border-color: #dce4ce38; background: #13362a30; }
-.rr-table-page .table-pot-list { top: calc(50% + 72px); }
+.rr-table-page .table-pot-list { top: calc(50% + 56px); }
 
-.rr-table-page .table-actor-caption { bottom: auto; top: calc(50% + 104px); max-width: 50%; overflow-wrap: anywhere; }
-.rr-table-page .table-seat { width: 128px; }
+.rr-table-page .table-actor-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rr-table-page .table-phase, .rr-table-page .table-pot-total { flex-shrink: 0; }
+.rr-table-page .table-seat { left: var(--seat-left); top: var(--seat-top); width: 82px; transform: translate(-50%, -50%); }
+.rr-table-page [data-viewer="true"] { width: 106px; }
+.rr-table-page [data-seat-cards] { min-height: var(--seat-card-height); margin-bottom: 4px; }
+.rr-table-page [data-viewer="true"] [data-seat-cards] { min-height: var(--hole-card-height); }
+.rr-table-page .table-seat-status { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 9px; color: #fdf3d2; background: #244c35; border-radius: 6px; padding: 1px 4px; }
+/* Keep persistent status below transient action feedback without resizing seats. */
+.rr-table-page .table-seat:has(.table-action-badge) .table-seat-status { top: calc(100% + 32px); }
+.rr-table-page .table-seat-bet { position: absolute; left: var(--bet-left); top: var(--bet-top); transform: translate(-50%, -50%); display: flex; align-items: center; gap: 4px; padding: 2px 5px; border-radius: 999px; background: #123a2eeb; color: #fff0c5; font: 600 11px/1.3 monospace; white-space: nowrap; box-shadow: 0 2px 4px #122e2626; }
+.rr-table-page .table-bet-chip { width: 12px; height: 12px; border: 2px dashed #f8ecc5; border-radius: 50%; background: #a78443; box-shadow: 0 2px #806638; }
+.rr-table-page[data-table-layout="6"] [data-seat-slot="1"] { --layout-x: 94%; --layout-y: 24%; --layout-bet-x: 78%; --layout-bet-y: 26%; }
+.rr-table-page[data-table-layout="6"] [data-seat-slot="3"] { --layout-x: 94%; --layout-y: 76%; --layout-bet-x: 78%; --layout-bet-y: 74%; }
+.rr-table-page[data-table-layout="6"] [data-seat-slot="7"] { --layout-x: 6%; --layout-y: 76%; --layout-bet-x: 22%; --layout-bet-y: 74%; }
+.rr-table-page[data-table-layout="6"] [data-seat-slot="9"] { --layout-x: 6%; --layout-y: 24%; --layout-bet-x: 22%; --layout-bet-y: 26%; }
+.rr-table-page[data-table-layout="6"] .table-seat { left: var(--layout-x, var(--seat-left)); top: var(--layout-y, var(--seat-top)); }
+.rr-table-page[data-table-layout="6"] .table-seat-bet { left: var(--layout-bet-x, var(--bet-left)); top: var(--layout-bet-y, var(--bet-top)); }
+.rr-table-page .table-landscape-hint { display: none; }
 .rr-table-page [data-seat-chips] {
+  padding: 4px 5px;
   border-color: #81967a66;
   background: linear-gradient(180deg, #244638, #193b2e);
   border-radius: 12px;
@@ -84,7 +176,8 @@
 .rr-table-page [data-viewer="true"] .table-player-name { color: #254731; }
 .rr-table-page [data-viewer="true"] .table-player-stack { color: #31523a; }
 .rr-table-page [data-active="true"] [data-seat-chips] { outline: 2px solid var(--table-gold); outline-offset: 3px; }
-.rr-table-page .table-player-name { font-size: 12px; line-height: 1.5; }
+.rr-table-page .table-player-name { font-size: 11px; line-height: 1.4; }
+.rr-table-page [data-seat-badge] { height: 16px; min-width: 16px; padding-inline: 2px; font-size: 8px; }
 .rr-table-page .table-player-stack {
   display: flex;
   align-items: center;
@@ -109,24 +202,34 @@
   background: linear-gradient(145deg, #fffefa 45%, #f0eddf);
   box-shadow: inset 0 0 0 2px #fffefb, 0 2px 1px #132c2529, 0 5px 8px #10291f40;
 }
+/* Small revealed/result cards share the seat dimensions. Keep each rank and
+   suit once, in separate rows, and scale both with the actual card width. */
+.rr-table-page .table-card-compact { gap: calc(var(--seat-card-width) * 0.06); font: 700 calc(var(--seat-card-width) * 0.5)/1 Arial, sans-serif; }
+.rr-table-page .table-card-compact > span:last-child { font-family: Georgia, serif; font-size: calc(var(--seat-card-width) * 0.56); }
+.rr-table-page .table-card-face[data-card-variant="board"] { --card-face-width: var(--board-card-width); }
+.rr-table-page .table-card-face[data-card-variant="hole"] { --card-face-width: var(--hole-card-width); }
 .rr-table-page .table-card-corner {
   background: none;
   padding: 0;
   font-family: Arial, sans-serif;
-  font-size: 16px;
+  font-size: calc(var(--card-face-width) * 0.22);
   letter-spacing: -0.05em;
-  gap: 1px;
+  gap: calc(var(--card-face-width) * 0.015);
 }
-.rr-table-page .table-card-corner > span:last-child { font-size: 12px; }
+.rr-table-page .table-card-corner > span:last-child { font-size: calc(var(--card-face-width) * 0.16); }
+.rr-table-page .table-card-corner.table-card-ten { font-size: calc(var(--card-face-width) * 0.17); }
+.rr-table-page .table-card-pip { font-size: calc(var(--card-face-width) * 0.16); }
+.rr-table-page .table-card-ace { font-size: calc(var(--card-face-width) * 0.58); }
 .rr-table-page .table-card-court {
   width: 42%;
   min-height: 56%;
   border-radius: 2px;
   border: 1px solid currentColor;
   background: repeating-linear-gradient(45deg, transparent 0 5px, #c9bd991c 5px 6px);
-  font-size: 24px;
-  padding: 4px 0;
+  font-size: calc(var(--card-face-width) * 0.34);
+  padding: calc(var(--card-face-width) * 0.04) 0;
 }
+.rr-table-page .table-card-court > span:last-child { font-size: calc(var(--card-face-width) * 0.26); }
 .rr-table-page .table-card-back {
   border: 2px solid #e0dfc4;
   background: #254837;
@@ -146,6 +249,7 @@
   font: 14px Georgia, serif;
 }
 .rr-table-page .table-clock-bar {
+  flex: none;
   max-width: 640px;
   background: transparent;
   border: 0;
@@ -153,63 +257,379 @@
   padding: 0 12px;
   font-variant-numeric: tabular-nums;
 }
-.rr-table-page .rr-betting-panel {
-  max-width: 640px;
-  padding: 18px;
-  border: 1px solid #d9ddcb;
-  border-radius: 16px;
-  background: #fffef8;
-  box-shadow: 0 10px 28px #293f2912;
+/* TEX-46: the action dock only exists while the server projects this viewer as
+   the actor with LegalActions. It lives inside the reserved strip below the
+   felt, anchored to the viewer Seat at the felt's bottom edge. */
+.rr-table-page .table-action-dock {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: var(--dock-reserve);
+  padding-inline: 6px;
 }
-.rr-table-page .table-action-heading { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #4f5f4d; }
+.rr-table-page .table-notices { flex: none; }
+/* Hand results float above the felt instead of shrinking it, so the table keeps
+   one size for the whole hand and the review layer never reflows the Seats. */
+.rr-table-page .table-post-hand {
+  position: absolute;
+  inset-inline: 4px;
+  bottom: var(--dock-reserve);
+  max-height: 62%;
+  overflow-y: auto;
+  z-index: 45;
+}
+.rr-table-page .table-notices:empty,
+.rr-table-page .table-post-hand:empty { display: none; }
+.rr-table-page .rr-betting-panel {
+  isolation: isolate;
+  width: 100%;
+  max-width: 760px;
+  padding: 10px;
+  border: 1px solid #ffffffb8;
+  border-radius: 36px;
+  background:
+    radial-gradient(ellipse at 8% 0%, #ffffffc9, transparent 48%),
+    radial-gradient(ellipse at 95% 105%, #9bb7ab70, transparent 60%),
+    linear-gradient(120deg, #d9e5df73, #ffffff38 48%, #b6cbc273);
+  box-shadow: inset 0 2px 2px #fffffff0, inset 2px 0 4px #ffffffa6,
+    inset 0 -2px 3px #708f8152, 0 2px 3px #183e2720, 0 12px 28px #183e2729;
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  backdrop-filter: blur(20px) saturate(1.8);
+}
+.rr-table-page .rr-betting-panel::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  border: 1px solid #ffffff70;
+  border-radius: inherit;
+  box-shadow: inset 0 0 9px #ffffff55;
+  pointer-events: none;
+}
+.rr-table-page .rr-betting-panel[data-wager-open="true"] { max-width: 960px; border-radius: 32px; }
+.rr-table-page .table-action-heading { display: flex; align-items: center; justify-content: space-between; padding-inline: 12px; font-size: 11px; color: #40584c; }
 .rr-table-page .table-action-heading h2 { font-weight: 600; }
-.rr-table-page .table-action-heading > span { color: #3b623e; }
-.rr-table-page .table-primary-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: 1/-1; padding: 6px; min-height: 44px; background: #f1f3e8; font-size: 12px; }
-.rr-table-page .table-wager-editor { background: #f0f2e7; }
-.rr-table-page .table-wager-editor output { margin-left: auto; font-size: 24px; font-variant-numeric: tabular-nums; }
+.rr-table-page .table-action-heading > span { color: #285b42; }
+.rr-table-page .table-action-heading > span::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 6px; border-radius: 50%; background: #387551; }
+.rr-table-page .table-primary-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.rr-table-page .table-primary-actions:has(> .rr-action-neutral) { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.rr-table-page .rr-betting-panel .rr-action,
+.rr-table-page .table-wager-back,
+.rr-table-page .table-wager-exact-toggle {
+  min-height: 44px;
+  min-width: 0;
+  padding: 6px 12px;
+  border: 1px solid #ffffff9c;
+  border-radius: 999px;
+  color: #254637;
+  background: linear-gradient(165deg, #ffffff9c, #ffffff26 55%, #ffffff61);
+  box-shadow: inset 0 1px 1px #fffffff0, inset 0 -1px 2px #44614c26,
+    0 2px 4px #1f3c2814;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.rr-table-page .rr-betting-panel .rr-action:hover:not(:disabled),
+.rr-table-page .table-wager-back:hover,
+.rr-table-page .table-wager-exact-toggle:hover {
+  translate: none;
+  background-color: #ffffff80;
+  box-shadow: inset 0 1px 2px #fff, 0 3px 8px #1f3c2826;
+}
+.rr-table-page .rr-betting-panel :is(button, input):focus-visible { outline: 2px solid #265f49; outline-offset: 2px; }
+.rr-table-page .rr-betting-panel .rr-action:active:not(:disabled) { transform: scale(.97); }
+.rr-table-page .table-primary-actions > .rr-action { min-height: 52px; font-size: 15px; }
+.rr-table-page .rr-betting-panel .rr-action-fold { color: #5d5c51; }
+.rr-table-page .rr-betting-panel .rr-action-call { background-color: #93bfa256; }
+.rr-table-page .rr-betting-panel .rr-action-bet {
+  color: #fff;
+  border-color: #93bfa5b0;
+  background: linear-gradient(165deg, #7fba9a 0%, #3e8764 28%, #286046 62%, #417f5c 100%);
+  box-shadow: inset 0 1px 2px #deffedba, inset 0 -2px 4px #103e3590, 0 3px 7px #1b523534;
+  text-shadow: 0 1px 2px #173d32;
+}
+.rr-table-page .rr-betting-panel .rr-action-allin { color: #8b3d28; background-color: #e9b69e54; }
+.rr-table-page .rr-betting-panel[data-all-in-confirm="true"] .rr-action-allin {
+  background: linear-gradient(165deg, #c87c55, #9c4025 70%);
+  color: #fff;
+  border-color: #edb698;
+}
+.rr-table-page .table-wager-editor {
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+/* The wager editor replaces the primary row at every width, so its exit must
+   remain available at every width too. */
+.rr-table-page .table-wager-back { display: inline-flex; align-items: center; justify-content: center; }
+.rr-table-page .table-wager-editor output { margin-left: 2px; min-width: 3ch; color: #204a39; font-size: 25px; letter-spacing: -.04em; text-align: center; font-variant-numeric: tabular-nums; }
 .rr-table-page .table-wager-editor input { min-width: 0; max-width: 100%; }
-.rr-table-page .rr-action-allin { background: #f7e7db; border-color: #d5af91; color: #934024; }
-.rr-table-page .rr-action-allin:hover:not(:disabled) { background: #f0d9c7; }
+.rr-table-page .table-wager-slider { gap: 8px; padding-inline: 4px; }
+.rr-table-page .table-wager-slider > .rr-action { flex: 0 0 44px; width: 44px; padding: 0; font-size: 22px; }
+.rr-table-page .table-wager-slider input[type="range"] {
+  appearance: none;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.rr-table-page .table-wager-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #438268 var(--wager-progress), #42624c25 var(--wager-progress));
+  box-shadow: inset 0 1px 2px #1a3d302e, 0 1px #ffffffce;
+}
+.rr-table-page .table-wager-slider input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -10px;
+  border: 1px solid #ffffffdb;
+  border-radius: 50%;
+  background: linear-gradient(150deg, #fff, #dcebe2 70%, #b7cfc1);
+  box-shadow: inset 0 1px 2px #fff, 0 2px 5px #123e3b40;
+}
+.rr-table-page .table-wager-slider input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: #42624c25; }
+.rr-table-page .table-wager-slider input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: #438268; }
+.rr-table-page .table-wager-slider input[type="range"]::-moz-range-thumb { width: 26px; height: 26px; border: 1px solid #fff; border-radius: 50%; background: linear-gradient(150deg, #fff, #dcebe2); box-shadow: 0 2px 5px #123e3b40; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .rr-table-page .rr-betting-panel { background: #f3f6ee; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rr-table-page .rr-betting-panel { background: #f3f6ee; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (min-width: 640px) {
+  .rr-table-page { padding: 16px; gap: 12px; }
+}
 @media (min-width: 640px) and (max-width: 1000px) {
-  .rr-table-page .table-watermark { display: none; }
-  .rr-table-page .table-seat { width: 96px; }
-  .rr-table-page .rr-table-felt { aspect-ratio: 1.25; }
+  .rr-table-page { --felt-ratio: 1.25; }
 }
 @media (min-width: 640px) and (max-width: 760px) {
-  .rr-table-page .table-seat { width: 80px; }
-  .rr-table-page .rr-table-felt { aspect-ratio: 1.05; }
-  .rr-table-page [data-seat-slot="2"], .rr-table-page [data-seat-slot="8"] { top: 25%; }
-  .rr-table-page [data-seat-slot="3"], .rr-table-page [data-seat-slot="7"] { top: 75%; }
+  .rr-table-page { --felt-ratio: 1.05; }
+}
+@media (min-width: 640px) and (max-height: 820px) {
+  .rr-table-page { --hole-card-height: 76px; --hole-card-width: 54px; }
+  .rr-table-page .table-board-zone { top: calc(50% - 16px); padding-block: 6px; }
+  .rr-table-page .table-pot-list { top: calc(50% + 47px); }
 }
 @media (max-width: 639px) {
-  .rr-table-page { gap: 12px; padding: 12px; }
-  .rr-table-page .rr-table-header { padding: 12px; gap: 12px; }
-  .rr-table-page .table-heading { gap: 10px; }
-  .rr-table-page .table-heading-mark { width: 34px; height: 40px; font-size: 24px; }
-  .rr-table-page .table-subtitle { font-size: 10px; }
-  .rr-table-page .rr-table-header > div:last-child { width: 100%; }
-  .rr-table-page .rr-table-header .rr-button { padding: 8px 12px; font-size: 11px; }
-  .rr-table-page .rr-table-header [role="status"] { margin-left: auto; padding: 6px 8px; font-size: 10px; }
-  .rr-table-page .table-seat { width: 76px; }
+  /* Height is the scarce axis on a phone: the dock reserve plus the header are
+     subtracted first, and the felt then takes whatever width they leave. */
+  .rr-table-page { --felt-ratio: 0.8; --dock-reserve: 176px; --hole-card-height: 66px; --hole-card-width: 47px; --seat-card-height: 28px; --seat-card-width: 20px; --board-card-height: 56px; --board-card-width: 40px; gap: 6px; padding: 8px; }
+  .rr-site:has(.rr-table-page) > .rr-header { grid-template-rows: 26px 34px 44px; row-gap: 2px; padding-block: 4px; }
+  .rr-site:has(.rr-table-page) .table-heading h1 { line-height: 20px; }
+  .rr-site:has(.rr-table-page) .table-subtitle { line-height: 14px; }
+  .rr-site:has(.rr-table-page) .rr-brand small { display: none; }
+  .rr-table-page .table-stage { padding: 32px 24px calc(var(--dock-reserve) + 58px); }
+  .rr-table-page [data-muck] { top: 8px; }
+  .rr-table-page .table-seat { width: 56px; }
+  .rr-table-page [data-viewer="true"] { width: 84px; }
+  .rr-table-page [data-seat-chips] { padding: 3px; }
+  .rr-table-page .table-landscape-hint { display: inline; width: 100%; text-align: center; font-size: 10px; color: #4f6658; }
+  .rr-table-page .table-seat-bet { font-size: 9px; padding: 1px 3px; gap: 3px; }
+  .rr-table-page .table-bet-chip { width: 9px; height: 9px; }
+  /* Four main actions form a balanced 2x2 group; time bank gets its own row. */
+  .rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: 1 / -1; padding: 4px 6px; font-size: 11px; }
+  .rr-table-page .table-primary-actions:has(> .rr-action-neutral) > .rr-action { min-height: 44px; }
   .rr-table-page .table-player-name { font-size: 10px; }
   .rr-table-page .table-player-stack { font-size: 11px; gap: 3px; }
   .rr-table-page .table-chip { width: 8px; height: 8px; }
-  .rr-table-page .table-center-info { bottom: calc(50% + 48px); gap: 4px; }
+  .rr-table-page .table-center-info { bottom: calc(50% + 48px); display: grid; grid-template-columns: auto auto; max-width: 60%; gap: 4px 8px; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="1"] { left: 82%; top: 12%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="9"] { left: 18%; top: 12%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="4"] { left: 82%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="6"] { left: 18%; }
+  .rr-table-page .table-seat-bet[data-seat-slot="0"] { left: 50%; top: 14%; }
+  .rr-table-page[data-table-layout="10"] .table-seat-bet[data-seat-slot="1"] { left: 80%; top: 25%; }
+  .rr-table-page[data-table-layout="10"] .table-seat-bet[data-seat-slot="9"] { left: 20%; top: 25%; }
+  .rr-table-page .table-seat-bet[data-seat-slot="5"] { left: 50%; top: 76%; }
+  .rr-table-page .table-seat-bet:is([data-seat-slot="2"], [data-seat-slot="3"]) { left: 78%; }
+  .rr-table-page .table-seat-bet:is([data-seat-slot="7"], [data-seat-slot="8"]) { left: 22%; }
+  .rr-table-page .table-seat-bet:is([data-seat-slot="2"], [data-seat-slot="8"]) { top: 30%; }
+  .rr-table-page .table-seat-bet:is([data-seat-slot="4"], [data-seat-slot="6"]) { top: 76%; }
+  .rr-table-page .table-pot-total { grid-column: 1 / -1; grid-row: 1; justify-self: center; }
+  .rr-table-page .table-phase { grid-column: 1; grid-row: 2; }
+  .rr-table-page .table-actor-caption { grid-column: 2; grid-row: 2; }
   .rr-table-page .table-pot-total { padding: 4px 12px; gap: 10px; }
   .rr-table-page .table-pot-total strong { font-size: 20px; }
-  .rr-table-page .table-board-zone { padding: 8px; }
-  .rr-table-page .table-pot-list { top: calc(50% + 54px); width: 85%; }
-  .rr-table-page .table-watermark { top: 63%; font-size: 8px; }
-  .rr-table-page .table-actor-caption { top: auto; bottom: 20%; font-size: 10px; }
-  .rr-table-page .table-card-corner { font-size: 12px; }
-  .rr-table-page .table-card-corner > span:last-child { font-size: 10px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 8px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 7px; }
-  .rr-table-page .table-card-court { font-size: 18px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 12px; }
+  .rr-table-page .table-board-zone { padding: 4px 8px; }
+  .rr-table-page .table-pot-list { top: calc(50% + 33px); width: 85%; }
   .rr-table-page .table-card-seal { font-size: 10px; }
-  .rr-table-page .rr-betting-panel { padding: 12px; }
-  .rr-table-page .table-primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .rr-table-page .rr-action { padding: 12px 8px; font-size: 13px; }
+  .rr-table-page .rr-betting-panel { padding: 7px; gap: 6px; }
+  .rr-table-page .table-primary-actions,
+  .rr-table-page .table-primary-actions:has(> .rr-action-neutral) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rr-table-page .table-wager-back { display: inline-flex; }
+  .rr-table-page .rr-action { min-height: 44px; padding: 8px 6px; font-size: 12px; }
+  /* Phone action dock keeps only submittable controls: the heading becomes
+     screen-reader-only so the panel fits the reserved strip. */
+  .rr-table-page .table-action-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* The phone felt is narrow, so the deck shrinks into the top-left arc and the
+     two upper Seats move inwards to keep their rectangles clear of it. */
+  .rr-table-page .table-deck { left: 4px; top: 2px; height: 40px; width: 28px; }
+  .rr-table-page .table-player-name { font-size: 9px; line-height: 1.3; }
+  .rr-table-page .table-player-stack { margin-top: 0; font-size: 9px; gap: 2px; }
+  .rr-table-page .table-chip { width: 7px; height: 7px; }
+  /* The phone wager panel is exactly three rows — shortcuts, the amount row,
+     then back/exact next to submit — so every control stays inside the
+     reserved strip with no panel-level scrolling. The exact-amount field is a
+     grid item of its own: it occupies the shortcut row one-for-one, so opening
+     it swaps content instead of stacking a fourth row. */
+}
+
+/* 展开金额面板时替换主操作行，使行动区不超过 --dock-reserve。全下入口同步放入
+   编辑器末行，保留“普通加注 ↔ 全下确认”的双向切换能力。 */
+.rr-table-page [data-wager-open="true"] .table-primary-actions { display: none; }
+/* 手机三行、桌面两行；展开态替换主操作，始终完整呈现全部控件。 */
+.rr-table-page .table-wager-editor {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(44px, auto);
+  gap: 8px;
+  padding: 0;
+}
+.rr-table-page .table-wager-editor > p { display: none; }
+.rr-table-page .table-quick-amounts {
+  grid-area: 1 / 1 / 2 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.rr-table-page .table-quick-amounts .table-quick-amount { display: grid; align-content: center; gap: 1px; padding: 4px; }
+.rr-table-page .table-quick-amount > span { font-size: 10px; font-weight: 500; white-space: nowrap; }
+.rr-table-page .table-quick-amount > strong { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.rr-table-page .table-quick-amount[aria-pressed="true"] { background-color: #78b49a55; border-color: #55977991; box-shadow: inset 0 1px #ffffffba, inset 0 0 0 1px #4f8a6e38; }
+.rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
+.rr-table-page .table-wager-meta { display: contents; }
+.rr-table-page .table-wager-back { grid-area: 3 / 1 / 4 / 2; }
+.rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; min-width: 0; padding-inline: 6px; }
+.rr-table-page .table-wager-allin { grid-area: 3 / 3 / 4 / 4; min-width: 0; }
+.rr-table-page .table-wager-allin > .rr-action { width: 100%; height: 100%; min-width: 0; padding-inline: 4px; }
+.rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 4 / 4 / 5; min-width: 0; padding-inline: 4px; }
+.rr-table-page .table-exact-amount {
+  grid-area: 1 / 1 / 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The field keeps its accessible name, but the visible text is the value. */
+.rr-table-page .table-exact-amount > span:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.rr-table-page .table-exact-amount > input { flex: 1; min-width: 0; height: 44px; border-radius: 999px; border: 1px solid #ffffffad; background: #ffffff6b; box-shadow: inset 0 1px 4px #163c2926; padding: 6px 16px; color: #204a39; font-size: 18px; font-variant-numeric: tabular-nums; }
+.rr-table-page .table-exact-error { font-size: 10px; white-space: nowrap; }
+.rr-table-page .table-wager-output { font-size: 16px; }
+.rr-table-page .table-wager-editor:has(.table-exact-amount) .table-quick-amounts { display: none; }
+
+@media (min-width: 640px) {
+  .rr-table-page [data-wager-open="true"] .table-action-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .rr-table-page .table-wager-editor { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .rr-table-page .table-quick-amounts { grid-area: 1 / 1 / 2 / 5; }
+  .rr-table-page .table-wager-slider { grid-area: 1 / 5 / 2 / -1; }
+  .rr-table-page .table-exact-amount { grid-area: 1 / 1 / 2 / 5; }
+  .rr-table-page .table-wager-back { grid-area: 2 / 1 / 3 / 3; }
+  .rr-table-page .table-wager-exact-toggle { grid-area: 2 / 3 / 3 / 5; }
+  .rr-table-page .table-wager-allin { grid-area: 2 / 5 / 3 / 7; }
+  .rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 2 / 7 / 3 / 9; }
+}
+
+@media (max-width: 639px) {
+  .rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; }
+  .rr-table-page .table-wager-back,
+  .rr-table-page .table-wager-exact-toggle,
+  .rr-table-page .table-wager-allin > .rr-action,
+  .rr-table-page .table-wager-editor > .rr-action-bet {
+    min-height: 44px;
+    padding: 4px;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+}
+
+/* Landscape phones keep the felt and a complete, touch-sized action panel side
+   by side. The reserved right column stays in place between turns. */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 640px) {
+  .rr-site:has(.rr-table-page) > .rr-header { grid-template-rows: 44px; grid-template-columns: auto auto 1fr; column-gap: 12px; padding: 0 12px; min-height: 44px; }
+  .rr-site:has(.rr-table-page) .rr-brand { grid-column: 1; grid-row: 1; font-size: 16px; gap: 6px; }
+  .rr-site:has(.rr-table-page) .rr-brand-symbol { font-size: 24px; }
+  .rr-site:has(.rr-table-page) .rr-brand small,
+  .rr-site:has(.rr-table-page) .table-heading-mark { display: none; }
+  .rr-site:has(.rr-table-page) .rr-table-heading-slot { grid-column: 2; grid-row: 1; }
+  .rr-site:has(.rr-table-page) .table-heading h1 { font-size: 14px; }
+  .rr-site:has(.rr-table-page) .table-subtitle { margin: 0; font-size: 9px; }
+  .rr-site:has(.rr-table-page) .rr-header-end { grid-column: 3; grid-row: 1; gap: 8px; }
+  .rr-site:has(.rr-table-page) .rr-table-actions-slot .rr-button { min-height: 44px; padding: 6px; font-size: 11px; }
+  .rr-site:has(.rr-table-page) .rr-table-actions-slot [role="status"],
+  .rr-site:has(.rr-table-page) .rr-nav { font-size: 10px; }
+  .rr-table-page { --felt-ratio: 1.85; --dock-reserve: 0px; --hole-card-height: 60px; --hole-card-width: 43px; --seat-card-height: 28px; --seat-card-width: 20px; --board-card-height: 48px; --board-card-width: 34px; padding: 4px 12px; gap: 2px; position: relative; }
+  .rr-table-page .table-stage { padding: 32px 292px 52px 38px; max-width: none; }
+  .rr-table-page .table-clock-bar { position: absolute; right: 12px; bottom: 24px; width: 252px; }
+  .rr-table-page .table-notices { position: absolute; right: 12px; bottom: 4px; width: 252px; }
+  .rr-table-page .rr-table-felt { border-width: 10px; }
+  .rr-table-page .table-seat { width: 58px; }
+  .rr-table-page [data-viewer="true"] { width: 82px; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="1"] { left: 82%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="9"] { left: 18%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="4"] { left: 82%; }
+  .rr-table-page[data-table-layout="10"] .table-seat[data-seat-slot="6"] { left: 18%; }
+  .rr-table-page [data-seat-chips] { padding: 2px 3px; }
+  .rr-table-page .table-player-name { font-size: 9px; }
+  .rr-table-page .table-player-stack { font-size: 9px; margin-top: 0; }
+  .rr-table-page [data-seat-badge] { height: 14px; min-width: 14px; font-size: 7px; }
+  .rr-table-page .table-chip { width: 7px; height: 7px; }
+  .rr-table-page .table-center-info { bottom: calc(50% + 38px); gap: 6px; max-width: 72%; }
+  .rr-table-page .table-phase, .rr-table-page .table-pot-label, .rr-table-page .table-actor-caption { font-size: 9px; }
+  .rr-table-page .table-pot-total { padding: 2px 8px; gap: 6px; }
+  .rr-table-page .table-pot-total strong { font-size: 17px; }
+  .rr-table-page .table-board-zone { top: calc(50% - 12px); padding: 4px; }
+  .rr-table-page .table-pot-list { top: calc(50% + 26px); }
+  .rr-table-page .table-pot-list > span { padding: 1px 4px; font-size: 8px; }
+  .rr-table-page .table-seat-bet { font-size: 9px; padding: 1px 3px; gap: 2px; }
+  .rr-table-page .table-seat-bet[data-seat-slot="0"] { left: 65%; top: 13%; }
+  .rr-table-page .table-seat-bet[data-seat-slot="5"] { left: 66%; top: 92%; }
+  .rr-table-page[data-table-layout="10"] .table-seat-bet:is([data-seat-slot="1"], [data-seat-slot="9"]) { top: 13%; }
+  .rr-table-page .table-bet-chip { width: 8px; height: 8px; }
+  .rr-table-page .table-deck { width: 24px; height: 34px; left: 2px; top: 2px; }
+  .rr-table-page [data-muck] { top: 16px; }
+  .rr-table-page .table-action-dock { inset: 0 0 0 auto; width: 252px; height: 100%; padding: 0; align-items: center; }
+  .rr-table-page .rr-betting-panel { padding: 8px; gap: 8px; }
+  .rr-table-page .rr-action { min-height: 44px; padding: 5px; font-size: 11px; }
+  .rr-table-page .table-primary-actions,
+  .rr-table-page .table-primary-actions:has(> .rr-action-neutral) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rr-table-page .table-primary-actions > .rr-action-neutral { grid-column: 1 / -1; }
+  .rr-table-page .table-action-heading { font-size: 10px; }
+  .rr-table-page .table-wager-editor { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .rr-table-page .table-quick-amounts, .rr-table-page .table-exact-amount { grid-area: 1 / 1 / 2 / -1; }
+  .rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
+  .rr-table-page .table-wager-back { grid-area: 3 / 1 / 4 / 2; }
+  .rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; }
+  .rr-table-page .table-wager-allin { grid-area: 3 / 3 / 4 / 4; }
+  .rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 4 / 4 / 5; }
+  .rr-table-page .table-quick-amount > strong { font-size: 14px; }
+  .rr-table-page .table-clock-bar { padding: 0; min-height: 0; }
+  .rr-table-page .table-clock-bar p, .rr-table-page .table-notices { font-size: 9px; line-height: 12px; }
+  .rr-table-page .table-notices { gap: 2px; }
 }

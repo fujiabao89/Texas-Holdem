@@ -11,7 +11,7 @@ pnpm test:e2e -- --grep "创建房间"   # 按标题过滤（业务用例落地�
 
 - 配置：[playwright.config.ts](./playwright.config.ts)；**禁用重试（含 CI）**——docs/06 §2.1 规定重试只可用于诊断，不得把"重试后通过"记为门禁通过（`tests/meta` 有防回归断言）。
 - 端口默认 `3100`，可用 `TEX_E2E_PORT` / `TEX_E2E_BASE_URL` 覆盖；本地已运行的服务会被复用。
-- 业务场景（创建房间、下注、重连等）按目录组织：[all-in/](./all-in)、[betting/](./betting)、[create-room/](./create-room)、[full-hand/](./full-hand)、[join-table/](./join-table)、[reconnect/](./reconnect)、[seats/](./seats/README.md)、[side-pot/](./side-pot)。TEX-25 的 [betting/table.spec.ts](./betting/table.spec.ts) 通过 Playwright WebSocket mock 注入合法投影，覆盖键盘跟注、All-in 两步、房间关闭、被移出与 Session Replaced；TEX-26 的 [reconnect/tex-26.spec.ts](./reconnect/tex-26.spec.ts) 仅覆盖新增的接管对话框可访问性。TEX-47 的 [seats/stable-seats.spec.ts](./seats/stable-seats.spec.ts) 覆盖座位相对 `seatIndex` 的固定映射、Heads-up/6/10 人、跨手 D/SB/BB 迁移与移动视口无重叠。三者均不依赖真实 game-server 或 sleep。
+- 业务场景（创建房间、下注、重连等）按目录组织：[all-in/](./all-in)、[betting/](./betting)、[create-room/](./create-room)、[full-hand/](./full-hand)、[join-table/](./join-table)、[reconnect/](./reconnect)、[seats/](./seats/README.md)、[side-pot/](./side-pot)、[table-layout/](./table-layout)。TEX-25 的 [betting/table.spec.ts](./betting/table.spec.ts) 通过 Playwright WebSocket mock 注入合法投影，覆盖键盘跟注、All-in 两步、房间关闭、被移出与 Session Replaced；TEX-26 的 [reconnect/tex-26.spec.ts](./reconnect/tex-26.spec.ts) 仅覆盖新增的接管对话框可访问性。TEX-46 的 [table-layout/single-viewport.spec.ts](./table-layout/single-viewport.spec.ts) 覆盖单视口、按需行动区与稀疏座位矩阵；TEX-47 的 [seats/stable-seats.spec.ts](./seats/stable-seats.spec.ts) 覆盖座位相对 `seatIndex` 的固定映射、Heads-up/6/10 人、跨手 D/SB/BB 迁移与移动视口无重叠。四者均不依赖真实 game-server 或 sleep。
 
 TEX-38 新增 [animation-audio/](./animation-audio/README.md) 的动画/音频/偏好与后台浏览器回归，使用协议投影夹具，独立于真实服务端套件。运行：`pnpm exec playwright test -c tests/e2e/playwright.config.ts animation-audio --workers=1`；并行开发时通过 `TEX_E2E_PORT=3138` 隔离端口。
 
@@ -44,3 +44,17 @@ TEX-38 新增 [animation-audio/](./animation-audio/README.md) 的动画/音频/�
 [fixtures/a11y.ts](./fixtures/a11y.ts) 封装 `@axe-core/playwright`：`criticalViolations(page)` 或按 impact 阈值扫描。共享扫描入口会等待文档与 SSR `<title>` 就绪，并等待 `.rr-route-enter` 自身的进入动画结束，再对最终呈现状态执行 axe；等待超时不会吞掉实际 axe 违规。具体页面的 WCAG 2.2 AA 验收门槛由前端任务按 docs/05-frontend-spec.md §16 落地。
 
 TEX-44 在 [create-room/](./create-room/README.md) 增加品牌首页键盘开局、390/1366 布局、严重可访问性、设备/系统动态偏好、历史焦点与服务端赛果展示回归；沿用既有可观测性门禁，不将受控 HTTP/WS 夹具当作真实后端联调。
+
+## 牌桌单视口矩阵（TEX-46：`table-layout/`）
+
+[single-viewport.spec.ts](./table-layout/single-viewport.spec.ts) 以 WS 投影夹具驱动真实浏览器，按 360×800、390×844、768×1024、1366×768、1920×1080、844×390、800×360 七种视口 × 2/3/6/10 人桌矩阵断言：
+
+- 轮到本人行动时页面无纵向、横向滚动，行动区、牌桌、公共牌与底池完整落在视口内，且行动区不遮挡公共牌与底池；
+- 各 Seat 卡片矩形互不相交（`data-seat` 只存在于已入座座位，测量前等待整圈座位渲染完成）；
+- 2/6/10 人模板、桌沿座位、本人手牌明显大于对手；当前下注不在 Seat 内且避开公共牌、状态与玩家卡，下注清零不改变座位几何；短横屏操作区位于桌面右侧；
+- 中央留白覆盖双人/十人桌（另含 1467×897）：旋转后的本人牌面与公共牌保持间距、座位不挤入操作区、街/底池/行动者不被座位遮挡；单池只保留一个派奖锚点，三底池投影保留各池明细且不移动本人座位；
+- 行动区随行动权出现与消失，且不改变牌桌几何；
+- 品牌、牌桌标题/盲注及历史、音效、连接状态位于同一顶栏，宽窄视口内均不遮挡；
+- 手机及桌面金额面板的快捷额、Slider、±、精确输入、返回、全下与提交全部在行动区预留带内可达，无页面或面板内部滚动；断点边界另覆盖 640×800 与 1467×897（两步全下与 `ALL_IN` 信封由 `betting/table.spec.ts` 覆盖）。
+
+运行：`pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout`。该套件只验证受控投影下的前端布局，不替代真实 game-server/PostgreSQL 联调，也不替代 docs/06 §9.1 的实机发布验收。

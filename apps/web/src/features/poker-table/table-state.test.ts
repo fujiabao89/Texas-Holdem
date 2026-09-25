@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { GameSnapshot } from "@texas-holdem/protocol";
 
 import { gameSnapshot } from "../../testing-fixtures";
-import { canSubmitTableAction, remainingTimeMs, seatBadges, tableSeatSlots, tableSeats } from "./table-state";
+import { canSubmitTableAction, remainingTimeMs, seatBadges, tableLayout, tableSeatSlots, tableSeats } from "./table-state";
 
 type TestPlayer = GameSnapshot["players"][number];
 
@@ -59,11 +59,11 @@ describe("stable seat mapping", () => {
   it("keeps the viewer at the bottom centre and maps opponents by clockwise seat offset", () => {
     const slots = tableSeatSlots(snapshotFor([0, 1, 2, 3, 4, 5].map((seat) => player(seat)), 3));
     expect(slots[3]).toBe(5);
-    expect(slots[4]).toBe(6);
-    expect(slots[5]).toBe(7);
-    expect(slots[0]).toBe(2);
-    expect(slots[1]).toBe(3);
-    expect(slots[2]).toBe(4);
+    expect(slots[4]).toBe(7);
+    expect(slots[5]).toBe(9);
+    expect(slots[0]).toBe(0);
+    expect(slots[1]).toBe(1);
+    expect(slots[2]).toBe(3);
   });
 
   it("assigns a unique stable slot for every 2–10 player table and viewer seat", () => {
@@ -91,13 +91,11 @@ describe("stable seat mapping", () => {
     expect(after).toEqual(before);
   });
 
-  it("keeps the remaining seats in place when a player leaves the table", () => {
-    const before = tableSeatSlots(snapshotFor([0, 1, 2, 3].map((seat) => player(seat)), 1));
-    const after = tableSeatSlots(snapshotFor([0, 1, 3].map((seat) => player(seat)), 1));
-    expect(after[0]).toBe(before[0]);
-    expect(after[1]).toBe(before[1]);
-    expect(after[3]).toBe(before[3]);
-    expect(after[2]).toBeNull();
+  it("selects 2/6/10 templates from the complete roster and compacts sparse seats in order", () => {
+    expect([2, 3, 6, 7, 10].map(tableLayout)).toEqual(["2", "6", "6", "10", "10"]);
+    expect(tableSeatSlots(snapshotFor([player(2), player(9)], 2))[9]).toBe(0);
+    const sparse = tableSeatSlots(snapshotFor([0, 2, 4, 6, 8, 9].map((seat) => player(seat)), 4));
+    expect([4, 6, 8, 9, 0, 2].map((seat) => sparse[seat])).toEqual([5, 7, 9, 0, 1, 3]);
   });
 
   it("returns no slots when the viewer is missing from the projection", () => {
