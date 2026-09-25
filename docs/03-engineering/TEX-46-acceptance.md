@@ -115,7 +115,7 @@ Codex / CodeRabbit / Greptile 的 9 条意见逐项核验与处置见 [TEX-46-fi
 
 ## PR #56 Dependency Review 处置（2026-09-25）
 
-新推送触发的 Dependency Review 因高危 `GHSA-c2qf-rxjj-qqgw` 失败：`react-rewrite-cli@0.1.1` 带入 `semver@5.6.0`；GitHub Advisory 标明受影响版本为低于 5.7.2。该开发依赖在仓库无引用，因此从 `apps/web/package.json` 与锁文件移除，而不是只在锁文件强制覆盖其传递依赖。提交后需以 PR 的新 SHA 验证 Dependency Review 通过；本地无须重跑业务测试。
+新推送触发的 Dependency Review 因高危 `GHSA-c2qf-rxjj-qqgw` 失败：`react-rewrite-cli@0.1.1` 带入 `semver@5.6.0`；GitHub Advisory 标明受影响版本为低于 5.7.2。该开发依赖在仓库无引用，因此从 `apps/web/package.json` 与锁文件移除，而不是只在锁文件强制覆盖其传递依赖。提交 `3daefcfd` 推送后，PR 检查运行 `36107802522` 的 Dependency Review 已通过；本地无须重跑业务测试。
 
 ## 未运行项与已知边界
 
