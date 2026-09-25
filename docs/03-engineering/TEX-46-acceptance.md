@@ -113,6 +113,10 @@ Codex / CodeRabbit / Greptile 的 9 条意见逐项核验与处置见 [TEX-46-fi
 
 文档同步：已更新牌桌与动画 E2E 目录 README、前端权威规格及本记录。任务范围/路线图、其他权威规格、安全、部署与运维说明**已检查，无需更新**，因为本轮仅修复既有牌面展示，不新增接口、权限、流程或运行配置。验证限于 Chromium 模拟视口，未执行全量 E2E、真实服务端联调或手机实机验收。
 
+## PR #56 Dependency Review 处置（2026-09-25）
+
+新推送触发的 Dependency Review 因高危 `GHSA-c2qf-rxjj-qqgw` 失败：`react-rewrite-cli@0.1.1` 带入 `semver@5.6.0`；GitHub Advisory 标明受影响版本为低于 5.7.2。该开发依赖在仓库无引用，因此从 `apps/web/package.json` 与锁文件移除，而不是只在锁文件强制覆盖其传递依赖。提交后需以 PR 的新 SHA 验证 Dependency Review 通过；本地无须重跑业务测试。
+
 ## 未运行项与已知边界
 
 - **交付状态（2026-09-17 更新）**：已推送并创建 PR [#56](https://github.com/fujiabao89/Texas-Holdem/pull/56)，目标分支 `main`（分支已 rebase 到 `main@5567e4fb`）。CI 已在该分支运行，`quality`、`e2e`、`e2e-real`、`perf-smoke`、CodeQL、`branch-and-pr-policy`、`repository-hygiene`、`workflow-lint` 全部通过。上一条「未推送、未创建 PR、CI 未运行过」仅适用于 2026-09-16 记录成文时点。
