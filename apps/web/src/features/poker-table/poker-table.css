@@ -202,27 +202,34 @@
   background: linear-gradient(145deg, #fffefa 45%, #f0eddf);
   box-shadow: inset 0 0 0 2px #fffefb, 0 2px 1px #132c2529, 0 5px 8px #10291f40;
 }
+/* Small revealed/result cards share the seat dimensions. Keep each rank and
+   suit once, in separate rows, and scale both with the actual card width. */
+.rr-table-page .table-card-compact { gap: calc(var(--seat-card-width) * 0.06); font: 700 calc(var(--seat-card-width) * 0.5)/1 Arial, sans-serif; }
+.rr-table-page .table-card-compact > span:last-child { font-family: Georgia, serif; font-size: calc(var(--seat-card-width) * 0.56); }
+.rr-table-page .table-card-face[data-card-variant="board"] { --card-face-width: var(--board-card-width); }
+.rr-table-page .table-card-face[data-card-variant="hole"] { --card-face-width: var(--hole-card-width); }
 .rr-table-page .table-card-corner {
   background: none;
   padding: 0;
   font-family: Arial, sans-serif;
-  font-size: 16px;
+  font-size: calc(var(--card-face-width) * 0.22);
   letter-spacing: -0.05em;
-  gap: 1px;
+  gap: calc(var(--card-face-width) * 0.015);
 }
-.rr-table-page .table-card-corner > span:last-child { font-size: 12px; }
-.rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 10px; }
-.rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 8px; }
+.rr-table-page .table-card-corner > span:last-child { font-size: calc(var(--card-face-width) * 0.16); }
+.rr-table-page .table-card-corner.table-card-ten { font-size: calc(var(--card-face-width) * 0.17); }
+.rr-table-page .table-card-pip { font-size: calc(var(--card-face-width) * 0.16); }
+.rr-table-page .table-card-ace { font-size: calc(var(--card-face-width) * 0.58); }
 .rr-table-page .table-card-court {
   width: 42%;
   min-height: 56%;
   border-radius: 2px;
   border: 1px solid currentColor;
   background: repeating-linear-gradient(45deg, transparent 0 5px, #c9bd991c 5px 6px);
-  font-size: 24px;
-  padding: 4px 0;
+  font-size: calc(var(--card-face-width) * 0.34);
+  padding: calc(var(--card-face-width) * 0.04) 0;
 }
-.rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 14px; padding-block: 1px; }
+.rr-table-page .table-card-court > span:last-child { font-size: calc(var(--card-face-width) * 0.26); }
 .rr-table-page .table-card-back {
   border: 2px solid #e0dfc4;
   background: #254837;
@@ -450,12 +457,6 @@
   .rr-table-page .table-pot-total strong { font-size: 20px; }
   .rr-table-page .table-board-zone { padding: 4px 8px; }
   .rr-table-page .table-pot-list { top: calc(50% + 33px); width: 85%; }
-  .rr-table-page .table-card-corner { font-size: 12px; }
-  .rr-table-page .table-card-corner > span:last-child { font-size: 10px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 8px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 7px; }
-  .rr-table-page .table-card-court { font-size: 18px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-court { font-size: 12px; }
   .rr-table-page .table-card-seal { font-size: 10px; }
   .rr-table-page .rr-betting-panel { padding: 7px; gap: 6px; }
   .rr-table-page .table-primary-actions,
@@ -611,11 +612,6 @@
   .rr-table-page .table-seat-bet[data-seat-slot="5"] { left: 66%; top: 92%; }
   .rr-table-page[data-table-layout="10"] .table-seat-bet:is([data-seat-slot="1"], [data-seat-slot="9"]) { top: 13%; }
   .rr-table-page .table-bet-chip { width: 8px; height: 8px; }
-  .rr-table-page .table-card-corner { font-size: 10px; }
-  .rr-table-page .table-card-corner > span:last-child { font-size: 8px; }
-  .rr-table-page .table-card-court { font-size: 16px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-corner { font-size: 7px; }
-  .rr-table-page [data-card-variant="seat"] .table-card-corner > span:last-child { font-size: 6px; }
   .rr-table-page .table-deck { width: 24px; height: 34px; left: 2px; top: 2px; }
   .rr-table-page [data-muck] { top: 16px; }
   .rr-table-page .table-action-dock { inset: 0 0 0 auto; width: 252px; height: 100%; padding: 0; align-items: center; }

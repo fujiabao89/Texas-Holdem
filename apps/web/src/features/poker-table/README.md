@@ -4,11 +4,13 @@ TEX-38 的 `event-feedback.ts` 只映射公开事件为中文动作/金额/牌�
 
 回归：`pnpm exec vitest run --project unit apps/web/src/features/poker-table --maxWorkers 1`；浏览器见 [animation-audio](../../../../../tests/e2e/animation-audio/README.md)。
 
-牌桌状态投影、2–10 Seat 布局、公共牌、底池、行动者、可见底牌及终局排名展示（TEX-25）。视觉层为暖白页面中的深绿色椭圆牌桌：本人始终位于下方，公共牌与底池居中，其他已入座玩家环绕，操作区以暖白悬浮面板呈现。明牌采用项目化的标准扑克样式：真实牌宽高比、四角牌值和花色、2–10 的牌点阵列、A 的居中大花色；底牌则使用深绿花纹牌背。组件只消费 `ProjectionStore` 的权威 Snapshot/Event/Clock 镜像；私有牌只读取 `viewer.holeCards`，其他玩家只显示已投影公开牌或牌背。
+牌桌状态投影、2–10 Seat 布局、公共牌、底池、行动者、可见底牌及终局排名展示（TEX-25）。视觉层为暖白页面中的深绿色椭圆牌桌：本人始终位于下方，公共牌与底池居中，其他已入座玩家环绕，操作区以暖白悬浮面板呈现。公共牌和本人手牌采用标准扑克样式：真实牌宽高比、两端牌值和花色、2–10 的牌点阵列、A 的居中大花色；底牌则使用深绿花纹牌背。对手亮牌、摊牌候选/最佳五张和结算中的小牌使用上下分开的单组牌值与花色，字形随 `--seat-card-width` 缩放，不叠加牌角、中央牌点或人头牌字样。组件只消费 `ProjectionStore` 的权威 Snapshot/Event/Clock 镜像；私有牌只读取 `viewer.holeCards`，其他玩家只显示已投影公开牌或牌背。
 
 `table-state.ts` 保持为可测的纯展示准入逻辑：没有当前行动、连续投影、有效连接或存在 pending 命令时不展示操作区。它不计算筹码、合法性或胜负。`tableLayout` 与 `tableSeatSlots` 按完整参赛名单选择 2/6/10 人模板，按相对本人 `seatIndex` 的顺时针顺序填充，本人固定视觉槽位 5；双人对手固定槽位 0。状态变化不筛除玩家，因此行动者、筹码、连接、弃牌/全下/淘汰/撤回、昵称与重渲染不会改变位置；名单实际变化时允许重新分配。该规则由 TEX-46 整体布局调整取代原 TEX-47 统一十槽位偏移，权威约定见 [前端规格 §7.2](../../../../../docs/05-frontend-spec.md)。`seatBadges` 仍只读取权威 `dealerSeat/smallBlindSeat/bigBlindSeat`，Heads-Up 的 D=SB 并排显示。回归：`pnpm exec vitest run --project unit apps/web/src/features/poker-table` 与 [座位稳定性 E2E](../../../../../tests/e2e/seats/README.md)。
 
 TEX-26/TEX-27 合并时，顶部历史按钮和音效开关共用一个控件组，连接状态只渲染一次；牌桌容器及其 Deck/定位 ref 也只保留一套。TEX-27 的历史抽屉、淘汰观战提示和赛果入口读取 canonical，关闭历史后焦点返回按钮；倒计时的行动机会 key 同样读取 canonical，不随动画积压延迟切换。
+
+公共牌与本人手牌的牌角、牌点、A 大花色和 J/Q/K 中央图案同样按各自牌宽同比缩放，不再用固定像素字号覆盖手机尺寸；牌框尺寸、牌点位置和动画时序不变。
 
 Showdown 的 canonical target 可以先包含多个已公开 `revealedCards`；Seat 仍只根据 presentation 中已完成的逐人 `PLAYER_REVEALED` 显示对手牌。Snapshot 屏障则直接对齐权威终态，不重放旧 Reveal。
 

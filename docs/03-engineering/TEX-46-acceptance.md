@@ -93,6 +93,26 @@ Codex / CodeRabbit / Greptile 的 9 条意见逐项核验与处置见 [TEX-46-fi
 
 验证边界：浏览器视口覆盖 360×800、390×844、768×1024、1366×768、1920×1080、844×390、800×360，并包含 640×800/1467×897 边界用例；当前真实双人房间已做只读视觉检查。没有运行全量跨模块 E2E、真实服务端/数据库联调套件、生产构建或 Android/iPhone 实机旋转验收，不将本轮结果等同于发布验收。
 
+## 小尺寸牌面重叠修复（2026-09-25）
+
+上一轮整体布局已按用户要求提交为 `0f1bd117 feat(TEX-46): add compact rail-based table layouts`；本节是之后追加的牌面缺陷修复，尚未提交或推送。
+
+根因：小牌沿用两端牌角与中央 A 花色/J/Q/K 图案，字号却是固定像素或屏幕断点字号，没有随已经缩小的牌框变化。修复将对手公开底牌、摊牌候选/最佳五张和本手结算的小牌改为单组上下分开的牌值与花色。浏览器复核时也确认短横屏公共牌存在同类重叠，因此公共牌与本人手牌保留标准牌点排版，但各字形统一按自己的牌宽缩放；双字符 `10` 牌角单独收紧。
+
+本轮未改变牌框大小、座位/操作区布局、牌点坐标、牌局规则、公开权限、服务端投影、牌的可访问名称或动画时序。新增真实 Chromium 回归覆盖 1366×768、360×800、844×390，在公共牌、本人手牌、摊牌候选/最佳五张、结算与对手亮牌中测量字形边界，检查无相交/无牌框裁切。现有连续摊牌及减少动态效果的结果展示回归同时执行。
+
+验证命令：
+
+- `pnpm exec eslint apps/web/src/features/poker-table/poker-table-page.tsx tests/e2e/animation-audio/experience.spec.ts`
+- `pnpm --filter @texas-holdem/web typecheck`
+- `pnpm exec tsc --noEmit -p tsconfig.test.json`
+- `pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/animation-audio/experience.spec.ts --grep '小牌|公共牌依次|减少动态效果仍保留' --workers=1`（测试服务使用 3100 端口，`NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100`、`NEXT_PUBLIC_WS_URL=ws://127.0.0.1:3100/api/v1/ws`，仅本次进程环境）
+- `git diff --check`
+
+以上检查全部通过；定向 E2E 为 **5 passed，0 failed，0 retries**。截图沿用 `output/playwright/TEX-38-compact-*.png`；最佳五张完整排版截图保留为 E2E 附件。此类截图完成 CSS 动画以观察终态，不作为动画时序证据。
+
+文档同步：已更新牌桌与动画 E2E 目录 README、前端权威规格及本记录。任务范围/路线图、其他权威规格、安全、部署与运维说明**已检查，无需更新**，因为本轮仅修复既有牌面展示，不新增接口、权限、流程或运行配置。验证限于 Chromium 模拟视口，未执行全量 E2E、真实服务端联调或手机实机验收。
+
 ## 未运行项与已知边界
 
 - **交付状态（2026-09-17 更新）**：已推送并创建 PR [#56](https://github.com/fujiabao89/Texas-Holdem/pull/56)，目标分支 `main`（分支已 rebase 到 `main@5567e4fb`）。CI 已在该分支运行，`quality`、`e2e`、`e2e-real`、`perf-smoke`、CodeQL、`branch-and-pr-policy`、`repository-hygiene`、`workflow-lint` 全部通过。上一条「未推送、未创建 PR、CI 未运行过」仅适用于 2026-09-16 记录成文时点。

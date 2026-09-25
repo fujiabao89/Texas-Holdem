@@ -366,9 +366,13 @@ function CardFace({ card, variant, className = "" }: { readonly card: Card; read
   const cornerText = variant === "seat" ? "text-[8px] sm:text-xs" : "text-[10px] sm:text-sm";
   const color = red ? "text-rose-600" : "text-slate-900";
   return <span role="img" data-card-variant={variant} className={`table-card-face relative block ${dimensions} ${className} shrink-0 overflow-hidden rounded-[0.45rem] border border-slate-200 bg-[linear-gradient(135deg,#fffef9,#eeeee2)] font-serif font-bold shadow-[0_3px_7px_rgba(15,23,42,0.24)] ${color}`} aria-label={cardName(card)}>
-    <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
-    <CardPips card={card} variant={variant} />
-    <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
+    {variant === "seat" ? <span aria-hidden="true" className="table-card-compact absolute inset-0 flex flex-col items-center justify-center">
+      <span>{card.rank}</span><span>{cardSuit(card)}</span>
+    </span> : <>
+      <CardCorner rank={card.rank} suit={cardSuit(card)} className={`left-[10%] top-[8%] ${cornerText}`} />
+      <CardPips card={card} variant={variant} />
+      <CardCorner rank={card.rank} suit={cardSuit(card)} className={`bottom-[8%] right-[10%] rotate-180 ${cornerText}`} />
+    </>}
   </span>;
 }
 
@@ -380,7 +384,7 @@ function CardBack({ variant, className = "" }: { readonly variant: "board" | "se
 }
 
 function CardCorner({ rank, suit, className }: { readonly rank: Card["rank"]; readonly suit: string; readonly className: string }) {
-  const compactTen = rank === "10" ? "text-[8px] tracking-[-0.08em] sm:text-xs" : "";
+  const compactTen = rank === "10" ? "table-card-ten text-[8px] tracking-[-0.08em] sm:text-xs" : "";
   return <span aria-hidden="true" className={`table-card-corner absolute z-10 grid justify-items-center gap-px rounded-[0.1rem] bg-white/95 px-px leading-[0.95] ${className} ${compactTen}`}><span>{rank}</span><span>{suit}</span></span>;
 }
 
@@ -388,8 +392,8 @@ function CardPips({ card, variant }: { readonly card: Card; readonly variant: "b
   const suit = cardSuit(card);
   const pipText = card.rank === "10" ? variant === "seat" ? "text-[8px] sm:text-[10px]" : "text-[10px] sm:text-xs" : variant === "seat" ? "text-[9px] sm:text-xs" : variant === "board" ? "text-xs sm:text-base" : "text-xs sm:text-sm";
   const layout = pipLayouts[card.rank];
-  if (layout !== undefined) return <>{layout.map((pip, index) => <span aria-hidden="true" className={`absolute -translate-x-1/2 -translate-y-1/2 leading-none ${pip.inverted ? "rotate-180" : ""} ${pipText}`} style={{ left: `${pip.x}%`, top: `${pip.y}%` }} key={index}>{suit}</span>)}</>;
-  if (card.rank === "A") return <span aria-hidden="true" className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl"}`}>{suit}</span>;
+  if (layout !== undefined) return <>{layout.map((pip, index) => <span aria-hidden="true" className={`table-card-pip absolute -translate-x-1/2 -translate-y-1/2 leading-none ${pip.inverted ? "rotate-180" : ""} ${pipText}`} style={{ left: `${pip.x}%`, top: `${pip.y}%` }} key={index}>{suit}</span>)}</>;
+  if (card.rank === "A") return <span aria-hidden="true" className={`table-card-ace absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 leading-none ${variant === "seat" ? "text-2xl sm:text-4xl" : "text-4xl sm:text-6xl"}`}>{suit}</span>;
   return <span aria-hidden="true" className={`table-card-court absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 justify-items-center rounded-md border border-current/15 bg-white/45 px-1 leading-none ${variant === "seat" ? "text-base sm:text-2xl" : "text-2xl sm:text-4xl"}`}><span>{card.rank}</span><span className={variant === "seat" ? "text-xs sm:text-base" : "text-sm sm:text-xl"}>{suit}</span></span>;
 }
 
