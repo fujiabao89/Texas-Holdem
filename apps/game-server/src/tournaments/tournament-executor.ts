@@ -298,6 +298,10 @@ export class TournamentExecutor {
       }
       if (this.checkNoHuman()) return;
       const engineState = this.state.engine.getState();
+      if (!engineState.handInProgress && this.state.presentationPhase === "SHOWDOWN_DISPLAY") {
+        // Later commands may emit events, but only the showdown timer may end the active window.
+        return;
+      }
       if (!engineState.handInProgress) {
         this.clearPresentationPhaseTimer();
         this.state.actionDeadline = null;

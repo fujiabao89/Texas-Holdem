@@ -22,7 +22,7 @@ TEX-51：恢复注册返回可等待的启动结果，进行中比赛只有所�
 - **一桌一队列**：所有状态变更、Engine 调用、事件序列、投影与计时回调都经同一串行执行器（红线 3）；其他模块只读 `getView()` 快照或投递命令。
 - **截止点仲裁**：对截止点 `D`，所有 `receivedAt <= D` 的 Action/Time Bank 排在 `SYSTEM_TIMER_ACTION` 之前处理（即使仍排在 Timer 之后）；`receivedAt > D` 且仍指向同一行动机会 → `ACTION_TIMEOUT`，否则 `STALE_GAME_STATE`。
 - **计时权威**：以可注入 Clock/`TimerScheduler` 为准；Timer 携带 `handId/seatIndex/deadline/generation`，执行前复核、任一不匹配作 stale no-op（§8.2）。
-- **展示后开钟**：摊牌与新手发牌各有固定 4 秒服务端窗口。`SHOWDOWN_DISPLAY` 到期后才推进下一手；`DEALING` 到期后才经 Snapshot 原子公开 actor、LegalActions 和完整行动截止线。展示 Timer 携带 `tournamentId/handId/phase/generation`，迟到回调不得重置新手时钟。
+- **展示后开钟**：摊牌与新手发牌各有固定 4 秒服务端窗口。活动中的 `SHOWDOWN_DISPLAY` 只能由对应展示 Timer 结束；背压恢复或玩家撤回等命令仍发出各自事件，但不能提前清除窗口或推进下一手。`DEALING` 到期后才经 Snapshot 原子公开 actor、LegalActions 和完整行动截止线。展示 Timer 携带 `tournamentId/handId/phase/generation`，迟到回调不得重置新手时钟。
 - **幂等**：`actionId + Payload 摘要` 驻留内存账本（§7.3）；相同 Payload 复用原结果，不同 Payload → `IDEMPOTENCY_KEY_REUSE`。
 - **无真人关房**：所有真人 `WITHDRAWN` → `ABANDONED_NO_HUMAN` + Room `CLOSE_ROOM`（§6.5）；最后存活者的冠军语义由 Engine 裁决。WS 发起的 `WITHDRAW_PLAYER` 也在执行点复核连接 epoch，Timer 撤回不携带该私有字段。
 - **手末提交边界**：手间事件（如两手之间的 `PLAYER_WITHDRAWN`）作为下一手 bundle 的前导事件落入同一原子提交；DB Writer（TEX-22）需据此验证（见 `tournament-persistence.ts` 注释）。
@@ -30,4 +30,4 @@ TEX-51：恢复注册返回可等待的启动结果，进行中比赛只有所�
 
 ## 测试
 
-`*.test.ts` 覆盖（unit 层，经根 `pnpm test:unit`）：串行化、receivedAt 截止裁决、展示窗/完整行动时钟/迟到展示回调、Time Bank、断线/宽限/无真人、重复/非法/过期命令、事件 sequence 与 Commit Bundle、time 模式升盲、Room↔Tournament 开局/终局闭环。全部使用 Fake Clock + 注入随机源，无真实 DB / sleep。
+`*.test.ts` 覆盖（unit 层，经根 `pnpm test:unit`）：串行化、receivedAt 截止裁决、展示窗/完整行动时钟/迟到展示回调、展示期间背压恢复与玩家撤回、Time Bank、断线/宽限/无真人、重复/非法/过期命令、事件 sequence 与 Commit Bundle、time 模式升盲、Room↔Tournament 开局/终局闭环。全部使用 Fake Clock + 注入随机源，无真实 DB / sleep。

@@ -475,7 +475,9 @@ describe("断线 / 离开 / 宽限 / 无真人关房", () => {
     });
 
     const messages = harness.output.events.slice(before);
-    const withdrawn = messages.find((message) => message.payload.event.type === "PLAYER_WITHDRAWN")!;
+    const withdrawn = messages.find(
+      (message) => message.payload.event.type === "PLAYER_WITHDRAWN",
+    )!;
     const nextHand = messages.find((message) => message.payload.event.type === "HAND_STARTED")!;
     expect(withdrawn.payload.handId).toBe(oldHandId);
     expect(withdrawn.payload.patch.handId).toBe(oldHandId);
@@ -914,6 +916,83 @@ describe("展示阶段与行动时钟（TEX-59）", () => {
       presentationPhase: "ACTION_OPEN",
       actionDeadline: harness.clock.now() + 15_000,
     });
+  });
+
+  it("背压在 SHOWDOWN_DISPLAY 内恢复时仍保留完整展示窗口", async () => {
+    const harness = makeHarness();
+    await start(harness);
+    await playUntilHandSettles(harness);
+
+    const showdown = harness.executor.getView();
+    expect(showdown.presentationPhase).toBe("SHOWDOWN_DISPLAY");
+    await harness.executor.submit({ type: "PAUSE_AFTER_HAND", paused: true });
+    harness.clock.advance(1_000);
+    await harness.executor.submit({ type: "PAUSE_AFTER_HAND", paused: false });
+
+    expect(harness.executor.getView()).toMatchObject({
+      currentHandId: showdown.currentHandId,
+      presentationPhase: "SHOWDOWN_DISPLAY",
+      showdownDisplayUntil: showdown.showdownDisplayUntil,
+    });
+
+    harness.clock.advance(SHOWDOWN_DISPLAY_MS - 1_000);
+    await Promise.resolve();
+    expect(harness.executor.getView().currentHandId).not.toBe(showdown.currentHandId);
+  });
+
+  it("SHOWDOWN_DISPLAY 内撤回玩家不会提前结束展示窗口", async () => {
+    const harness = makeHarness();
+    await start(harness);
+    await playUntilHandSettles(harness);
+
+    const showdown = harness.executor.getView();
+    harness.clock.advance(1_000);
+    await harness.executor.submit({
+      type: "WITHDRAW_PLAYER",
+      playerId: "p0",
+      reason: "USER_LEFT",
+    });
+
+    expect(
+      harness.output.events.some((message) => message.payload.event.type === "PLAYER_WITHDRAWN"),
+    ).toBe(true);
+    expect(harness.executor.getView()).toMatchObject({
+      currentHandId: showdown.currentHandId,
+      presentationPhase: "SHOWDOWN_DISPLAY",
+      showdownDisplayUntil: showdown.showdownDisplayUntil,
+    });
+
+    harness.clock.advance(SHOWDOWN_DISPLAY_MS - 1_000);
+    await Promise.resolve();
+    expect(harness.executor.getView()).toMatchObject({
+      status: "FINISHED",
+      presentationPhase: "BETWEEN_HANDS",
+      showdownDisplayUntil: null,
+    });
+  });
+
+  it("SHOWDOWN_DISPLAY 内背压停手后收到撤回仍保留有效展示状态", async () => {
+    const harness = makeHarness({ seats: 3 });
+    await start(harness);
+    await playUntilHandSettles(harness);
+
+    const showdown = harness.executor.getView();
+    await harness.executor.submit({ type: "PAUSE_AFTER_HAND", paused: true });
+    harness.clock.advance(1_000);
+    await harness.executor.submit({
+      type: "WITHDRAW_PLAYER",
+      playerId: "p0",
+      reason: "USER_LEFT",
+    });
+
+    expect(harness.executor.getView()).toMatchObject({
+      currentHandId: showdown.currentHandId,
+      presentationPhase: "SHOWDOWN_DISPLAY",
+      showdownDisplayUntil: showdown.showdownDisplayUntil,
+    });
+    expect(
+      harness.output.events.some((message) => message.payload.event.type === "PLAYER_WITHDRAWN"),
+    ).toBe(true);
   });
 
   it("无摊牌的弃牌获胜直接进入下一手发牌阶段", async () => {
