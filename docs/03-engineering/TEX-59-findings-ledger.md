@@ -1,6 +1,6 @@
 # TEX-59 / PR #59 Findings Ledger
 
-复核日期：2026-09-28。原审查基线：`72e889a4e03baa370e678a76d5b80ff07e5b9a68`；已验证首轮修复并推送至 PR 源分支（`392385e6`）。逐项检查了五条 inline finding（Greptile 两条、CodeRabbit 三条）、Greptile 汇总评论中的两条重复 finding 与 CodeRabbit 总结中的一条质量警告。CodeRabbit 对 `2259141f` 的增量审查新增 F-08；9 月 25 日和 28 日的 `@codex review` 请求均未产生 Codex 审查结果或 finding。未启动新的 Greptile 审查。
+复核日期：2026-09-28。原审查基线：`72e889a4e03baa370e678a76d5b80ff07e5b9a68`；首轮修复已推送至 `392385e6`，F-08 文档校正已推送至 `5eaec66d`。逐项检查了五条 inline finding（Greptile 两条、CodeRabbit 三条）、Greptile 汇总评论中的两条重复 finding 与 CodeRabbit 总结中的一条质量警告。CodeRabbit 对 `2259141f` 的增量审查新增 F-08；9 月 25 日和 28 日的 `@codex review` 请求均未产生 Codex 审查结果或 finding。未启动新的 Greptile 审查。
 
 ## 逐条核验
 
@@ -26,4 +26,4 @@
 
 ## 回复闭环
 
-修复推送后，F-01 [4122128485](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122128485)、F-02 [4122128922](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122128922) 与 F-04 [4122129566](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122129566) 均在原 inline 线程回复“已修正”。F-03 已在原线程 [4103766390](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4103766390) 说明非阻塞依据；原四条 inline 线程均显示已解决。F-05 已在 PR 对话 [5831118979](https://github.com/fujiabao89/Texas-Holdem/pull/59#issuecomment-5831118979) 说明跳过原因。F-06/F-07 所在的 Greptile 汇总评论是普通 PR 对话评论，没有独立回复线程；已在 [5869842893](https://github.com/fujiabao89/Texas-Holdem/pull/59#issuecomment-5869842893) 链接原评论并分别说明重复处置。F-08 待新文档修正通过验证并推送后在原 inline 线程回复。Codex 没有已发布的 finding 线程可回复。
+修复推送后，F-01 [4122128485](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122128485)、F-02 [4122128922](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122128922)、F-04 [4122129566](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122129566) 与 F-08 [4122420282](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122420282) 均在原 inline 线程回复“已修正”。F-03 已在原线程 [4103766390](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4103766390) 说明非阻塞依据；五条 inline 线程均显示已解决。F-05 已在 PR 对话 [5831118979](https://github.com/fujiabao89/Texas-Holdem/pull/59#issuecomment-5831118979) 说明跳过原因。F-06/F-07 所在的 Greptile 汇总评论是普通 PR 对话评论，没有独立回复线程；已在 [5869842893](https://github.com/fujiabao89/Texas-Holdem/pull/59#issuecomment-5869842893) 链接原评论并分别说明重复处置。Codex 没有已发布的 finding 线程可回复。
