@@ -504,17 +504,18 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
-.rr-table-page .table-quick-amounts .table-quick-amount { display: grid; align-content: center; gap: 1px; padding: 4px; }
+.rr-table-page .table-quick-amounts .table-quick-amount { display: grid; align-content: center; gap: 1px; min-width: 0; padding: 4px; container-type: inline-size; }
 .rr-table-page .table-quick-amount > span { font-size: 10px; font-weight: 500; white-space: nowrap; }
-.rr-table-page .table-quick-amount > strong { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.rr-table-page .table-quick-amount > strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; text-align: center; font-size: 10px; font-size: clamp(8px, 25cqi, 16px); font-weight: 650; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .rr-table-page .table-quick-amount[aria-pressed="true"] { background-color: #78b49a55; border-color: #55977991; box-shadow: inset 0 1px #ffffffba, inset 0 0 0 1px #4f8a6e38; }
 .rr-table-page .table-wager-slider { grid-area: 2 / 1 / 3 / -1; }
 .rr-table-page .table-wager-meta { display: contents; }
 .rr-table-page .table-wager-back { grid-area: 3 / 1 / 4 / 2; }
 .rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; min-width: 0; padding-inline: 6px; }
 .rr-table-page .table-wager-allin { grid-area: 3 / 3 / 4 / 4; min-width: 0; }
-.rr-table-page .table-wager-allin > .rr-action { width: 100%; height: 100%; min-width: 0; padding-inline: 4px; }
-.rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 4 / 4 / 5; min-width: 0; padding-inline: 4px; }
+.rr-table-page .table-wager-allin > .rr-action,
+.rr-table-page .table-wager-editor > .rr-action-bet { width: 100%; height: auto; min-width: 0; min-height: 44px; padding-inline: 4px; white-space: normal; overflow-wrap: anywhere; line-height: 1.1; }
+.rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 4 / 4 / 5; }
 .rr-table-page .table-exact-amount {
   grid-area: 1 / 1 / 2 / -1;
   display: flex;
@@ -628,7 +629,7 @@
   .rr-table-page .table-wager-exact-toggle { grid-area: 3 / 2 / 4 / 3; }
   .rr-table-page .table-wager-allin { grid-area: 3 / 3 / 4 / 4; }
   .rr-table-page .table-wager-editor > .rr-action-bet { grid-area: 3 / 4 / 4 / 5; }
-  .rr-table-page .table-quick-amount > strong { font-size: 14px; }
+  .rr-table-page .table-quick-amount > strong { font-size: clamp(8px, 25cqi, 14px); }
   .rr-table-page .table-clock-bar { padding: 0; min-height: 0; }
   .rr-table-page .table-clock-bar p, .rr-table-page .table-notices { font-size: 9px; line-height: 12px; }
   .rr-table-page .table-notices { gap: 2px; }

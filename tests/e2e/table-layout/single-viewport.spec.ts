@@ -39,7 +39,7 @@ const ARRANGEMENTS = [
   { name: "6 人稀疏座位", seats: [...SPARSE_SEATS] },
 ];
 
-function roomSnapshot(seats: readonly number[]) {
+function roomSnapshot(seats: readonly number[], startingStack = 1000) {
   return {
     snapshotVersion: 1,
     roomId: "room-1",
@@ -49,7 +49,7 @@ function roomSnapshot(seats: readonly number[]) {
     hostPlayerId: "player-1",
     config: {
       maxPlayers: seats.length,
-      startingStack: 1000,
+      startingStack,
       smallBlind: 5,
       bigBlind: 10,
       blindMode: "fixed",
@@ -69,7 +69,7 @@ function roomSnapshot(seats: readonly number[]) {
   };
 }
 
-function gameSnapshot(seats: readonly number[]) {
+function gameSnapshot(seats: readonly number[], startingStack = 1000, potAmount = 90) {
   return {
     snapshotVersion: 1,
     reason: "INITIAL",
@@ -89,7 +89,7 @@ function gameSnapshot(seats: readonly number[]) {
     ],
     pots: [
       {
-        amount: 90,
+        amount: potAmount,
         eligiblePlayerIds: seats.map((_, index) => `player-${index + 1}`),
       },
     ],
@@ -100,7 +100,7 @@ function gameSnapshot(seats: readonly number[]) {
       playerId: `player-${index + 1}`,
       displayName: `玩家${index + 1}`,
       seat,
-      stack: 990 - seat,
+      stack: startingStack - 10 - seat,
       streetBet: index === 0 ? 10 : 5,
       totalCommitted: index === 0 ? 10 : 5,
       pokerStatus: "ACTIVE",
@@ -123,9 +123,9 @@ function gameSnapshot(seats: readonly number[]) {
         minBetTo: null,
         canRaise: true,
         minRaiseTo: 20,
-        maxRaiseTo: 990,
+        maxRaiseTo: startingStack - 10,
         canAllIn: true,
-        allInTo: 1000,
+        allInTo: startingStack,
       },
       timeBankRemainingMs: 60_000,
     },
@@ -143,6 +143,7 @@ async function openTable(
   page: Page,
   seats: readonly number[],
   commands?: unknown[],
+  options: { readonly startingStack?: number; readonly potAmount?: number } = {},
 ): Promise<(payload: unknown) => void> {
   let push: ((payload: unknown) => void) | undefined;
   await seedTableSession(page);
@@ -161,8 +162,8 @@ async function openTable(
             connectionId: "connection-1",
             resumed: true,
             tookOver: false,
-            roomSnapshot: roomSnapshot(seats),
-            gameSnapshot: gameSnapshot(seats),
+            roomSnapshot: roomSnapshot(seats, options.startingStack),
+            gameSnapshot: gameSnapshot(seats, options.startingStack, options.potAmount),
           },
         }),
       );
@@ -576,6 +577,93 @@ test.describe("按需行动区", () => {
       payload: { action: { type: "RAISE", raiseTo: 42 } },
     });
   });
+
+  for (const viewport of [
+    { name: "360x800 手机竖屏", width: 360, height: 800 },
+    { name: "800x360 短横屏", width: 800, height: 360 },
+    { name: "844x390 横屏手机", width: 844, height: 390 },
+  ] as const) {
+    test(`${viewport.name} 的最大合法筹码金额不会溢出下注控件`, async ({ page }) => {
+      const largestSafeStack = Number.MAX_SAFE_INTEGER;
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await openTable(page, contiguousSeats(6), undefined, {
+        startingStack: largestSafeStack,
+        potAmount: largestSafeStack,
+      });
+      await page.getByRole("button", { name: "加注" }).click();
+
+      const quickAmounts = page.locator(".table-quick-amount");
+      await expect(quickAmounts).toHaveCount(4);
+      const quickText = await quickAmounts.evaluateAll((buttons) => buttons.map((button) => {
+        const amount = button.querySelector("strong");
+        if (amount === null) throw new Error("快捷额缺少金额");
+        const range = document.createRange();
+        range.selectNodeContents(amount);
+        const bounds = button.getBoundingClientRect();
+        return {
+          label: button.getAttribute("aria-label") ?? "",
+          button: { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom },
+          fragments: Array.from(range.getClientRects(), (rect) => ({
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          })),
+        };
+      }));
+      for (const item of quickText) {
+        expect(item.label).toMatch(/\d{16}/);
+        expect(item.fragments.length).toBeGreaterThan(0);
+        for (const fragment of item.fragments) {
+          expect(fragment.left).toBeGreaterThanOrEqual(item.button.left - 1);
+          expect(fragment.right).toBeLessThanOrEqual(item.button.right + 1);
+          expect(fragment.top).toBeGreaterThanOrEqual(item.button.top - 1);
+          expect(fragment.bottom).toBeLessThanOrEqual(item.button.bottom + 1);
+        }
+      }
+
+      await quickAmounts.last().click();
+      const longValueButtons = page.locator(
+        ".table-wager-allin > .rr-action, .table-wager-editor > .rr-action-bet",
+      );
+      await expect(longValueButtons).toHaveCount(2);
+      const longValueText = await longValueButtons.evaluateAll((buttons) => buttons.map((button) => {
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        const bounds = button.getBoundingClientRect();
+        return {
+          text: button.textContent ?? "",
+          button: { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom },
+          fragments: Array.from(range.getClientRects(), (rect) => ({
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          })),
+        };
+      }));
+      expect(longValueText[0]!.text).toContain(String(largestSafeStack));
+      expect(longValueText[1]!.text).toMatch(/\d{16}/);
+      for (const item of longValueText) {
+        expect(item.fragments.length).toBeGreaterThan(0);
+        for (const fragment of item.fragments) {
+          expect(fragment.left).toBeGreaterThanOrEqual(item.button.left - 1);
+          expect(fragment.right).toBeLessThanOrEqual(item.button.right + 1);
+          expect(fragment.top).toBeGreaterThanOrEqual(item.button.top - 1);
+          expect(fragment.bottom).toBeLessThanOrEqual(item.button.bottom + 1);
+        }
+      }
+
+      const panel = page.locator(".rr-betting-panel");
+      const metrics = await panel.evaluate((element) => ({
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      }));
+      expect(metrics.scrollHeight, "大额下注面板不得要求内部滚动").toBeLessThanOrEqual(
+        metrics.clientHeight + 1,
+      );
+    });
+  }
 });
 
 test.describe("牌桌中央留白", () => {

@@ -117,6 +117,22 @@ Codex / CodeRabbit / Greptile 的 9 条意见逐项核验与处置见 [TEX-46-fi
 
 新推送触发的 Dependency Review 因高危 `GHSA-c2qf-rxjj-qqgw` 失败：`react-rewrite-cli@0.1.1` 带入 `semver@5.6.0`；GitHub Advisory 标明受影响版本为低于 5.7.2。该开发依赖在仓库无引用，因此从 `apps/web/package.json` 与锁文件移除，而不是只在锁文件强制覆盖其传递依赖。提交 `3daefcfd` 推送后，PR 检查运行 `36107802522` 的 Dependency Review 已通过；本地无须重跑业务测试。
 
+## 大额筹码下注控件（2026-09-28）
+
+确认 Codex P2 有效：房间起始筹码上限由协议安全整数范围决定，下注快捷额及全下值可能达到 16 位，而四列窄按钮原先固定字号且不折行。快捷额现按按钮宽度缩放数字并允许精确金额折行；全下与提交按钮同样可折行，不截断或近似显示筹码值。未改动筹码计算、协议或服务端合法动作。
+
+新增真实浏览器回归，以 `Number.MAX_SAFE_INTEGER` 作为起始筹码和底池，校验所有快捷额、全下值和选择 Pot 后的提交值仍完整，文字边界落在按钮内，且展开行动区不需要面板内部滚动。视口覆盖 360×800、800×360、844×390。
+
+验证命令与结果：
+
+- `pnpm exec eslint tests/e2e/table-layout/single-viewport.spec.ts`：通过。
+- `pnpm exec tsc --noEmit -p tsconfig.test.json`：通过。
+- `pnpm --filter @texas-holdem/web typecheck`：通过。
+- `TEX_E2E_PORT=3112 TEX_E2E_BASE_URL=http://127.0.0.1:3112 pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/table-layout/single-viewport.spec.ts --grep '最大合法筹码金额' --workers=1`：3 passed。
+- `git diff --check`：通过。
+
+文档同步：更新牌桌功能 README、E2E 覆盖说明与本验收记录。已检查前端权威规格、协议/引擎、安全与运维说明，无需更新；本次仅调整前端金额排版，不改变合法下注范围、命令或接口。
+
 ## 未运行项与已知边界
 
 - **交付状态（2026-09-17 更新）**：已推送并创建 PR [#56](https://github.com/fujiabao89/Texas-Holdem/pull/56)，目标分支 `main`（分支已 rebase 到 `main@5567e4fb`）。CI 已在该分支运行，`quality`、`e2e`、`e2e-real`、`perf-smoke`、CodeQL、`branch-and-pr-policy`、`repository-hygiene`、`workflow-lint` 全部通过。上一条「未推送、未创建 PR、CI 未运行过」仅适用于 2026-09-16 记录成文时点。
