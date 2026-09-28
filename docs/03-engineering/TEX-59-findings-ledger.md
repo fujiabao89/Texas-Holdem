@@ -1,6 +1,6 @@
 # TEX-59 / PR #59 Findings Ledger
 
-复核日期：2026-09-28。PR 核验基线：`72e889a4e03baa370e678a76d5b80ff07e5b9a68`。逐项检查了四条 inline finding（Greptile 两条、CodeRabbit 两条）、Greptile 汇总评论中的两条重复 finding 与 CodeRabbit 总结中的一条质量警告。9 月 25 日和 28 日的两次 `@codex review` 请求均未产生 Codex 审查结果或 finding；CodeRabbit 对 9 月 28 日的请求回复已审过当前 PR 提交，没有新 finding。未启动新的 Greptile 审查。
+复核日期：2026-09-28。原审查基线：`72e889a4e03baa370e678a76d5b80ff07e5b9a68`；已验证修复并推送至 PR 源分支（`392385e6`）。逐项检查了四条 inline finding（Greptile 两条、CodeRabbit 两条）、Greptile 汇总评论中的两条重复 finding 与 CodeRabbit 总结中的一条质量警告。9 月 25 日和 28 日的两次 `@codex review` 请求均未产生 Codex 审查结果或 finding；CodeRabbit 对 9 月 28 日的请求回复已审过当时的 PR 提交，没有新 finding。未启动新的 Greptile 审查。
 
 ## 逐条核验
 
@@ -24,4 +24,4 @@
 
 ## 回复闭环
 
-F-03 已在原线程 [4103766390](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4103766390) 说明其非阻塞依据；F-05 已在 PR 对话 [5831118979](https://github.com/fujiabao89/Texas-Holdem/pull/59#issuecomment-5831118979) 说明跳过原因。F-01、F-02 与 F-04 的修复尚未推送，因此尚未回复“已修正”；F-06/F-07 的汇总评论也待在推送后统一回复。虽然 GitHub API 对源仓库报告 `push: false`，但 `git push --dry-run` 已确认可更新 PR 源分支。Codex 没有已发布的 finding 线程可回复。
+修复推送后，F-01 [4122128485](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122128485)、F-02 [4122128922](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122128922) 与 F-04 [4122129566](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4122129566) 均在原 inline 线程回复“已修正”。F-03 已在原线程 [4103766390](https://github.com/fujiabao89/Texas-Holdem/pull/59#discussion_r4103766390) 说明非阻塞依据；四条 inline 线程均显示已解决。F-05 已在 PR 对话 [5831118979](https://github.com/fujiabao89/Texas-Holdem/pull/59#issuecomment-5831118979) 说明跳过原因。F-06/F-07 所在的 Greptile 汇总评论是普通 PR 对话评论，没有独立回复线程；已在 [5869842893](https://github.com/fujiabao89/Texas-Holdem/pull/59#issuecomment-5869842893) 链接原评论并分别说明重复处置。Codex 没有已发布的 finding 线程可回复。
