@@ -329,7 +329,7 @@ type SubmitActionPayload = {
 **客户端义务**：
 
 - 进入 `SHOWDOWN_DISPLAY` 后，客户端 SHOULD 在 `showdownDisplayUntil` 到期前持续展示摊牌结果（底牌、牌型、Pot 归属高亮）。
-- 客户端 MUST NOT 根据 `showdownDisplayUntil` 的超时自行推进游戏状态；服务端负责推送 `HAND_END` Patch 或下一手 Snapshot。
+- 客户端 MUST NOT 根据 `showdownDisplayUntil` 的超时自行推进游戏状态；服务端在窗口结束后推送 `HAND_END` 的权威 `GAME_SNAPSHOT`，再按需发出下一手事件。
 - `SHOWDOWN_DISPLAY` 期间不展示行动计时器，不等待任何玩家输入。
 
 #### 8.4.2 权威行动时钟（CLOCK_UPDATED）
@@ -349,7 +349,7 @@ type ClockUpdatedPayload = {
 
 - **正常行动时钟**：当前 actor 使用 `USE_TIME_BANK` 成功后，发送 `CLOCK_UPDATED`，其中 `actionDeadline` 延长后非 null，`showdownDisplayUntil` 为 null。
 - **纯计时延长**：因 `USE_TIME_BANK` 或服务端内部延长时发送；不推进 Game Event sequence。
-- **进入 SHOWDOWN_DISPLAY**：服务端在推送展示阶段 Patch 时，同时可发送 `CLOCK_UPDATED`，其中 `actionDeadline` 为 null，`showdownDisplayUntil` 非 null，作为展示窗口的权威截止点补充（客户端已经从 Patch 获得该值，此消息仅作冗余确认）。
+- **进入 SHOWDOWN_DISPLAY**：不发送 `CLOCK_UPDATED`。旧手结算事件 Patch 发出后，服务端通过权威全量 `GAME_SNAPSHOT` 发布展示阶段，其中 `actionDeadline` 为 null、`showdownDisplayUntil` 非 null；客户端以该 Snapshot 的截止线为准。
 - **SHOWDOWN_DISPLAY 期间**：不发送带 `actionDeadline` 非 null 的 `CLOCK_UPDATED`。
 
 **互斥约束**（`packages/protocol` 的 Schema 强制执行）：`actionDeadline` 与 `showdownDisplayUntil` 不得同时非 null。
