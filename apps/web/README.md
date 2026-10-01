@@ -10,6 +10,8 @@ TEX-38 优化对应座位的动作与筹码方向、每 Pot 获奖金额、公�
 
 ## 命令
 
+依赖基线：Next.js 最低版本为 16.3.6。安装使用仓库锁文件；本次依赖补丁的范围与验证见 [依赖补丁验收记录](../../docs/03-engineering/dependency-patch-validation.md)。
+
 ```bash
 pnpm --filter @texas-holdem/web dev        # 本地开发
 pnpm --filter @texas-holdem/web build      # 生产构建
