@@ -1,3 +1,5 @@
+import type { Locator } from "@playwright/test";
+
 import { animationTimings } from "../../../apps/web/src/animations/timings";
 import { message } from "../../../apps/web/src/messages/zh-CN";
 import { PRESENTATION_STORAGE_KEYS } from "../../../apps/web/src/state/presentation-preferences";
@@ -110,6 +112,66 @@ test("TEX-38 公共牌依次到达终帧，连续摊牌各自重新呈现服务�
   const projectedCards = await showcase.locator(".showdown-best-card [role=img]").evaluateAll((cards) => cards.map((card) => card.getAttribute("aria-label")));
   expect(projectedCards).toEqual(await boardRegion.getByRole("img").evaluateAll((cards) => cards.map((card) => card.getAttribute("aria-label"))));
 });
+
+async function expectReadableCardFaces(cards: Locator): Promise<void> {
+  const problems = await cards.evaluateAll((faces) => faces.flatMap((face) => {
+    const bounds = face.getBoundingClientRect();
+    // Check rendered text bounds rather than requiring a particular card markup.
+    const glyphs = Array.from(face.querySelectorAll("span"))
+      .filter((node) => node.children.length === 0 && node.textContent?.trim())
+      .map((node) => ({ text: node.textContent, rect: node.getBoundingClientRect() }));
+    const errors: string[] = [];
+    if (glyphs.length < 2) errors.push("missing rank or suit");
+    for (const [index, glyph] of glyphs.entries()) {
+      const rect = glyph.rect;
+      if (rect.width <= 0 || rect.height <= 0 || rect.left < bounds.left - 0.5 || rect.right > bounds.right + 0.5 || rect.top < bounds.top - 0.5 || rect.bottom > bounds.bottom + 0.5) {
+        errors.push(`${glyph.text} is clipped`);
+      }
+      for (const other of glyphs.slice(index + 1)) {
+        if (Math.min(rect.right, other.rect.right) - Math.max(rect.left, other.rect.left) > 0.5 && Math.min(rect.bottom, other.rect.bottom) - Math.max(rect.top, other.rect.top) > 0.5) {
+          errors.push(`${glyph.text} overlaps ${other.text}`);
+        }
+      }
+    }
+    return errors.map((error) => `${face.getAttribute("aria-label")}: ${error}`);
+  }));
+  expect(problems, "Small card ranks and suits must remain separate and inside the face").toEqual([]);
+}
+
+for (const viewport of [{ width: 1366, height: 768 }, { width: 360, height: 800 }, { width: 844, height: 390 }]) {
+  test(`TEX-46 小牌 ${viewport.width}x${viewport.height} 摊牌与结算牌面不重叠`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await freezeClock(page);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await installAudioProbe(page);
+    const table = await installTable(page, tableSnapshot(2, { board, handPhase: "RIVER" }));
+    await table.open();
+    await expectReadableCardFaces(page.locator('[data-card-variant="board"][role="img"]'));
+    await expectReadableCardFaces(page.locator('[data-card-variant="hole"][role="img"]'));
+    const event = reveal("player-2");
+    event.payload.cards = [{ rank: "A", suit: "HEARTS" }, { rank: "K", suit: "DIAMONDS" }];
+    table.event(event, { players: [{ playerId: "player-2", revealedCards: event.payload.cards }] });
+    const showcase = page.locator(".showdown-showcase");
+    await expect(showcase.getByRole("img")).toHaveCount(12);
+    await page.clock.runFor(4_000);
+    await expectReadableCardFaces(showcase.getByRole("img"));
+    await captureTableEvidence(page, testInfo, `compact-showdown-${viewport.width}`);
+    // CSS animations use the browser timeline, not Playwright's mocked JS clock.
+    // Finish them only for this evidence image so the best-five row is visible.
+    const bestFivePath = testInfo.outputPath(`compact-best-five-${viewport.width}.png`);
+    await page.screenshot({ path: bestFivePath, fullPage: true, animations: "disabled" });
+    await testInfo.attach("compact-best-five", { path: bestFivePath, contentType: "image/png" });
+    await page.clock.runFor(animationTimings.showdownReveal + animationTimings.bestFive - 4_000 + 1);
+    await expect(showcase).toHaveCount(0);
+    const outcome = page.getByRole("region", { name: message("table.feedback.handOutcome") });
+    await expect(outcome.getByRole("img")).toHaveCount(5);
+    await expectReadableCardFaces(outcome.getByRole("img"));
+    const opponentCards = page.locator('[data-viewer="false"] [data-card-variant="seat"][role="img"]');
+    await expect(opponentCards).toHaveCount(2);
+    await expectReadableCardFaces(opponentCards);
+    await captureTableEvidence(page, testInfo, `compact-outcome-${viewport.width}`);
+  });
+}
 
 test("TEX-38 减少动态效果仍保留公开牌型、最佳五张和逐池分配", async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
