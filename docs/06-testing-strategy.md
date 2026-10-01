@@ -116,6 +116,8 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 ### 3.3 前端（权威：[05](./05-frontend-spec.md) §16）
 
+> TEX-57 的 [牌面专项回归](../tests/e2e/cards/README.md) 在 360×800、390×844、1366×768、1920×1080 检查公共牌与本人手牌的安全区/角标/点阵几何、中性色人头牌边框和红黑花色隔离，并验证 TEX-46 简化座位小牌的牌值与花色不相交、不裁切。节点数量断言防止缺失内容造成空断言通过；使用合法 WS 投影，不替代真实服务端或实机验收。
+
 > TEX-23/TEX-24 已补充前端基础与 Lobby Unit/E2E 测试：HTTP 成功/错误 Schema、Fake Clock 驱动 timeout、取消、Token 的同 Tab 恢复/安全清除与 storage 降级、WS 认证/幂等/`appliedSequence` pending 回收、Snapshot 覆盖、连续 Patch、乱序重同步、邀请链接预填和 Home 双入口的 a11y 回归。完整多浏览器多人联调继续由 TEX-28 落地。
 
 > TEX-25 增加牌桌展示和下注的定向回归：服务端 `LegalActions` 的操作准入、2–10 Seat 展示、BB/Pot 快捷额与普通 Bet/Raise 范围、键盘跟注、All-in 两步与 `ALL_IN` 信封、command feedback 不改投影。视觉验收以 Fake WebSocket 注入的合法投影在桌面与约 390×844 视口检查椭圆桌、环绕 Seat、公共牌及悬浮操作区，不依赖真实 game-server 或 sleep。WebSocketTransport 的 Fake WebSocket/Fake Clock/注入 UUID 测试继续覆盖 pending、拒绝、重连、乱序与 Token 安全边界。

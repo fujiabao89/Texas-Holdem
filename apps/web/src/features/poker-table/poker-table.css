@@ -218,13 +218,13 @@
 }
 .rr-table-page .table-card-corner > span:last-child { font-size: calc(var(--card-face-width) * 0.16); }
 .rr-table-page .table-card-corner.table-card-ten { font-size: calc(var(--card-face-width) * 0.17); }
+.rr-table-page .table-card-content { inset: 20% 22%; pointer-events: none; }
 .rr-table-page .table-card-pip { font-size: calc(var(--card-face-width) * 0.16); }
 .rr-table-page .table-card-ace { font-size: calc(var(--card-face-width) * 0.58); }
 .rr-table-page .table-card-court {
-  width: 42%;
-  min-height: 56%;
+  inset: 8% 20%;
   border-radius: 2px;
-  border: 1px solid currentColor;
+  border: 1px solid #c8c2ae;
   background: repeating-linear-gradient(45deg, transparent 0 5px, #c9bd991c 5px 6px);
   font-size: calc(var(--card-face-width) * 0.34);
   padding: calc(var(--card-face-width) * 0.04) 0;
