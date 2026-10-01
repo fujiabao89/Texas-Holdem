@@ -4,6 +4,8 @@
 
 ## 命令
 
+依赖基线：Fastify 最低版本为 5.12.5；间接依赖通过仓库锁文件统一固定。本次依赖补丁的范围与验证见 [依赖补丁验收记录](../../docs/03-engineering/dependency-patch-validation.md)。
+
 ```bash
 pnpm --filter @texas-holdem/game-server dev        # tsx watch 开发
 pnpm --filter @texas-holdem/game-server build      # tsc 编译到 dist/

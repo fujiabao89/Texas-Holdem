@@ -16,6 +16,8 @@
 
 ## 快速开始
 
+依赖补丁维护使用最小必要升级，并保留冻结锁文件安装与包发布冷却期校验。当前升级范围及验证结果见 [依赖补丁验收记录](./docs/03-engineering/dependency-patch-validation.md)。
+
 ```bash
 pnpm install      # 按 pnpm-lock.yaml 安装依赖（CI 使用 --frozen-lockfile）
 pnpm lint         # ESLint
