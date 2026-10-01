@@ -311,7 +311,9 @@ type SubmitActionPayload = {
 
 `SHOWDOWN_DISPLAY` 是一个纯展示阶段（wire 可见的 `handPhase` 枚举值），由服务端合成。它**不是** poker-engine 内部相态——`SHOWDOWN → POT_SETTLEMENT` 在引擎中是原子转移，`GameState.phase` 不暴露独立的 showdown 相态（见 [01-engine-spec.md §6](./01-engine-spec.md#6-hand-状态机)）。
 
-**服务端行为**：在最后一个 `POT_AWARDED` 事件发出后，服务端将当前所有连接的 PlayerView 推进到 `SHOWDOWN_DISPLAY` 阶段（通过 Patch 或下一次全量 Snapshot），同时设置 `showdownDisplayUntil = serverTime + showdownDisplayDurationMs`（具体时长由 game-server Scheduler 配置，P0 建议 3–5 秒，动画播放完前不切换）。`HAND_END` 阶段只在 `showdownDisplayUntil` 到期后开始推送；下一手的 `HAND_STARTED` 事件也在窗口结束后才发出。（注：TEX-58 完成展示阶段枚举、快照字段与协议时钟契约定义；`apps/game-server` 中展示定时器调度与手间延迟推进由后续任务 [TEX-59] 落地编排，未启用时 `showdownDisplayUntil` 保持为 `null` 且符合通用 Schema 约束）。
+**服务端行为**：手结算产生的旧手尾部事件（包括最后一个 `POT_AWARDED`）先以旧 `handId` 发出；逐事件 Patch 反映对应的 Engine 状态，因此可能携带 `handPhase: "HAND_END"`。随后服务端将当前 PlayerView 推进到 `SHOWDOWN_DISPLAY`，通过权威全量 Snapshot 发布该阶段，并设置 `showdownDisplayUntil = serverTime + 4_000`。窗口到期后，服务端先发布 `HAND_END` 的权威 Snapshot，再发送下一手的 `HAND_STARTED` 事件。TEX-59 的 game-server 运行时已启用该 Scheduler 编排，展示 Timer 固化 `tournamentId + handId + phase + generation`，迟到回调只作 stale no-op。
+
+下一手发牌后进入服务端内部 `DEALING` 展示窗（固定 4 秒；不新增 wire 枚举，`handPhase` 仍投影为当前 Engine 街道）。窗口内 `currentActorPlayerId`、`viewer.legalActions` 与 `actionDeadline` 均为 null；客户端不得提交动作或自行推断时钟。窗口到期后服务端以同一 `sequence` 的权威 `GAME_SNAPSHOT` 原子公开 actor、LegalActions 和完整 `actionTime` 截止线。该 Snapshot 是 `ACTION_OPENED` 的等价契约，不新增 Game Event，也不推进 sequence。
 
 > 提前结算场景（仅剩一名未 Fold 玩家）：服务端**不发送** `SHOWDOWN_STARTED` / `PLAYER_REVEALED`，`handPhase` 直接从 `RIVER`（或更早的街道）进入 `HAND_END`，`showdownDisplayUntil` 始终为 null。
 
@@ -327,7 +329,7 @@ type SubmitActionPayload = {
 **客户端义务**：
 
 - 进入 `SHOWDOWN_DISPLAY` 后，客户端 SHOULD 在 `showdownDisplayUntil` 到期前持续展示摊牌结果（底牌、牌型、Pot 归属高亮）。
-- 客户端 MUST NOT 根据 `showdownDisplayUntil` 的超时自行推进游戏状态；服务端负责推送 `HAND_END` Patch 或下一手 Snapshot。
+- 客户端 MUST NOT 根据 `showdownDisplayUntil` 的超时自行推进游戏状态；服务端在窗口结束后推送 `HAND_END` 的权威 `GAME_SNAPSHOT`，再按需发出下一手事件。
 - `SHOWDOWN_DISPLAY` 期间不展示行动计时器，不等待任何玩家输入。
 
 #### 8.4.2 权威行动时钟（CLOCK_UPDATED）
@@ -347,7 +349,7 @@ type ClockUpdatedPayload = {
 
 - **正常行动时钟**：当前 actor 使用 `USE_TIME_BANK` 成功后，发送 `CLOCK_UPDATED`，其中 `actionDeadline` 延长后非 null，`showdownDisplayUntil` 为 null。
 - **纯计时延长**：因 `USE_TIME_BANK` 或服务端内部延长时发送；不推进 Game Event sequence。
-- **进入 SHOWDOWN_DISPLAY**：服务端在推送展示阶段 Patch 时，同时可发送 `CLOCK_UPDATED`，其中 `actionDeadline` 为 null，`showdownDisplayUntil` 非 null，作为展示窗口的权威截止点补充（客户端已经从 Patch 获得该值，此消息仅作冗余确认）。
+- **进入 SHOWDOWN_DISPLAY**：不发送 `CLOCK_UPDATED`。旧手结算事件 Patch 发出后，服务端通过权威全量 `GAME_SNAPSHOT` 发布展示阶段，其中 `actionDeadline` 为 null、`showdownDisplayUntil` 非 null；客户端以该 Snapshot 的截止线为准。
 - **SHOWDOWN_DISPLAY 期间**：不发送带 `actionDeadline` 非 null 的 `CLOCK_UPDATED`。
 
 **互斥约束**（`packages/protocol` 的 Schema 强制执行）：`actionDeadline` 与 `showdownDisplayUntil` 不得同时非 null。

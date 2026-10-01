@@ -11,6 +11,7 @@ import {
 import { fakeRoomRepository } from "../rooms/test-support";
 import type { IdSource } from "../rooms/id-source";
 import { createTournamentManager, type TournamentManager } from "./tournament-manager";
+import { DEALING_DISPLAY_MS, SHOWDOWN_DISPLAY_MS } from "./tournament-executor";
 import type { HandCommitBundle } from "../infrastructure/persistence/repositories/hand-commit";
 
 const CONFIG: TournamentConfig = {
@@ -122,6 +123,9 @@ describe("TournamentManager × Room 装配（TEX-20 开局/终局闭环）", () 
     expect(view!.status).toBe("RUNNING");
     expect(view!.engineState.handNumber).toBe(1);
     expect(view!.engineState.handInProgress).toBe(true);
+    expect(view!.presentationPhase).toBe("DEALING");
+    wired.clock.advance(DEALING_DISPLAY_MS);
+    await Promise.resolve();
 
     // 驱动首手至终局：p0（SB 首行动者）全下，p1 跟注 → 比牌淘汰一人 → 冠军
     const firstActor = currentActorId(wired.tournamentManager, tournamentId)!;
@@ -147,6 +151,8 @@ describe("TournamentManager × Room 装配（TEX-20 开局/终局闭环）", () 
       receivedAt: wired.clock.now(),
       ingressOrdinal: 2,
     });
+    await Promise.resolve();
+    wired.clock.advance(SHOWDOWN_DISPLAY_MS);
     await Promise.resolve();
 
     const finishedView = wired.tournamentManager.getView(tournamentId);

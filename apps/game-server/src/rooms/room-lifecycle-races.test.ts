@@ -15,6 +15,10 @@ import { createConnectionEpochRegistry } from "../realtime/connection-epochs";
 import { registerLobbyGateway } from "../realtime/gateway/lobby-gateway";
 import { createTournamentEventBus } from "../realtime/tournament-event-bus";
 import type { TournamentCommand } from "../tournaments/tournament-commands";
+import {
+  DEALING_DISPLAY_MS,
+  SHOWDOWN_DISPLAY_MS,
+} from "../tournaments/tournament-executor";
 import { createTournamentManager } from "../tournaments/tournament-manager";
 import {
   CLOSED_ROOM_RETENTION_MS,
@@ -228,6 +232,15 @@ function setup(onClosed?: () => Promise<void>) {
       if (view.status === "FINISHED") {
         await drainRooms();
         return { host, guest, sockets, tournamentId, last };
+      }
+      if (view.presentationPhase === "SHOWDOWN_DISPLAY" || view.presentationPhase === "DEALING") {
+        clock.advance(
+          view.presentationPhase === "SHOWDOWN_DISPLAY"
+            ? SHOWDOWN_DISPLAY_MS
+            : DEALING_DISPLAY_MS,
+        );
+        await Promise.resolve();
+        continue;
       }
       const legal = view.currentLegalActions!;
       last = {
@@ -463,6 +476,8 @@ describe("TEX-52 Room lifecycle cross-owner races", () => {
     });
     try {
       const { host, guest, tournamentId } = await h.startTable();
+      h.clock.advance(DEALING_DISPLAY_MS);
+      await Promise.resolve();
       const view = h.tournaments.getView(tournamentId)!;
       const actorId = view.seatToPlayer.get(view.engineState.hand!.currentActor!)!;
       const first = [host, guest].find((session) => session.playerId === actorId)!;
