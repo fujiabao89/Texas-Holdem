@@ -2,6 +2,10 @@
 
 项目范围、术语与计划。实现细节应引用而非复制架构文档。
 
+## 依赖维护
+
+- [TEX-63 最小依赖补丁升级与安装验证](https://linear.app/texas-holdem/issue/TEX-63)：用户直接委派 Codex；仅升级必要依赖并保留无关锁定节点，分支 `chore/TEX-63-minimal-dependency-patches`。范围、本地验证与待 CI 验证项见 [验收记录](../03-engineering/dependency-patch-validation.md)；不改变产品路线图。
+
 ## P0 执行文档
 
 - [TEX-38 全面优化前端动画与音效体验](https://linear.app/texas-holdem/issue/TEX-38)：在 TEX-26 已交付基础上完善牌桌反馈、声音控制与降级；实现由用户委派 Codex，独立于 TEX-29 压测。规格见 [05 §9.7/§10.3](../05-frontend-spec.md)，交付核对见 [验收记录](../03-engineering/TEX-38-acceptance.md)。
