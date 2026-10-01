@@ -23,6 +23,11 @@ import type { IdSource } from "../rooms/id-source";
 import type { TimerHandle, TimerScheduler } from "../scheduler/timer-scheduler";
 
 export type TournamentStatus = "RUNNING" | "FINISHED" | "ABANDONED_NO_HUMAN" | "FROZEN";
+export type TournamentPresentationPhase =
+  | "BETWEEN_HANDS"
+  | "SHOWDOWN_DISPLAY"
+  | "DEALING"
+  | "ACTION_OPEN";
 
 export interface PlayerRuntimeRecord {
   readonly playerId: string;
@@ -55,6 +60,14 @@ export interface TournamentRuntimeState {
   actionDeadline: number | null;
   actionTimerGeneration: number;
   actionTimerHandle: TimerHandle | null;
+  /** 服务端合成的展示/交互相态；扑克引擎不感知 UI 时间。 */
+  presentationPhase: TournamentPresentationPhase;
+  /** 仅 SHOWDOWN_DISPLAY 非空；与 actionDeadline 严格互斥。 */
+  showdownDisplayUntil: number | null;
+  phaseTimerGeneration: number;
+  phaseTimerHandle: TimerHandle | null;
+  /** 已完成摊牌展示的手号，防止恢复/重复 advance 再次打开同一窗口。 */
+  showdownDisplayedThroughHand: number;
   /** 最近一次建立行动权的决策点标识 `handNumber:street:seat`（Time Bank 机会复位判定）。 */
   lastDecisionPoint: string | null;
   /** time 模式定时升盲计时器（§8.1；只在 Hand 间生效）。 */
@@ -235,6 +248,11 @@ function buildRuntimeState(
     actionDeadline: null,
     actionTimerGeneration: 0,
     actionTimerHandle: null,
+    presentationPhase: "BETWEEN_HANDS",
+    showdownDisplayUntil: null,
+    phaseTimerGeneration: 0,
+    phaseTimerHandle: null,
+    showdownDisplayedThroughHand: wire.committedThroughHand,
     lastDecisionPoint: null,
     blindTimerHandle: null,
     blindTimerGeneration: 0,
@@ -259,6 +277,8 @@ export interface TournamentRuntimeView {
   readonly status: TournamentStatus;
   readonly lastWireSequence: number;
   readonly actionDeadline: number | null;
+  readonly presentationPhase: TournamentPresentationPhase;
+  readonly showdownDisplayUntil: number | null;
   readonly currentHandId: string | null;
   readonly stopAfterCurrentHand: boolean;
   readonly engineState: TournamentState;
@@ -281,6 +301,8 @@ export function runtimeView(state: TournamentRuntimeState): TournamentRuntimeVie
     status: state.status,
     lastWireSequence: state.lastWireSequence,
     actionDeadline: state.actionDeadline,
+    presentationPhase: state.presentationPhase,
+    showdownDisplayUntil: state.showdownDisplayUntil,
     currentHandId: state.currentHandId,
     stopAfterCurrentHand: state.stopAfterCurrentHand,
     engineState: state.engine.getState(),

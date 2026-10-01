@@ -96,6 +96,7 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 | 不限时模式：无行动超时任务、不自动 Check/Fold、`USE_TIME_BANK` 被拒绝 | Integration | [04](./04-game-server-architecture.md) §8；《总规划》§3.1 |
 | Time Bank：基础时间 + 银行组合、`timeBankRemainingMs` 扣减、多次使用/用尽/超额请求、用尽后 Auto Check/Fold、断线不自动消耗 | Integration | 04 §8 |
 | 超时竞争裁决：`receivedAt <= actionDeadline` 的合法 Action 优先；逾期返回 `ACTION_TIMEOUT`/`STALE_GAME_STATE` 且不执行 | Integration | 04 §7.2；02 §11 |
+| 展示阶段计时：摊牌/发牌窗口内无 actor、LegalActions、deadline；窗口结束后完整开钟；旧 `tournamentId/handId/phase/generation` 回调 no-op | Unit + Fake Clock | 04 §6.2/§8.2；02 §8.4 |
 
 ### 3.2 联机与服务端（权威：[04](./04-game-server-architecture.md) / [02](./02-protocol-spec.md)）
 
@@ -125,7 +126,8 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 > TEX-26/TEX-27 合并回归：同一 Event 必须只提交一次 canonical 与本手历史，再通知动画订阅；重复或身份不匹配的 Event 不进入任一消费者，Snapshot/重连先清历史再清动画。牌桌 E2E 同时检查历史/音效入口与单一连接状态、历史关闭焦点返回，以及动画积压时 canonical 行动机会切换仍立即重置倒计时。
 
-> TEX-47 增加座位映射与庄/盲徽标回归：`table-state.test.ts` 覆盖 2–10 人相对 `seatIndex` 顺时针固定映射（本人固定下方中央槽位）、行动者/筹码/状态/离桌与 players 重排不改变仍在桌玩家的槽位、Heads-Up 的 D=SB 同座与无手时 SB/BB 为空；`tests/e2e/seats/` 通过 WS mock 投影覆盖 Heads-up、6 人、10 人 360×800/390×844 的槽位唯一与无重叠、长昵称/大额筹码下徽标仍可区分，以及跨手 `HAND_STARTED` 迁移 D/SB/BB 而不改变任何 Seat 槽位。
+> TEX-46 增加牌桌单视口与按需行动区的响应式矩阵回归（`tests/e2e/table-layout/`）：以协议投影夹具驱动真实浏览器，覆盖 360×800、390×844、768×1024、1366×768、1920×1080、844×390、800×360 七种视口 × 2/3/6/10 人桌。断言行动时无页面滚动，Seat 互不相交，公共牌/底池/行动区在视口内且无遮挡，行动权切换不改变牌桌几何；全部下注控件无需内部滚动。另测人数模板、桌沿位置、本人手牌明显更大、独立下注避开卡片与中央状态及下注清零不移动 Seat。全下两步与 `ALL_IN` 信封由 `tests/e2e/betting/table.spec.ts` 覆盖。该套件不替代 §6 的真实服务端/数据库联调，也不替代 §9.1 的实机发布验收。
+> TEX-47 座位与庄/盲徽标回归由 TEX-46 整体布局同步：`table-state.test.ts` 覆盖按完整名单选择 2/6/10 人模板、稀疏物理座位按相对本人 `seatIndex` 顺时针排列、本人固定下方中央，行动者/筹码/状态及 players 重排不换位；真实名单变化允许重新分配（前端规格 §7.2）。`tests/e2e/seats/` 覆盖 Heads-up 面对面、6 人模板、10 人移动端无重叠、长昵称/大额筹码下徽标仍可区分，以及跨手 `HAND_STARTED` 迁移 D/SB/BB 而不改变 Seat 槽位。
 
 | 必测项 | 层次 | 规格来源 |
 | --- | --- | --- |
@@ -362,6 +364,7 @@ Performance CI 落地事实（2026-09-05，TEX-29）：`ci.yml` 的 `perf-smoke`
 - 测试基础设施（TEX-12，2026-08-21）已落地：Vitest 分层入口、fast-check、Playwright + axe-core、Seed/Fake Clock/Fixture Builder/数据库隔离工具与 E2E 失败产物；业务测试（规则、联机、投影、性能）随对应任务回填。
 - 持久化 Integration（TEX-18，2026-08-23）已落地：`apps/game-server/tests/integration/` 覆盖迁移（空库一次成功/幂等）、控制面原子写入、手末 Commit Bundle（对齐/回滚/幂等/冲突）、约束（FK/CHECK/唯一）与最小权限（anon/authenticated 拒绝），运行于真实 PostgreSQL 隔离 schema；CI 未配置测试库时该层仍受控跳过。
 - §3.1/§3.2 的 Tournament 运行时测试项已随 TEX-20 落地（unit 层，`apps/game-server/src/tournaments/**/*.test.ts` 与 `projection/state-projector.test.ts`）：单桌串行化、`receivedAt` 截止裁决（截止前合法 Action 胜过 Timer / 迟到 `ACTION_TIMEOUT` / `STALE_GAME_STATE`）、Time Bank（扣减/机会一次性/UNLIMITED 禁用）、断线宽限与无真人关房、重复/非法/过期命令不污染状态、事件 sequence 与 Commit Bundle 对齐、time 模式升盲、Room↔Tournament 开局/终局闭环；全部使用 Fake Clock + 注入随机源，不依赖真实 DB 或 sleep。
+- TEX-59 在上述运行时套件增加摊牌/发牌展示窗口、完整行动时钟、弃牌获胜跳过摊牌与 stale 展示回调。
 - §3.2 的"持久化 Writer"与"崩溃恢复"测试项已随 TEX-22 落地（2026-08-25）：Writer/watermark 与恢复编排用 Fake Persistence（`apps/game-server/tests/fixtures/persistence.ts`）+ Fake Clock 在 unit 层覆盖（`apps/game-server/src/persistence/**/*.test.ts`）——成功/重复投递/退避/乱序完成/部分失败/软硬 watermark/损坏隔离/flush、正常恢复/孤立快照/事件缺口/checksum/版本不兼容/序列连续性；真实 PostgreSQL 恢复仓储（`hasCommittedEventsThrough`、`listActiveTournaments`/`listSnapshots`、`rollbackToSnapshot`）在 `apps/game-server/tests/integration/recovery.test.ts` 覆盖（缺测试库受控跳过）。
 - Hand History 投影读取 Integration（TEX-36，2026-08-27）已落地：`apps/game-server/tests/integration/hand-history-read.test.ts` 覆盖 token 摘要数据库侧鉴权（401/403/404）、`handNumber` 倒序 cursor 分页（默认 20/上限 50/非法参数 400）、接收者视角隐私隔离（本人底牌带牌面、他人底牌无牌面、Burn 牌面过滤并以全场唯一花色做字节级断言）、跨 Tournament 详情 404、损坏记录降级 500 不泄露细节；运行于真实 PostgreSQL 隔离 schema，缺测试库时受控跳过。
 - PR #30 审查回归（TEX-36，2026-09-03）：增加关闭/离开后的凭证拒绝、重复分页参数、事件首/中/尾缺失与 hand/global 双序列连续性；用真实 TournamentExecutor → Commit Bundle → PostgreSQL → HTTP 覆盖手间撤回归属及仍在房间的淘汰观战者读取无冠军终局。共享 v3 Schema、前端时间线与旧版本拒绝路径同步验证；完整判定见 [Findings Ledger](./03-engineering/TEX-36-findings-ledger.md)。

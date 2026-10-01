@@ -26,25 +26,29 @@ export function SiteChrome({ children }: { readonly children: ReactNode }) {
             <small>{message("brand.tagline")}</small>
           </span>
         </Link>
-        <nav className="rr-nav" aria-label={message("navigation.home")}>
-          {pathname === "/" && (
-            <a className="rr-nav-link rr-desktop" href="#how">
-              {message("brand.how")}
-            </a>
-          )}
-          <Link
-            className="rr-nav-link"
-            href="/settings"
-            aria-current={pathname === "/settings" ? "page" : undefined}
-          >
-            {message("navigation.settings")}
-          </Link>
-          {!onTable && (
-            <StartGameButton className="rr-button rr-button-small">
-              {message("brand.enter")}
-            </StartGameButton>
-          )}
-        </nav>
+        {onTable && <div id="table-heading-slot" className="rr-table-heading-slot" />}
+        <div className="rr-header-end">
+          {onTable && <div id="table-actions-slot" className="rr-table-actions-slot" />}
+          <nav className="rr-nav" aria-label={message("navigation.home")}>
+            {pathname === "/" && (
+              <a className="rr-nav-link rr-desktop" href="#how">
+                {message("brand.how")}
+              </a>
+            )}
+            <Link
+              className="rr-nav-link"
+              href="/settings"
+              aria-current={pathname === "/settings" ? "page" : undefined}
+            >
+              {message("navigation.settings")}
+            </Link>
+            {!onTable && (
+              <StartGameButton className="rr-button rr-button-small">
+                {message("brand.enter")}
+              </StartGameButton>
+            )}
+          </nav>
+        </div>
       </header>
       <div id="page-content" tabIndex={-1} key={pathname} className="rr-route-enter">
         {children}
