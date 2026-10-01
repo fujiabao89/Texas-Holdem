@@ -39,8 +39,10 @@ TEX-45 优化游戏内牌桌、牌面、牌背、座位和下注面板；静态�
 
 TEX-53 随共享 wire v4 补齐 Snapshot 夹具并验证投影存储在重连、重同步、Fast Forward 和跨手事件中保留权威 D/SB/BB；本任务未增加牌桌座位标识 UI。
 
-TEX-47 将座位视觉映射固定为服务端 `seatIndex`：本人始终位于下方中央槽位，其他 Seat 按相对座位顺时针偏移映射到固定槽位，同一桌内不随入座人数、行动者、筹码、连接状态、弃牌、全下、淘汰或重渲染重排仍在桌的 Seat；D/SB/BB 徽标只消费 Snapshot 的 `dealerSeat/smallBlindSeat/bigBlindSeat`（TEX-53），Heads-Up 的 D=SB 在同一 Seat 并排显示，当前行动者只做高亮不改座位位置。验收与 E2E 见 [座位稳定性套件](../../tests/e2e/seats/README.md)。
+座位按相对本人 `seatIndex` 的顺时针顺序填入人数模板，本人始终位于下方中央。TEX-46 整体布局以 2/6/10 人模板取代 TEX-47 的统一十槽位偏移公式；完整名单不变时，行动者、筹码、连接、弃牌、全下、淘汰与重渲染均不重排座位。名单实际变化时允许重新分配，权威规则见 [前端规格 §7.2](../../docs/05-frontend-spec.md)。D/SB/BB 徽标只消费 Snapshot 的 `dealerSeat/smallBlindSeat/bigBlindSeat`（TEX-53），Heads-Up 的 D=SB 并排显示。验收见 [座位稳定性套件](../../tests/e2e/seats/README.md)。
 
 TEX-55 通过 `HttpTransport.getTournamentResult` 接入 TEX-54 权威持久化赛果端点，使赛果页（`/room/[roomId]/result/[tournamentId]`）支持页面刷新（Reload）与复制 URL 直接访问；内存快照优先展示，按 `tournamentId` 隔离多轮结果，处理请求竞态并在 HTTP 401 `AUTH_FAILED` 时安全展示权限错误并隔离房间凭证。
 
 PR 审查回归同时把牌桌座位筹码文字调整为满足深色桌面上的 WCAG AA 对比度，真实 WebKit axe 检查不得再以临界色值失败。
+
+TEX-46 把牌桌页收敛为单一视口：站点页头之外的剩余高度交给页面，牌桌在剩余空间内自适应，并固定预留操作区域。操作区只在服务端投影表明轮到本人且存在 `LegalActions` 时出现，隐藏与显示都不改变牌桌几何。对手信息卡和手牌缩小约三分之一，自己的手牌保留更大尺寸，Seat 跨坐桌沿；当前下注为桌内独立筹码标记，不参与 Seat 高度。短横屏手机采用左侧牌桌、右侧完整操作列，竖屏仍可完成对局并提示横屏建议。本手结果层为覆盖层。标题、权威盲注和历史/音效/连接状态位于共用顶栏。回归见 [tests/e2e/table-layout](../../tests/e2e/table-layout/single-viewport.spec.ts) 与 [前端规格](../../docs/05-frontend-spec.md) §7.5/§8.1。

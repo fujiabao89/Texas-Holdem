@@ -514,11 +514,6 @@ button:hover:not(:disabled) .rr-arrow {
     inset 0 0 70px #122c233f,
     0 20px 45px #1e392321;
 }
-.rr-table-header {
-  background: #fffef9;
-  border-radius: 12px;
-  box-shadow: none;
-}
 .rr-betting-panel {
   background: #fffef9;
   border-color: #d4ddc9;

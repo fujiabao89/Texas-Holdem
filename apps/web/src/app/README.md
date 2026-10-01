@@ -11,3 +11,7 @@ TEX-26 的 transform/opacity 手牌、公共牌、翻牌和摊牌组合关键帧
 TEX-44：`page.tsx` 为已确认的产品首页；`layout.tsx` 在原 Provider 内组合 `SiteChrome`。`river-and-raise.css` 定义共享品牌 token、表单/大厅/牌桌/赛果/抽屉展示与 reduced-motion 规则；`landing.css` 仅作用于 `.landing-page`，无外部字体或图片请求。现有路由和邀请码 query 保持兼容；页面入场不重置根 Provider。
 
 TEX-45：`globals.css` 仅新增对 `features/poker-table/poker-table.css` 的导入。新样式全部限制于牌桌根节点，不改变既有全局动效、声音或路由行为。
+
+TEX-46 整体布局将 `globals.css` 中旧的移动端座位坐标迁入 `features/poker-table/poker-table.css`，由牌桌作用域统一管理人数模板和横竖屏布局；全局动画关键帧不变。
+
+TEX-46：`features/poker-table/poker-table.css` 的**牌桌路由专属**站点层规则使用 `:has()` 将站点容器改为占满一个 `100dvh` 的 flex 列，让 `#page-content` 填充页头之外的剩余高度，并使顶栏铺满视口、品牌标识靠左。牌桌标题与操作控件分别进入 `SiteChrome` 的顶栏插槽，内容区不再有独立白色页头；窄屏插槽在顶栏内换行。其他路由的滚动布局与 `SiteChrome` 结构不变；牌桌路由也不再有页脚。
