@@ -27,6 +27,8 @@ TEX-38 优化前端 Seat/Pot 反馈、统一音量/动态偏好、后台与追�
 
 PR #30 / TEX-36 已补齐 Hand History 投影读取，审查修正与证据见 [Findings Ledger](./03-engineering/TEX-36-findings-ledger.md)。读取仍受有效 Room 凭证约束，关闭后不开放历史；无冠军终局的 v3 表示与同步发布要求见 [ADR-0002](./adr/0002-tex-36-championless-history.md)。上方 TEX-27 缺口段落保留为历史核对记录。
 
+PR #59 / TEX-59 的展示窗口提前结束修复、协议时序校准与其余审查意见处置见 [Findings Ledger](./03-engineering/TEX-59-findings-ledger.md)。
+
 | 编号 | 路径 | 一句话目的 | 权威范围 | 状态 |
 | --- | --- | --- | --- | --- |
 | 01 | [01-engine-spec.md](./01-engine-spec.md) | Poker Engine 纯规则规格 | 牌堆与发牌、下注与最小加注、Pot/Side Pot/Split、Hand 状态机、Hand Evaluator、Tournament 淘汰与排名、Game Events、RNG 与 Engine Invariants | 草稿（cards/ · TEX-13；下注 / Pot / 状态机 · TEX-14；Tournament / Game Events / timer · TEX-15 已实现） |

@@ -85,6 +85,35 @@ export function registerLobbyGateway(
   const clock = options.clock ?? systemClock;
   const epochs = options.epochs ?? createConnectionEpochRegistry();
   const metrics = options.metrics;
+  const gameSnapshotFor = (
+    tournamentId: string,
+    roomId: string,
+    playerId: string,
+    reason: GameSnapshot["reason"],
+  ): GameSnapshot | null => {
+    const runtime = options.tournaments?.getView(tournamentId);
+    if (runtime === undefined || runtime.roomId !== roomId) return null;
+    const view = projectPlayerView({
+      tournamentId,
+      handId: runtime.currentHandId,
+      sequence: runtime.lastWireSequence,
+      engineState: runtime.engineState,
+      seatToPlayer: runtime.seatToPlayer,
+      actionDeadline: runtime.actionDeadline,
+      showdownDisplayUntil: runtime.showdownDisplayUntil,
+      presentationPhase: runtime.presentationPhase,
+      currentLegalActions: runtime.currentLegalActions,
+      timeBankRemainingMs: runtime.timeBankRemainingMs,
+      viewerPlayerId: playerId,
+    });
+    return {
+      snapshotVersion: 1,
+      reason,
+      tournamentId,
+      sequence: String(runtime.lastWireSequence),
+      ...view,
+    };
+  };
   /** WS 关闭分类（TEX-29）：正常/被接管/认证失败/会话终止(成员结束)/异常(网络)/其他。 */
   function closeCategory(
     code: number,
@@ -164,6 +193,24 @@ export function registerLobbyGateway(
           protocolVersion: PROTOCOL_VERSION,
           serverTime: options.now(),
           payload: { ...payload, timeBankRemainingMs: viewerTimeBank },
+        });
+      }
+    },
+    onGameSnapshotsRequested(tournamentId) {
+      for (const connection of activeConnections.values()) {
+        if (manager.getSnapshot(connection.roomId)?.activeTournamentId !== tournamentId) continue;
+        const snapshot = gameSnapshotFor(
+          tournamentId,
+          connection.roomId,
+          connection.playerId,
+          "RESYNC",
+        );
+        if (snapshot === null) continue;
+        connection.sendServerMessage({
+          type: "GAME_SNAPSHOT",
+          protocolVersion: PROTOCOL_VERSION,
+          serverTime: options.now(),
+          payload: snapshot,
         });
       }
     },
@@ -317,26 +364,8 @@ export function registerLobbyGateway(
       tournamentId: string,
       reason: GameSnapshot["reason"],
     ): GameSnapshot | null => {
-      const runtime = options.tournaments?.getView(tournamentId);
-      if (runtime === undefined || playerId === null || runtime.roomId !== roomId) return null;
-      const view = projectPlayerView({
-        tournamentId,
-        handId: runtime.currentHandId,
-        sequence: runtime.lastWireSequence,
-        engineState: runtime.engineState,
-        seatToPlayer: runtime.seatToPlayer,
-        actionDeadline: runtime.actionDeadline,
-        currentLegalActions: runtime.currentLegalActions,
-        timeBankRemainingMs: runtime.timeBankRemainingMs,
-        viewerPlayerId: playerId,
-      });
-      return {
-        snapshotVersion: 1,
-        reason,
-        tournamentId,
-        sequence: String(runtime.lastWireSequence),
-        ...view,
-      };
+      if (playerId === null || roomId === null) return null;
+      return gameSnapshotFor(tournamentId, roomId, playerId, reason);
     };
     const sendGameSnapshot = (tournamentId: string, reason: GameSnapshot["reason"]): boolean => {
       const snapshot = gameSnapshot(tournamentId, reason);

@@ -50,6 +50,16 @@ export interface SystemTimerActionInput {
   readonly firedAt: number;
 }
 
+/** 服务端展示阶段 Timer：固定窗口到期后推进，不等待任何客户端 ACK。 */
+export interface PresentationPhaseTimerInput {
+  readonly type: "PRESENTATION_PHASE_TIMER";
+  readonly tournamentId: string;
+  readonly handId: string;
+  readonly phase: "SHOWDOWN_DISPLAY" | "DEALING";
+  readonly generation: number;
+  readonly firedAt: number;
+}
+
 /** 断线宽限 Timer 回调（满 10 分钟 → EXIT_PENDING）。 */
 export interface GraceTimerInput {
   readonly type: "GRACE_TIMER";
@@ -103,6 +113,7 @@ export type TournamentCommand =
   | SubmitActionCommandInput
   | UseTimeBankCommandInput
   | SystemTimerActionInput
+  | PresentationPhaseTimerInput
   | GraceTimerInput
   | WithdrawPlayerInput
   | ConnectionChangedInput

@@ -253,6 +253,35 @@ describe("HttpTransport hand history endpoints", () => {
     expect(tokenStore.get("room-1")).toBeNull();
   });
 
+  it.each(["AUTH_FAILED", "INVITE_EXPIRED"] as const)(
+    "after direct room %s, the next protected request sends no rejected Authorization token",
+    async (code) => {
+      const tokenStore = new PlayerTokenStore();
+      tokenStore.save("room-1", TOKEN, "player-1");
+      const authorizations: (string | null)[] = [];
+      const transport = new HttpTransport({
+        apiBaseUrl: "https://example.test",
+        tokenStore,
+        createUuid: () => UUID,
+        fetchFn: async (_input, init) => {
+          authorizations.push(new Headers(init?.headers).get("Authorization"));
+          return new Response(
+            JSON.stringify({
+              error: { code, message: "credential rejected", retryable: false, traceId: "t-1" },
+            }),
+            { status: 401 },
+          );
+        },
+      });
+
+      await transport.startTournament("room-1", { expectedRoomRevision: "1" });
+      await transport.startTournament("room-1", { expectedRoomRevision: "1" });
+
+      expect(authorizations).toEqual([`Bearer ${TOKEN}`, null]);
+      expect(tokenStore.get("room-1")).toBeNull();
+    },
+  );
+
   it("does not clear token on direct room AUTH_FAILED if token was updated concurrently", async () => {
     const tokenStore = new PlayerTokenStore();
     tokenStore.save("room-1", TOKEN, "player-1");

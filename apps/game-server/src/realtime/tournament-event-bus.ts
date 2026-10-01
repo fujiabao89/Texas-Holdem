@@ -4,12 +4,14 @@ import type { ClockUpdatedPayload, GameEventMessage } from "@texas-holdem/protoc
 export interface TournamentEventBus {
   emitEvents(messages: readonly GameEventMessage[]): void;
   emitClockUpdated(payload: ClockUpdatedPayload): void;
+  requestGameSnapshots(tournamentId: string): void;
   subscribe(listener: TournamentEventListener): () => void;
 }
 
 export interface TournamentEventListener {
   onEvents(messages: readonly GameEventMessage[]): void;
   onClockUpdated(payload: ClockUpdatedPayload): void;
+  onGameSnapshotsRequested(tournamentId: string): void;
 }
 
 export function createTournamentEventBus(): TournamentEventBus {
@@ -20,6 +22,9 @@ export function createTournamentEventBus(): TournamentEventBus {
     },
     emitClockUpdated(payload) {
       for (const listener of listeners) listener.onClockUpdated(payload);
+    },
+    requestGameSnapshots(tournamentId) {
+      for (const listener of listeners) listener.onGameSnapshotsRequested(tournamentId);
     },
     subscribe(listener) {
       listeners.add(listener);
