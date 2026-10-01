@@ -6,10 +6,13 @@
 
 ## 索引
 
+- [dependency-patch-validation.md](./dependency-patch-validation.md)：TEX-63 最小依赖补丁升级的范围、安装与回归验证，以及 CI、评审与合并的交付边界。
+
 - [TEX-51-52-acceptance.md](./TEX-51-52-acceptance.md)：Room/身份真实重启、终局运行时卸载、持久历史权限、有界生命周期 soak 的验证证据与部署边界。
 - [TEX-38-acceptance.md](./TEX-38-acceptance.md)：前端动画/音效优化的需求核对、验证证据与日常浏览器/实机发布边界。
 - [TEX-38-findings-ledger.md](./TEX-38-findings-ledger.md)：PR #40 的 Copilot、Codex、CodeRabbit 与 Greptile 审查意见逐项核验、定级和处置记录。
 - [TEX-58-findings-ledger.md](./TEX-58-findings-ledger.md)：PR #54 的 Codex、Greptile 与 CodeRabbit 审查意见逐项核验、定级和处置记录。
+- [TEX-59-findings-ledger.md](./TEX-59-findings-ledger.md)：PR #59 的 Greptile、CodeRabbit 审查意见与质量警告逐项核验、定级和处置记录。
 
 - [monorepo-and-quality-baseline.md](./monorepo-and-quality-baseline.md)：pnpm monorepo、Turborepo、TypeScript、ESLint、Prettier、环境变量样例与质量命令说明。
 - [pull-request-and-linear-naming.md](./pull-request-and-linear-naming.md)：Linear、分支与 GitHub Pull Request 的编号和标题关联规则。
@@ -27,7 +30,9 @@ DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它�
 
 - [TEX-45 牌桌与扑克牌视觉验收](./TEX-45-acceptance.md)：静态样式、响应式与既有游戏交互回归，TEX-44 后续 PR 交付。
 - [TEX-45-findings-ledger.md](./TEX-45-findings-ledger.md)：PR #46 的 Codex、CodeRabbit 与 Greptile 审查意见逐项核验、定级和处置记录。
+- [TEX-46-findings-ledger.md](./TEX-46-findings-ledger.md)：PR #56 的 Codex、CodeRabbit 与 Greptile 审查意见逐项核验、去重、定级与处置记录（F-01~F-06）。
 - [TEX-53-acceptance.md](./TEX-53-acceptance.md)：权威庄位/盲注座位、wire v4、恢复和多客户端一致性验证。
 - [TEX-54-acceptance.md](./TEX-54-acceptance.md)：持久化赛果读取的协议/真实PostgreSQL/授权隐私验收与既有终局写入边界。
+- [TEX-46 单视口牌桌与按需行动区验收](./TEX-46-acceptance.md)：5 视口 × 2/3/6/10 人桌的单视口与不遮挡矩阵证据。
 - [TEX-55-acceptance.md](./TEX-55-acceptance.md)：赛果页权威HTTP接口恢复、刷新与直接访问、未认证降级、多轮隔离与E2E验证。
 - [TEX-55-findings-ledger.md](./TEX-55-findings-ledger.md)：PR #57 的 Codex、CodeRabbit 与 Greptile 审查意见逐项核验、精确失败场景、严重度与处置台账。

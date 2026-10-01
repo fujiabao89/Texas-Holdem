@@ -58,6 +58,10 @@ for (const viewport of [
 
     const faces = page.locator(".table-card-face[data-card-rank]");
     await expect(faces).toHaveCount(9);
+    await expect(faces.locator("[data-card-corner]")).toHaveCount(14);
+    await expect(faces.locator("[data-card-content]")).toHaveCount(7);
+    await expect(faces.locator("[data-card-court]")).toHaveCount(2);
+    await expect(faces.locator(".table-card-compact")).toHaveCount(2);
     // Fan rotation is an outer seat decoration. Neutralize it so DOMRect checks
     // measure the card's own coordinate system instead of rotated AABB overlap.
     await faces.evaluateAll((nodes) => {
@@ -72,6 +76,7 @@ for (const viewport of [
         const content = [
           ...face.querySelectorAll<HTMLElement>("[data-card-pip]"),
           ...face.querySelectorAll<HTMLElement>("[data-card-court]"),
+          ...face.querySelectorAll<HTMLElement>(".table-card-compact > span"),
         ];
         for (const item of content) {
           const itemRect = item.getBoundingClientRect();
@@ -94,6 +99,14 @@ for (const viewport of [
             ) {
               collisions.push(`${label}:content-corner-overlap`);
             }
+          }
+        }
+        const compact = [...face.querySelectorAll<HTMLElement>(".table-card-compact > span")];
+        if (compact.length === 2) {
+          const a = compact[0]!.getBoundingClientRect();
+          const b = compact[1]!.getBoundingClientRect();
+          if (Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5) {
+            collisions.push(`${label}:compact-rank-suit-overlap`);
           }
         }
         const pips = [...face.querySelectorAll<HTMLElement>("[data-card-pip]")];
@@ -136,11 +149,9 @@ for (const viewport of [
     expect(black.size).toBe(1);
     expect([...red][0]).not.toBe([...black][0]);
     expect(colors.flatMap(({ corners }) => corners)).toEqual(
-      expect.arrayContaining(Array.from({ length: 18 }, () => "rgba(0, 0, 0, 0)")),
+      Array.from({ length: 14 }, () => "rgba(0, 0, 0, 0)"),
     );
     expect(colors.filter(({ courtBorder }) => courtBorder !== null).map(({ courtBorder }) => courtBorder)).toEqual([
-      "rgb(200, 194, 174)",
-      "rgb(200, 194, 174)",
       "rgb(200, 194, 174)",
       "rgb(200, 194, 174)",
     ]);

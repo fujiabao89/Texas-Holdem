@@ -17,3 +17,5 @@
 TEX-54：`schemas/http.ts` 导出 `TournamentResultParamsSchema`、`TournamentResultQuerySchema`、`TournamentResultSchema`、`TournamentResultResponseSchema` 及推导类型；排名复用导出的 `RankingViewSchema`。增加三个 HTTP 赛果错误码；新增 HTTP 接口不改变既有 WebSocket 主版本，以共享 `PROTOCOL_VERSION` / 02 §4.1 为准。契约/语义与隐私测试：`pnpm exec vitest run --project unit packages/protocol/src/tournament-result.test.ts`。
 
 TEX-58：在 `schemas/views.ts` 与 `events/index.ts` 引入 `SHOWDOWN_DISPLAY` 阶段枚举、`showdownDisplayUntil` 快照与旁路时钟字段，并强制执行跨字段互斥校验（展示阶段 actionDeadline 与 currentActorPlayerId 必须为 null；展示时钟非空时 currentActorPlayerId 必须为 null；非展示阶段 showdownDisplayUntil 必须为 null）。协议主版本提升至 v5。
+
+TEX-59 在 game-server 运行时启用 TEX-58 的既有字段：摊牌和发牌展示窗期间隐藏行动权，窗口结束后以同 sequence 的 `GAME_SNAPSHOT` 原子公开 actor、LegalActions 与完整 deadline。该实现没有新增 wire DTO 或事件，协议仍为 v5。
