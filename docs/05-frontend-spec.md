@@ -460,9 +460,11 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 - 每次接受权威 Snapshot/Event/Clock 时在投影入口记录锚点 `{ serverTimeAtReceipt, performanceNowAtReceipt }`；serverTimeAtReceipt 是校时后的估计，原始 serverTime 另留作过期过滤。展示用 `estimatedServerNow = serverTimeAtReceipt + (performance.now() - performanceNowAtReceipt)`，可提交剩余时间还须扣除下述网络余量。新锚点不得让同一行动机会的倒计时回跳变长；同一机会保留较大余量，只有真实 actionDeadline 延长或新机会才允许增加显示。页面从后台恢复后立即重算并刷新校时/同步检查。
 - TEX-60 / wire v6：认证与重连后立即发送 TIME_SYNC，之后每 5 秒采样；10 秒无有效回复按失联重连。`t0/t3` 是 performance.now() 发送/接收时间，`t1/t2` 是网关接收/发送 epoch 时间。`RTT=(t3-t0)-(t2-t1)`，`offset=(t1+t2-t0-t3)/2`；RTT 与 offset 用 EWMA（0.2），estimatedServerNow 保持不倒退。回显 requestId/clientSentAt 必须匹配唯一在途探针，排除旧 socket、重复/未请求回复、负 RTT 或超过 10 秒的样本。
 - 可提交倒计时使用 `max(0, actionDeadline - estimatedServerNow - safetyMargin)`；`safetyMargin=ceil(max(50,latestRTT/2,smoothedRTT/2)+2*jitter+offsetResidual)`。jitter 为相邻 RTT 差值绝对值的 EWMA；offsetResidual 为新样本估计比平滑展示时钟领先的非负差值。锚点存在 ProjectionStore，挂载/渲染/后台恢复不重置；Snapshot 重置权威截止字段，重连不续发时间。
-- 首次校时前，限时操作暂时禁用并显示“正在校准服务器时间”；RTT >= 300ms 提示网络延迟较高、提前操作。余量内显示“剩余时间不足以保证操作送达，等待服务器确认”，关闭本地提交入口，不发自动动作、不推进状态、不宣称服务器已经弃牌。不限时行动不受余量限制。提交 handler 再次读取当前单调时间，避免最后一帧的陈旧按钮越过安全窗口。
+- 首次校时前，限时操作暂时禁用并显示“正在校准服务器时间”；RTT >= 300ms 提示网络延迟较高、提前操作。余量内显示“剩余时间不足以保证操作送达，等待服务器确认”，关闭普通下注入口，不发自动动作、不推进状态、不宣称服务器已经弃牌。不限时行动不受余量限制。提交 handler 再次读取当前单调时间，避免最后一帧的陈旧按钮越过安全窗口。
 - 断线/状态推进后的未知 Action/Time Bank 仅在 tournament/hand/actor/player/expectedSequence 仍完全匹配时重发原字节；失效 pending 不阻塞新机会。APPLIED 回执/对应事件任一先到，最后一个到达时立即按 appliedSequence 回收。传输层同步阻止同机会并发新命令，回执不代替 canonical。
 - 网络非对称与未来突发延迟仍可能使余量不足；客户端不给任何玩家修改服务端 deadline，不等待 ACK 暂停整桌。ACTION_TIMEOUT 明确说明到达服务器时已超时，并请求权威 Snapshot；最终裁决仍由服务端单调时钟完成。
+
+TEX-60 审查修正：Time Bank 独立于普通下注的网络安全窗口。在已校时、连接有效、投影连续、本人行动、余额大于零且无 pending 时，只要估计服务器时间仍早于权威 actionDeadline，继续提供“使用延时”；点击时重新核对当前单调时间。达到估计截止、状态推进或进入 pending 后关闭入口。Time Bank 到达服务器后的是否逾期与实际延期仍由服务端裁决；只有权威 Clock/Snapshot 的 deadline 延长才恢复普通下注窗口。
 
 ### 11.2 连接状态
 

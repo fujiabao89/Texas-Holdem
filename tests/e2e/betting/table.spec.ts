@@ -85,6 +85,57 @@ for (const rtt of [50, 100, 300, 500]) {
   });
 }
 
+for (const outcome of ["extend", "expire"] as const) {
+  test(`TEX-60 Time Bank 在普通操作安全窗口关闭后独立保留：${outcome}`, async ({ page }) => {
+    await seedTableSession(page);
+    await page.clock.install({ time: new Date("2026-10-02T00:00:00Z") });
+    await page.clock.pauseAt(new Date("2026-10-02T00:00:01Z"));
+    let send: ((value: unknown) => void) | undefined;
+    let probe: { requestId: string; payload: { clientSentAt: number } } | undefined;
+    const submitted: { type: string; requestId: string; payload: { tournamentId: string; expectedSequence: string } }[] = [];
+    await page.routeWebSocket("/api/v1/ws", (socket) => {
+      send = (value) => socket.send(JSON.stringify(value));
+      socket.onMessage((raw) => {
+        const command = JSON.parse(raw.toString());
+        if (command.type === "AUTHENTICATE") send!({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 0, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ actionDeadline: 5_000 }) } });
+        if (command.type === "TIME_SYNC") probe = command;
+        if (command.type === "USE_TIME_BANK" || command.type === "SUBMIT_ACTION") submitted.push(command);
+      });
+    });
+    await page.goto("/room/room-1/table");
+    await expect.poll(() => probe !== undefined).toBe(true);
+    await page.clock.runFor(500);
+    const serverTime = Math.floor(probe!.payload.clientSentAt + 250);
+    send!({ type: "TIME_SYNC_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime, payload: { requestId: probe!.requestId, clientSentAt: probe!.payload.clientSentAt, serverReceivedAt: serverTime, serverSentAt: serverTime } });
+    await page.getByRole("button", { name: "加注", exact: true }).click();
+    await expect(page.getByRole("button", { name: "确认加注至 20" })).toBeVisible();
+    // At 4,800ms the 250ms safety margin is exhausted, but the 5,000ms
+    // authoritative deadline has not elapsed. The open wager editor must close.
+    await page.clock.runFor(4_300);
+    await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "确认加注至 20" })).toHaveCount(0);
+    const timeBank = page.getByRole("button", { name: "使用延时" });
+    await expect(timeBank).toBeEnabled();
+    expect(submitted).toEqual([]);
+    if (outcome === "expire") {
+      await page.clock.runFor(200);
+      await expect(timeBank).toHaveCount(0);
+      expect(submitted).toEqual([]);
+      return;
+    }
+    await timeBank.click();
+    await expect.poll(() => submitted.length).toBe(1);
+    expect(submitted[0]).toMatchObject({ type: "USE_TIME_BANK", payload: { tournamentId: "tournament-1", expectedSequence: "1" } });
+    await expect(timeBank).toHaveCount(0); // one pending intent blocks duplicates
+    await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+    send!({ type: "COMMAND_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 4_900, payload: { requestId: submitted[0]!.requestId, status: "APPLIED", duplicate: false, appliedSequence: "1" } });
+    send!({ type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 4_900, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 15_000, timeBankRemainingMs: 30_000, showdownDisplayUntil: null } });
+    await expect(page.getByRole("button", { name: "确认加注至 20" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "返回操作" })).toBeEnabled();
+    expect(submitted).toHaveLength(1); // acknowledgement does not auto-submit a wager
+  });
+}
+
 test("TEX-60 操作超时给出明确反馈并请求权威状态", async ({ page }) => {
   await seedTableSession(page);
   const commands: string[] = [];

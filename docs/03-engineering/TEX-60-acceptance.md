@@ -43,4 +43,19 @@
 - 协议、网关、执行器、Web 传输/状态/牌桌/文案、各受影响测试目录 README 已同步；测试夹具明确响应 TIME_SYNC，不隐藏新增契约。文档索引、权威规格、ADR 与运维说明在同一 PR。
 - 产品规划、扑克引擎规则、数据模型和安全规范：已检查，无需更新。本任务不改变玩法、玩家权限、私有牌面投影、秘密配置或持久化；客户端时间戳仅回显，服务端裁决使用自身时钟。路线图仅增加本次验收链接，未改变优先级或后续范围。
 - wire v6 必须前后端同步升级/回滚；无数据库迁移。无限非对称或未来突发延迟无法由有限样本保证，服务端错误和状态仍是最终结果。真实 PostgreSQL/公网完整链路尚未执行；慢客户端背压与完整端到端门禁分别由 TEX-61/TEX-62 承担。
-- 未自动调用 DeepSeek Harness 或触发 Greptile；本任务未处理已有 PR 审查评论，无原评论线程待回复。交付进入 PR 审阅，不代表已部署或合并。
+- 未自动调用 DeepSeek Harness 或触发 Greptile；首次交付未处理已有 PR 评论；后续 Greptile R1 修正见下方。交付进入 PR 审阅，不代表已部署或合并。
+
+## PR #69 Greptile R1：Time Bank 提前消失
+
+原线程：[Time Bank disappears early](https://github.com/fujiabao89/Texas-Holdem/pull/69#discussion_r4163956815)。意见有效：普通下注余量到期会隐藏整个行动面板，连同仍可能被服务端接受的延时申请。
+
+修正为两个独立的窗口：普通下注保留安全余量，Time Bank 使用已校时的估计服务器 deadline。后者继续检查行动权、连接、连续投影、余额及 pending，handler 再读单调时间；不是服务端延期或接受保证。金额编辑器在普通窗口关闭后隐藏，权威延期后恢复。协议、后端、权限、数据结构和发布配置已检查，无需更新：修正仅涉及既有前端准入与测试，wire v6 和服务端裁决不变；模块 README、前端规格、测试、ADR 说明与运维诊断已同步。
+
+补充验证：
+
+- `pnpm exec vitest run --project unit apps/web/src/state apps/web/src/protocol/websocket-transport.test.ts apps/web/src/features/poker-table --maxWorkers 2`：7 文件、75 项通过。
+- `pnpm --filter @texas-holdem/web lint`、`pnpm --filter @texas-holdem/web typecheck`、`pnpm exec tsc --noEmit -p tsconfig.test.json`：通过。修改后的牌桌组件与下注 E2E 文件单独 ESLint 检查通过。
+- `pnpm exec playwright test -c tests/e2e/playwright.config.ts tests/e2e/betting tests/e2e/animation-audio --grep '6x CPU|Time Bank|TEX-60|牌桌由|不限时|全下|加注|已有待|AUTH_FAILED|UNSUPPORTED|房间关闭|成员被|Session Replaced|TEX-26' --workers=1`：25 项通过（完整 24 项下注 + 6x CPU 用例，2.3 分钟，无重试）。500ms RTT/Time Bank 的 extend、expire 两项也在新增后的首次专项执行通过。
+- `pnpm --filter @texas-holdem/web build --webpack`：通过，8 个路由生成成功；`git diff --check` 通过，本次修改文档的 119 个本地链接目标有效。
+
+评论闭环遵循 AGENTS：完成验证并推送到 PR 源分支后，在上述原线程回复“已修正”；不触发新一轮 Greptile 审查。

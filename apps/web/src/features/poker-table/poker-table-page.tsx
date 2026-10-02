@@ -16,7 +16,7 @@ import { useTablePresentation } from "../../animations/use-table-presentation";
 import type { HoleDealPresentation, OutcomeEvent, PresentationOverlay as PresentationOverlayState } from "../../animations/animation-queue";
 import { blocksTableSubmission, matchesActionOpportunity, type PendingCommand as TransportPendingCommand } from "../../protocol/websocket-transport";
 import type { ClockProjection } from "../../state/projection-store";
-import { submissionTimeRemaining } from "../../state/server-clock";
+import { estimatedServerNow, submissionTimeRemaining } from "../../state/server-clock";
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
 import { actionFeedback, awardedTo, feedbackFlight, potName, publicHandRankName, publicPlayerName, relativeCenter, type Point } from "./event-feedback";
@@ -89,9 +89,12 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   const hasPendingCommand = blocksTableSubmission(pending, canonicalGame);
   const visibleFeedback = pending?.status === "SENDING" && !hasPendingCommand && feedback === message("table.actionPending") ? message("table.actionStateUpdated") : feedback;
   const timeAvailable = useSubmissionWindow(state.clock);
-  const submitEnabled = canSubmitTableAction(canonicalGame, connectionState, state.actionsDisabled, hasPendingCommand) && timeAvailable;
-  const legal = submitEnabled ? canonicalGame?.viewer.legalActions ?? null : null;
-  const range = legal === null ? null : wagerRange(legal);
+  const deadlineAvailable = useSubmissionWindow(state.clock, false);
+  const opportunityAvailable = canSubmitTableAction(canonicalGame, connectionState, state.actionsDisabled, hasPendingCommand);
+  const submitEnabled = opportunityAvailable && timeAvailable;
+  const timeBankEnabled = opportunityAvailable && deadlineAvailable && state.clock?.actionDeadline != null && state.clock.timeBankRemainingMs > 0;
+  const legal = submitEnabled || timeBankEnabled ? canonicalGame?.viewer.legalActions ?? null : null;
+  const range = legal === null || !submitEnabled ? null : wagerRange(legal);
   const rangeForMode = range !== null && range.kind === amountMode ? range : null;
 
   const submit = (action: SubmitAction) => {
@@ -196,7 +199,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} tableElement={tableElement} deckElement={deckElement} key={presentation.overlay.eventKey} />}
       </div>
       {legal !== null && <div className="table-action-dock">
-        <BettingControls game={canonicalGame} legal={legal} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankRemainingMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === canonicalGame.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); setAllInConfirmSequence(null); }} onChooseAmount={chooseAmount} onExactChange={(value) => { setExactAmount(value); setAllInConfirmSequence(null); }} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? canonicalGame.sequence : null)} onUseTimeBank={() => { if (!submitEnabled || !hasSubmissionTime(projection.getSnapshot().clock)) return; const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: canonicalGame.tournamentId, expectedSequence: canonicalGame.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />
+        <BettingControls game={canonicalGame} legal={legal} actionsEnabled={submitEnabled} timeBankEnabled={timeBankEnabled} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === canonicalGame.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); setAllInConfirmSequence(null); }} onChooseAmount={chooseAmount} onExactChange={(value) => { setExactAmount(value); setAllInConfirmSequence(null); }} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? canonicalGame.sequence : null)} onUseTimeBank={() => { if (!timeBankEnabled || !hasSubmissionTime(projection.getSnapshot().clock, false)) return; const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: canonicalGame.tournamentId, expectedSequence: canonicalGame.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />
       </div>}
       <div className="table-post-hand mx-auto w-full max-w-3xl">
         <HandOutcomeSummary events={presentation.outcomeEvents} game={game} />
@@ -222,7 +225,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   </TableFrame>;
 }
 
-function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, rangeForMode, amount, showExactInput, exactAmount, allInConfirm, onAction, onSelectMode, onChooseAmount, onExactChange, onToggleExact, onSetAllInConfirm, onUseTimeBank }: { readonly game: GameSnapshot; readonly legal: NonNullable<GameSnapshot["viewer"]["legalActions"]>; readonly actionDeadline: number | null; readonly timeBankRemainingMs: number; readonly rangeForMode: WagerRange | null; readonly amount: number | null; readonly showExactInput: boolean; readonly exactAmount: string; readonly allInConfirm: boolean; readonly onAction: (action: SubmitAction) => void; readonly onSelectMode: (mode: AmountMode) => void; readonly onChooseAmount: (amount: number, mode?: AmountMode, closeExactInput?: boolean) => void; readonly onExactChange: (value: string) => void; readonly onToggleExact: () => void; readonly onSetAllInConfirm: (value: boolean) => void; readonly onUseTimeBank: () => void }) {
+function BettingControls({ game, legal, actionsEnabled, timeBankEnabled, rangeForMode, amount, showExactInput, exactAmount, allInConfirm, onAction, onSelectMode, onChooseAmount, onExactChange, onToggleExact, onSetAllInConfirm, onUseTimeBank }: { readonly game: GameSnapshot; readonly legal: NonNullable<GameSnapshot["viewer"]["legalActions"]>; readonly actionsEnabled: boolean; readonly timeBankEnabled: boolean; readonly rangeForMode: WagerRange | null; readonly amount: number | null; readonly showExactInput: boolean; readonly exactAmount: string; readonly allInConfirm: boolean; readonly onAction: (action: SubmitAction) => void; readonly onSelectMode: (mode: AmountMode) => void; readonly onChooseAmount: (amount: number, mode?: AmountMode, closeExactInput?: boolean) => void; readonly onExactChange: (value: string) => void; readonly onToggleExact: () => void; readonly onSetAllInConfirm: (value: boolean) => void; readonly onUseTimeBank: () => void }) {
   const currentRange = rangeForMode;
   const step = wagerStep(game.blindLevel.bigBlind);
   const displayedAmount = currentRange === null ? 0 : clampWager(amount ?? currentRange.min, currentRange);
@@ -241,13 +244,15 @@ function BettingControls({ game, legal, actionDeadline, timeBankRemainingMs, ran
   return <section data-wager-open={currentRange !== null} data-all-in-confirm={allInConfirm} className="rr-betting-panel table-controls-enter relative z-20 grid w-full gap-2" aria-labelledby="actions-heading">
     <div className="table-action-heading"><h2 id="actions-heading">{message("betting.actions")}</h2><span>{message("table.yourTurn")}</span></div>
     <div className="table-primary-actions grid grid-cols-3 gap-2 sm:grid-cols-4">
-      {legal.canFold && <ActionButton tone="fold" label={message("betting.fold")} onClick={() => onAction({ type: "FOLD" })} />}
-      {legal.canCheck && <ActionButton tone="call" label={message("betting.check")} onClick={() => onAction({ type: "CHECK" })} />}
-      {legal.canCall && <ActionButton tone="call" label={formatMessage("betting.call", { amount: legal.callAmount })} onClick={() => onAction({ type: "CALL" })} />}
-      {legal.canBet && <ActionButton tone="bet" label={message("betting.bet")} onClick={() => onSelectMode("BET")} />}
-      {legal.canRaise && <ActionButton tone="bet" label={message("betting.raise")} onClick={() => onSelectMode("RAISE")} />}
-      {legal.canAllIn && <ActionButton tone="allIn" label={allInConfirm ? formatMessage("betting.confirmAllIn", { amount: legal.allInTo }) : formatMessage("betting.allIn", { amount: legal.allInTo })} onClick={() => allInConfirm ? onAction({ type: "ALL_IN" }) : onSetAllInConfirm(true)} />}
-      {actionDeadline !== null && timeBankRemainingMs > 0 && <ActionButton tone="neutral" label={message("table.useTimeBank")} onClick={onUseTimeBank} />}
+      {actionsEnabled && <>
+        {legal.canFold && <ActionButton tone="fold" label={message("betting.fold")} onClick={() => onAction({ type: "FOLD" })} />}
+        {legal.canCheck && <ActionButton tone="call" label={message("betting.check")} onClick={() => onAction({ type: "CHECK" })} />}
+        {legal.canCall && <ActionButton tone="call" label={formatMessage("betting.call", { amount: legal.callAmount })} onClick={() => onAction({ type: "CALL" })} />}
+        {legal.canBet && <ActionButton tone="bet" label={message("betting.bet")} onClick={() => onSelectMode("BET")} />}
+        {legal.canRaise && <ActionButton tone="bet" label={message("betting.raise")} onClick={() => onSelectMode("RAISE")} />}
+        {legal.canAllIn && <ActionButton tone="allIn" label={allInConfirm ? formatMessage("betting.confirmAllIn", { amount: legal.allInTo }) : formatMessage("betting.allIn", { amount: legal.allInTo })} onClick={() => allInConfirm ? onAction({ type: "ALL_IN" }) : onSetAllInConfirm(true)} />}
+      </>}
+      {timeBankEnabled && <ActionButton tone="neutral" label={message("table.useTimeBank")} onClick={onUseTimeBank} />}
     </div>
     {currentRange !== null && <div className="table-wager-editor grid gap-3 rounded-2xl bg-slate-50 p-3">
       <p className="text-sm text-slate-600">{formatMessage("betting.range", { min: currentRange.min, max: currentRange.max })}</p>
@@ -439,23 +444,23 @@ function useSubmissionCountdown(clock: ClockProjection | null): number | null {
 }
 
 /** The full table only rerenders when the window closes, not on every clock tick. */
-function useSubmissionWindow(clock: ClockProjection | null): boolean {
+function useSubmissionWindow(clock: ClockProjection | null, applySafetyMargin = true): boolean {
   const [availability, setAvailability] = useState<{ readonly clock: ClockProjection; readonly available: boolean } | null>(null);
   useEffect(() => {
     if (clock === null || clock.actionDeadline === null) return;
-    const update = () => setAvailability({ clock, available: hasSubmissionTime(clock) });
+    const update = () => setAvailability({ clock, available: hasSubmissionTime(clock, applySafetyMargin) });
     update();
-    const remaining = submissionTimeRemaining(clock.actionDeadline, clock, performance.now())!;
+    const remaining = submissionTimeRemaining(clock.actionDeadline, applySafetyMargin ? clock : { ...clock, safetyMarginMs: 0 }, performance.now())!;
     const timer = clock.roundTripMs !== null && remaining > 0 ? window.setTimeout(update, Math.ceil(remaining)) : null;
     const onVisibilityChange = () => { if (document.visibilityState === "visible") update(); };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => { if (timer !== null) window.clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibilityChange); };
-  }, [clock]);
+  }, [clock, applySafetyMargin]);
   return clock?.actionDeadline === null || (availability?.clock === clock && availability?.available === true);
 }
 
-function hasSubmissionTime(clock: ClockProjection | null): boolean {
-  return clock !== null && (clock.actionDeadline === null || (clock.roundTripMs !== null && submissionTimeRemaining(clock.actionDeadline, clock, performance.now())! > 0));
+function hasSubmissionTime(clock: ClockProjection | null, applySafetyMargin = true): boolean {
+  return clock !== null && (clock.actionDeadline === null || (clock.roundTripMs !== null && clock.actionDeadline - estimatedServerNow(clock, performance.now()) - (applySafetyMargin ? clock.safetyMarginMs : 0) > 0));
 }
 
 function ClockStatus({ hasActor, clock }: { readonly hasActor: boolean; readonly clock: ClockProjection | null }) {
