@@ -279,7 +279,7 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 本节落实 [02](./02-protocol-spec.md) §7.4 的规范性决定，消除“截止前已接收但尚未取得执行权是否输给 Timer”的歧义：
 
-1. WS 入口完整解析 Action 并通过基础 Schema 后，立即用服务端单调时钟记录不可伪造的 `receivedAt`，同时分配该进程内严格递增的 `ingressOrdinal`；客户端提供的时间戳或同名字段一律不采信。
+1. WS 入口完整解析 Action 并通过基础 Schema 后，立即用服务端单调时钟记录不可伪造的 `receivedAt`，时间记录必须早于房间/比赛访问检查及任何 await；同时分配该进程内严格递增的 `ingressOrdinal`；客户端提供的时间戳或同名字段一律不采信。
 2. 行动超时任务携带它建立时的 `handId`、actor、`actionDeadline=D` 与 timer generation。对同一截止点，所有 `receivedAt <= D` 的 Action 排在 Timer 前处理，**即使它们仍在队列等待**；“是否已取得执行权”不参与胜负判断。
 3. 截止前 Action 仍须在执行时通过 connection epoch、幂等键、`expectedSequence`、身份、Turn 与 Engine 合法性校验。若失败且状态未推进，Timer 轮到时仍可执行 Auto Check/Fold。
 4. `receivedAt > D` 的 Action 不执行：若仍指向同一行动机会，返回 `ACTION_TIMEOUT`；若 Timer 或其他动作已经推进状态，返回 `STALE_GAME_STATE` 并下发最新 Snapshot。
@@ -671,3 +671,5 @@ Writer 在 enqueue 边界复制 Bundle（保留 Buffer/Date/BigInt），Runtime 
 生产 app 装配独立 `TournamentResultReadRepository` 与 result GET 路由。路由解析 Bearer 并通过数据库 Room 成员 HMAC 凭证授权；仓储以只读一致性事务读取终局来源，白名单投影校验后经共享 HTTP Schema 返回。Runtime 卸载、进程重启、同 Room 启动后续比赛均不影响旧场赛果，前提是身份与保留期仍有效。读取故障映射安全 ErrorEnvelope，无运行时命令、Writer 回退或控制面写入。
 
 no-store 在请求 hook 中设置，覆盖限流和验证失败；全局 per-IP 限流与现有 HTTP 指标适用。服务端不记录请求、响应或异常本体，访问代理也必须剔除 Authorization 与 query。具体授权、错误与数据完整性以 02/03 的 TEX-54 契约为准。
+
+TEX-60：网关认证后直接回复 TIME_SYNC_RESULT，记录 Schema 后的接收时间与构造回复时的发送时间。该路径不进入桌队列、不修改截止时间或持久化；契约见 [02 §8.5](./02-protocol-spec.md)，决策见 [ADR-0006](./adr/0006-tex-60-network-fair-action-clock.md)。

@@ -72,3 +72,5 @@ TEX-44：River & Raise 产品首页与现有前端视觉交互统一的契约见
 TEX-53 的完整视图公开 D/SB/BB 契约与 wire v4 决定见 [ADR-0005](./adr/0005-tex-53-authoritative-blind-seats.md)，验证矩阵见 [验收记录](./03-engineering/TEX-53-acceptance.md)。
 
 TEX-54 持久化赛果 GET 的权威契约已加入 02/03/04/06，决策见 [ADR-0004](./adr/0004-tex-54-persisted-tournament-result.md)，真实链路验证与现有写入限制见 [验收记录](./03-engineering/TEX-54-acceptance.md)。前端刷新接入仍属后续任务。
+
+TEX-60 的应用层校时与网络安全余量见 [ADR-0006](./adr/0006-tex-60-network-fair-action-clock.md)、02 §8.5、05 §11.1；验证与部署边界见 [验收记录](./03-engineering/TEX-60-acceptance.md) / [运行说明](./05-operations/network-action-clock.md)。当前 wire 为 v6，客户端/服务端须协同升级。

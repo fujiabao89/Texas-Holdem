@@ -12,6 +12,8 @@ WebSocket 接入、认证握手和消息路由入口。
 验证。心跳为 15 秒 Ping / 45 秒失活关闭。变更命令按玩家、`requestId` 与完整
 payload 复用幂等结果，成员不再存在于权威投影时会撤销该连接的订阅并关闭连接。
 
-wire v5 握手版本由共享协议包决定；`lobby-gateway.test.ts` 验证旧版本（如 v3/v4）首帧得到 `UNSUPPORTED_PROTOCOL_VERSION`，不会建立旧版本订阅。
+wire v6 握手版本由共享协议包决定；`lobby-gateway.test.ts` 验证旧版本（如 v3/v4）首帧得到 `UNSUPPORTED_PROTOCOL_VERSION`，不会建立旧版本订阅。
 
 TEX-53 的 gateway 单元覆盖 INITIAL、GAP→RESYNC 和重连的新快照 D/SB/BB 一致；真实 HTTP/WS 链路与开手事件对照见 `tests/clients/server-harness.test.ts`。
+
+TEX-60：Schema 后立即固定接收时间/Action 入口序号，后续成员检查耗时不改变 receivedAt。TIME_SYNC 仅允许已认证当前 epoch，直接回复 serverReceivedAt/serverSentAt，不续发 deadline。gateway 单元覆盖校时无状态副作用、未认证/伪造字段拒绝与慢访问检查。当前 wire 为 v6。

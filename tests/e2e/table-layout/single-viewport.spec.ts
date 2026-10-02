@@ -1,3 +1,4 @@
+import { replyTimeSync } from "../fixtures/time-sync";
 import { resolve } from "node:path";
 
 import { PROTOCOL_VERSION } from "../../../packages/protocol/src";
@@ -150,6 +151,7 @@ async function openTable(
   await page.routeWebSocket("**/api/v1/ws", (socket) => {
     push = (payload) => socket.send(JSON.stringify(payload));
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const incoming = JSON.parse(raw.toString()) as { type: string };
       commands?.push(incoming);
       if (incoming.type !== "AUTHENTICATE") return;

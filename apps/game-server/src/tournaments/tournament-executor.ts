@@ -407,10 +407,6 @@ export class TournamentExecutor {
     if (this.state.status !== "RUNNING") {
       return this.rejected("TOURNAMENT_NOT_ACTIVE", command.requestId, command.actionId);
     }
-    if (this.state.presentationPhase !== "ACTION_OPEN") {
-      return this.rejected("NOT_YOUR_TURN", command.requestId, command.actionId);
-    }
-
     const expected = BigInt(command.expectedSequence);
     const current = BigInt(this.state.lastWireSequence);
     const deadline = this.state.actionDeadline;
@@ -425,6 +421,9 @@ export class TournamentExecutor {
     // sequence 校验（§7.3）
     if (expected !== current) {
       return this.rejected("STALE_GAME_STATE", command.requestId, command.actionId);
+    }
+    if (this.state.presentationPhase !== "ACTION_OPEN") {
+      return this.rejected("NOT_YOUR_TURN", command.requestId, command.actionId);
     }
     // 身份与 Turn（红线 4）
     const seat = this.seatOf(command.playerId);
@@ -485,14 +484,14 @@ export class TournamentExecutor {
     if (this.state.status !== "RUNNING") {
       return this.rejected("TOURNAMENT_NOT_ACTIVE", requestId);
     }
-    if (this.state.presentationPhase !== "ACTION_OPEN") {
-      return this.rejected("TIME_BANK_NOT_AVAILABLE", requestId);
-    }
     if (this.state.config.actionTime === "UNLIMITED") {
       return this.rejected("TIME_BANK_DISABLED", requestId);
     }
     if (BigInt(command.expectedSequence) !== BigInt(this.state.lastWireSequence)) {
       return this.rejected("STALE_GAME_STATE", requestId);
+    }
+    if (this.state.presentationPhase !== "ACTION_OPEN") {
+      return this.rejected("TIME_BANK_NOT_AVAILABLE", requestId);
     }
     const seat = this.seatOf(command.playerId);
     const hand = this.state.engine.getState().hand;
@@ -501,7 +500,7 @@ export class TournamentExecutor {
     }
     const deadline = this.state.actionDeadline;
     if (deadline !== null && command.receivedAt > deadline) {
-      return this.rejected("TIME_BANK_NOT_AVAILABLE", requestId);
+      return this.rejected("ACTION_TIMEOUT", requestId);
     }
     const record = this.state.players.get(command.playerId);
     if (record === undefined) return this.rejected("FORBIDDEN", requestId);

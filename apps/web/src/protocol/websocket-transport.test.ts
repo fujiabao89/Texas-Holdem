@@ -4,8 +4,9 @@ import { PROTOCOL_VERSION } from "@texas-holdem/protocol";
 import { createFakeClock } from "../../../../tests/support/fake-clock";
 import { gameSnapshot, roomSnapshot } from "../testing-fixtures";
 import { ProjectionStore } from "../state/projection-store";
+import { ServerClock } from "../state/server-clock";
 import { PlayerTokenStore } from "./token-store";
-import { WebSocketTransport, type WebSocketLike } from "./websocket-transport";
+import { WebSocketTransport, blocksTableSubmission, type WebSocketLike } from "./websocket-transport";
 
 class FakeWebSocket implements WebSocketLike {
   readyState = 0;
@@ -32,16 +33,18 @@ const ids = [
 
 function setup(clock?: ReturnType<typeof createFakeClock>) {
   const socket = new FakeWebSocket();
-  const store = new ProjectionStore();
+  const store = new ProjectionStore(new ServerClock(clock?.now));
+  let nextId = 0;
   const states: string[] = [];
   const commandResults: string[] = [];
   const transport = new WebSocketTransport({
     wsUrl: "wss://example.test/api/v1/ws",
     socketFactory: () => socket,
-    createUuid: () => ids.shift() ?? "123e4567-e89b-42d3-a456-426614174099",
+    createUuid: () => `123e4567-e89b-42d3-a456-${String(nextId++).padStart(12, "0")}`,
     projectionStore: store,
     tokenStore: new PlayerTokenStore(),
     clock,
+    monotonicNow: clock?.now,
     random: () => 0.5,
     onConnectionState: (state) => states.push(state),
     onCommandResult: (pending) => commandResults.push(pending.requestId),
@@ -50,6 +53,80 @@ function setup(clock?: ReturnType<typeof createFakeClock>) {
 }
 
 describe("WebSocketTransport", () => {
+  it("calibrates matched probes, ignores duplicates, and cleans all timers on disconnect/terminal errors", () => {
+    const clock = createFakeClock();
+    const { socket, store, transport } = setup(clock);
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    expect(socket.sent).toHaveLength(1);
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 10_000, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot({ actionDeadline: 40_000 }) } });
+    const probe = JSON.parse(socket.sent.at(-1)!);
+    expect(probe.type).toBe("TIME_SYNC");
+    const response = { type: "TIME_SYNC_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 10_150, payload: { requestId: probe.requestId, clientSentAt: probe.payload.clientSentAt, serverReceivedAt: 10_150, serverSentAt: 10_150 } };
+    clock.advance(300);
+    socket.receive({ ...response, payload: { ...response.payload, requestId: "123e4567-e89b-42d3-a456-426614174099" } });
+    expect(store.getSnapshot().clock?.roundTripMs).toBeNull();
+    socket.receive(response);
+    expect(store.getSnapshot().clock).toMatchObject({ roundTripMs: 300, safetyMarginMs: 150, serverTimeAtReceipt: 10_300, performanceNowAtReceipt: 300 });
+    const anchor = store.getSnapshot().clock;
+    socket.receive(response);
+    expect(store.getSnapshot().clock).toBe(anchor);
+    clock.advance(5_000);
+    expect(socket.sent.filter((raw) => JSON.parse(raw).type === "TIME_SYNC")).toHaveLength(2);
+    transport.disconnect();
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("treats a missing time-sync reply as a dead connection with one reconnect attempt", () => {
+    const clock = createFakeClock();
+    const { socket, states, transport } = setup(clock);
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    clock.advance(10_000);
+    expect(states.slice(-2)).toEqual(["CLOSED", "CONNECTING"]);
+    transport.disconnect();
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("releases stale unknown actions after reconnect, and prevents concurrent new intents", () => {
+    const clock = createFakeClock();
+    const { socket, store, transport } = setup(clock);
+    const reconnect = (sequence: string) => socket.receive({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: clock.now(), payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot({ sequence }) } });
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    reconnect("1");
+    const pending = transport.prepareSubmitAction("tournament-1", "1", { type: "CALL" });
+    transport.send(pending);
+    expect(() => transport.send(transport.prepareSubmitAction("tournament-1", "1", { type: "FOLD" }))).toThrow("already pending");
+    expect(blocksTableSubmission(pending, store.getSnapshot().game)).toBe(true);
+    socket.close();
+    clock.advance(0);
+    socket.open();
+    const before = socket.sent.length;
+    reconnect("3");
+    expect(socket.sent.slice(before)).not.toContain(pending.serialized);
+    expect(blocksTableSubmission(pending, store.getSnapshot().game)).toBe(false);
+    transport.send(transport.prepareSubmitAction("tournament-1", "3", { type: "CALL" }));
+    transport.disconnect();
+  });
+
+  it("recycles an acknowledgement received after the authoritative event and resyncs explicit timeouts", () => {
+    const { socket, commandResults, transport } = setup(createFakeClock());
+    transport.connect("room-1", "a".repeat(43));
+    socket.open();
+    socket.receive({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot: roomSnapshot(), gameSnapshot: gameSnapshot() } });
+    const pending = transport.prepareSubmitAction("tournament-1", "9007199254740991", { type: "CALL" });
+    transport.send(pending);
+    socket.receive({ type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: { tournamentId: "tournament-1", sequence: "9007199254740992", handId: "hand-1", event: { type: "PLAYER_CHECKED", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET" } }, patch: {} } });
+    const result = { type: "COMMAND_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 3, payload: { requestId: pending.requestId, actionId: pending.actionId, status: "APPLIED", duplicate: false, appliedSequence: "9007199254740992" } };
+    socket.receive(result);
+    socket.receive(result);
+    expect(commandResults).toEqual([pending.requestId]);
+    socket.receive({ type: "ERROR", protocolVersion: PROTOCOL_VERSION, serverTime: 4, payload: { code: "ACTION_TIMEOUT", message: "ignored", retryable: false, traceId: "trace-1" } });
+    expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({ type: "REQUEST_SNAPSHOT", payload: { reason: "STALE_ACTION" } });
+    transport.disconnect();
+  });
   it("sends AUTHENTICATE as its only pre-authentication envelope and reuses a pending command exactly", () => {
     const clock = createFakeClock();
     const { socket, transport } = setup();
@@ -231,7 +308,7 @@ describe("WebSocketTransport", () => {
 
     expect(store.getSnapshot().game?.sequence).toBe("9007199254740991");
     expect(states).toEqual([]);
-    expect(clock.pendingTimers()).toBe(0);
+    expect(clock.pendingTimers()).toBe(1); // only the current socket's time-sync deadline
   });
 
   it("retains an unresolved command for an exact retry after reconnecting to the same room", () => {

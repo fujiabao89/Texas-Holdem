@@ -6,8 +6,10 @@ import {
   type GameSnapshot,
   type ClockUpdatedPayload,
   type PlayerView,
+  type TimeSyncResultPayload,
   type RoomSnapshot,
 } from "@texas-holdem/protocol";
+import { ServerClock, type ServerClockAnchor } from "./server-clock";
 
 export type ResyncReason = "GAP" | "INVALID_EVENT" | "STALE_ACTION" | "MANUAL";
 
@@ -34,7 +36,7 @@ export interface ProjectionState {
   readonly currentHandEvents: readonly AppliedHandEvent[];
 }
 
-export interface ClockProjection {
+export interface ClockProjection extends ServerClockAnchor {
   readonly tournamentId: string;
   readonly handId: string | null;
   readonly currentActorPlayerId: string | null;
@@ -73,6 +75,33 @@ const initialState: ProjectionState = {
  * cannot mutate it; only snapshot replacement and a verified event patch update it.
  */
 export class ProjectionStore {
+  constructor(private readonly serverClock = new ServerClock()) {}
+
+  resetTimeSync(preserveEstimate = true): void {
+    this.serverClock.reset(preserveEstimate);
+    if (this.state.clock !== null) {
+      this.replace({ ...this.state, clock: { ...this.state.clock, ...this.serverClock.observe(this.state.clock.serverTime) } });
+    }
+  }
+
+  acceptTimeSync(sample: TimeSyncResultPayload, receivedAt?: number): boolean {
+    const anchor = this.serverClock.synchronize(sample, receivedAt);
+    if (anchor === null) return false;
+    if (this.state.clock !== null) this.replace({ ...this.state, clock: this.withClockAnchor(this.state.clock, anchor) });
+    return true;
+  }
+
+  private clockProjection(payload: ClockUpdatedPayload, serverTime: number): ClockProjection {
+    return this.withClockAnchor({ ...payload, serverTime }, this.serverClock.observe(serverTime));
+  }
+
+  private withClockAnchor(payload: ClockUpdatedPayload & { readonly serverTime: number }, anchor: ServerClockAnchor): ClockProjection {
+    const previous = this.state.clock;
+    const sameOpportunity = previous !== null && payload.tournamentId === previous.tournamentId
+      && payload.handId === previous.handId && payload.currentActorPlayerId === previous.currentActorPlayerId
+      && payload.actionDeadline !== null && previous.actionDeadline !== null && payload.actionDeadline <= previous.actionDeadline;
+    return { ...payload, ...anchor, safetyMarginMs: sameOpportunity ? Math.max(previous.safetyMarginMs, anchor.safetyMarginMs) : anchor.safetyMarginMs };
+  }
   private state: ProjectionState = initialState;
   private readonly listeners = new Set<Listener>();
   private readonly acceptedEventListeners = new Set<(event: AcceptedGameEvent) => void>();
@@ -116,7 +145,7 @@ export class ProjectionStore {
       lastSequence: retained?.sequence ?? null,
       actionsDisabled: false,
       resyncReason: null,
-      clock: retained === null ? null : clockFromSnapshot(retained, serverTime),
+      clock: retained === null ? null : this.clockProjection(clockFromSnapshot(retained), serverTime),
       currentHandEvents: [],
     });
     this.emitBarrier({ game: retained, kind: "RECONNECT_RESULT" });
@@ -130,7 +159,7 @@ export class ProjectionStore {
       lastSequence: snapshot.sequence,
       actionsDisabled: false,
       resyncReason: null,
-      clock: clockFromSnapshot(snapshot, serverTime),
+      clock: this.clockProjection(clockFromSnapshot(snapshot), serverTime),
       currentHandEvents: [],
     });
     this.emitBarrier({ game: snapshot, kind: "GAME_SNAPSHOT" });
@@ -156,7 +185,7 @@ export class ProjectionStore {
         sequence: message.payload.sequence,
       });
       if (!matchesEventHand(message.payload.handId, game.handId, next.handId)) return this.requestResync("INVALID_EVENT");
-      this.replace({ ...this.state, game: next, lastSequence: next.sequence, clock: clockFromSnapshot(next, message.serverTime), currentHandEvents: appendHandEvent(this.state.currentHandEvents, message) });
+      this.replace({ ...this.state, game: next, lastSequence: next.sequence, clock: this.clockProjection(clockFromSnapshot(next), message.serverTime), currentHandEvents: appendHandEvent(this.state.currentHandEvents, message) });
       this.emitAcceptedEvent({ message, afterCanonical: next });
       return "APPLIED";
     } catch {
@@ -180,7 +209,7 @@ export class ProjectionStore {
       payload.currentActorPlayerId !== game.currentActorPlayerId ||
       (previous !== null && serverTime < previous.serverTime)
     ) return;
-    this.replace({ ...this.state, clock: { ...payload, serverTime } });
+    this.replace({ ...this.state, clock: this.clockProjection(payload, serverTime) });
   }
 
   private replace(next: ProjectionState): void {
@@ -202,7 +231,7 @@ function matchesEventHand(eventHandId: string | null, previousHandId: string | n
   return eventHandId === nextHandId || (nextHandId === null && eventHandId === previousHandId);
 }
 
-function clockFromSnapshot(snapshot: GameSnapshot, serverTime: number): ClockProjection {
+function clockFromSnapshot(snapshot: GameSnapshot): ClockUpdatedPayload {
   return {
     tournamentId: snapshot.tournamentId,
     handId: snapshot.handId,
@@ -210,7 +239,6 @@ function clockFromSnapshot(snapshot: GameSnapshot, serverTime: number): ClockPro
     actionDeadline: snapshot.actionDeadline,
     timeBankRemainingMs: snapshot.viewer.timeBankRemainingMs,
     showdownDisplayUntil: snapshot.showdownDisplayUntil,
-    serverTime,
   };
 }
 

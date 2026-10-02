@@ -180,6 +180,29 @@ const check = (): SubmitAction => ({ type: "CHECK" });
 const fold = (): SubmitAction => ({ type: "FOLD" });
 
 describe("TournamentExecutor（串行执行）", () => {
+  it.each([
+    ["SUBMIT_ACTION", -1], ["SUBMIT_ACTION", 0], ["SUBMIT_ACTION", 1],
+    ["USE_TIME_BANK", -1], ["USE_TIME_BANK", 0], ["USE_TIME_BANK", 1],
+  ] as const)("TEX-60: %s at D + %i has the same outcome with Timer-first or Action-first ingress", async (type, delta) => {
+    for (const timerFirst of [true, false]) {
+      const h = makeHarness();
+      await start(h);
+      const view = h.executor.getView();
+      const deadline = view.actionDeadline!;
+      const actor = currentActor(h)!;
+      const timer: TournamentCommand = { type: "SYSTEM_TIMER_ACTION", handId: view.currentHandId!, seatIndex: h.executor.getEngineState().hand!.currentActor!, deadline, generation: h.runtime.actionTimerGeneration, firedAt: deadline + 1 };
+      const identity = { requestId: "boundary-request", playerId: actor, expectedSequence: String(view.lastWireSequence), receivedAt: deadline + delta };
+      const action: TournamentCommand = type === "SUBMIT_ACTION" ? { ...identity, type, actionId: "boundary-action", action: call(), ingressOrdinal: 1 } : { ...identity, type };
+      const submissions = timerFirst ? [h.executor.submit(timer), h.executor.submit(action)] : [h.executor.submit(action), h.executor.submit(timer)];
+      const results = await Promise.all(submissions);
+      const result = results[timerFirst ? 1 : 0] as { status: string; error?: { code: string } };
+      expect(result.status).toBe(delta <= 0 ? "APPLIED" : "REJECTED");
+      const automatic = h.output.events.filter((m) => (m.payload.event.type === "PLAYER_FOLDED" || m.payload.event.type === "PLAYER_CHECKED") && m.payload.event.payload.source === "SYSTEM_TIMER");
+      expect(new Set(automatic.map((m) => m.payload.sequence)).size).toBe(delta <= 0 ? 0 : 1);
+      if (delta > 0) expect(result.error?.code).toBe(timerFirst ? "STALE_GAME_STATE" : "ACTION_TIMEOUT");
+      await h.executor.dispose();
+    }
+  });
   it("同一 tournament 的命令按队列严格串行执行（并发相同动作只成功一次）", async () => {
     const harness = makeHarness();
     await start(harness);

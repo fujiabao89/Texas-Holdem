@@ -65,7 +65,7 @@
 
 ### 4.1 Wire 基础约定【规范性决定】
 
-- P0 协议版本为 `5`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 5`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）；v4 在完整视图中必填公开盲注座位（[ADR-0005](./adr/0005-tex-53-authoritative-blind-seats.md)）；v5 引入牌局展示阶段（`SHOWDOWN_DISPLAY`）与权威行动时钟契约（TEX-58）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。wire `snapshotVersion: 1` 与持久化快照版本独立，本次无存储迁移。
+- P0 协议版本为 `6`。HTTP 路径仍统一放在 `/api/v1`；WebSocket 首条认证消息携带 `protocolVersion: 6`。v2 引入必填 `bestFiveCards`；v3 显式支持无冠军终局（[ADR-0002](./adr/0002-tex-36-championless-history.md)）；v4 在完整视图中必填公开盲注座位（[ADR-0005](./adr/0005-tex-53-authoritative-blind-seats.md)）；v5 引入牌局展示阶段（`SHOWDOWN_DISPLAY`）与权威行动时钟契约（TEX-58）。v6 引入应用层时间同步与网络安全余量（TEX-60 / ADR-0006）。客户端与服务端须同时升级；不支持的主版本返回 `UNSUPPORTED_PROTOCOL_VERSION`，不得尝试“尽力解析”。wire `snapshotVersion: 1` 与持久化快照版本独立，本次无存储迁移。
 - 传输格式为 UTF-8 JSON；字段名使用 `lowerCamelCase`，`type`/`code` 等枚举值使用 `UPPER_SNAKE_CASE`。
 - ID 是不透明字符串；客户端不得从 ID 格式推断业务含义。客户端生成的 `requestId`/`actionId` 必须是 UUID v4 或具备等价碰撞强度的值。
 - `sequence` 是无符号 64 位整数，但在 JSON 中编码为十进制字符串（如 `"42"`），避免 JavaScript `number` 精度损失。客户端应用时使用 `BigInt` 或十进制整数库比较。
@@ -102,7 +102,7 @@ TEX-36 读取约束：重复的 `limit` / `cursor` 返回 `400 INVALID_MESSAGE`�
    ```json
    {
      "type": "AUTHENTICATE",
-     "protocolVersion": 5,
+     "protocolVersion": 6,
      "requestId": "uuid",
      "payload": { "roomId": "opaque-id", "playerToken": "secret" }
    }
@@ -111,7 +111,7 @@ TEX-36 读取约束：重复的 `limit` / `cursor` 返回 `400 INVALID_MESSAGE`�
 2. 认证完成前，服务端不接受其他消息、不订阅房间广播；非法首帧返回错误后关闭连接。认证帧及 Token 必须从访问日志、结构化日志和追踪 Payload 中剔除。
 3. 认证成功后的第一条业务消息必须是 `RECONNECT_RESULT`（首次连接也使用该类型），其中包含当前完整 Snapshot。服务端须按 §6.4 建立 Snapshot/Event 原子交接点。
 4. `connection → player → seat` 映射由服务端维护；客户端命令不得携带 `playerId` 或 `seat` 来指定操作者。
-5. 服务端每 15 秒发送 WebSocket Ping；连续 45 秒未收到 Pong 或任何有效入站帧即终止连接并标记断线。浏览器自动 Pong，不另定义应用层 `PING/PONG` 消息。
+5. 服务端每 15 秒发送 WebSocket Ping；连续 45 秒未收到 Pong 或任何有效入站帧即终止连接并标记断线。浏览器自动 Pong。wire v6 另有认证后的应用层 `TIME_SYNC` / `TIME_SYNC_RESULT` 用于校时，不替代原生心跳，见 §8.5。
 
 ## 5. 身份与凭证
 
@@ -158,7 +158,7 @@ type ClientCommand<TType extends string, TPayload> = {
 ```ts
 type ServerMessage<TType extends string, TPayload> = {
   type: TType;
-  protocolVersion: 5;
+  protocolVersion: 6;
   serverTime: number;
   payload: TPayload;
 };
@@ -238,11 +238,13 @@ type SubmitActionPayload = {
 
 ### 7.4 超时竞争裁决【规范性决定；修正旧文冲突】
 
-1. Action 被 WS 入口完整解析并通过基础 Schema 后，服务端立即以单调时钟记录不可伪造的 `receivedAt` 和入口序号，再投递到 Tournament 串行执行器。
+1. Action 被 WS 入口完整解析并通过基础 Schema 后，服务端在房间/比赛访问检查与任何 await 前立即以单调时钟记录不可伪造的 `receivedAt` 和入口序号，再投递到 Tournament 串行执行器。
 2. 对截止点 `D`，`receivedAt <= D` 的 Action 排在该截止点的 Timer 任务之前处理，即使 Action 当时仍在队列等待；“是否已取得执行权”不参与胜负判断。
 3. 截止前收到的 Action仍须在执行时通过身份、`expectedSequence`、Turn 与 Engine 合法性校验。若失败，Timer 在轮到时仍可执行自动动作。
 4. `receivedAt > D` 的 Action 不执行：若仍指向同一行动机会返回 `ACTION_TIMEOUT`；若状态已被 Timer/其他动作推进则返回 `STALE_GAME_STATE`。
 5. 同一截止点前收到多个动作时，按入口序号处理；第一个成功提交的动作推进状态，其余动作通常因 sequence 变化被拒绝。
+
+TEX-60：Time Bank 同样使用 Schema 后固定的 receivedAt。原机会尚未推进但收到时已过截止线返回 ACTION_TIMEOUT；Timer 已推进 sequence 返回 STALE_GAME_STATE，不能被展示阶段的 NOT_YOUR_TURN / TIME_BANK_NOT_AVAILABLE 掩盖。幂等结果仍在这些校验之前返回。
 
 串行队列、Timer、Scheduler 的实现属 [04](./04-game-server-architecture.md)；本文只定义 wire 可观察行为。
 
@@ -360,6 +362,14 @@ type ClockUpdatedPayload = {
 2. 仅更新计时展示态（倒计时、`timeBankRemainingMs` 显示、摊牌展示窗口）；不修改筹码、行动权、公共牌、`legalActions` 或任何规范态字段。
 3. `timeBankRemainingMs` 始终是**接收者本人**的余额，不论当前行动者是谁。
 4. `GAME_SNAPSHOT` 到达时，客户端必须重置计时旁路基线，以 Snapshot 中的 `actionDeadline` / `showdownDisplayUntil` 为准。
+
+### 8.5 应用层校时（TEX-60，wire v6）
+
+`TIME_SYNC`：`{ type, requestId, payload: { clientSentAt } }`。`clientSentAt` 为非负、有限且不超过 MAX_SAFE_INTEGER 的本地单调毫秒，可含小数。仅认证后的当前 epoch 可请求。
+
+`TIME_SYNC_RESULT`：标准服务端信封，payload 为 `{ requestId, clientSentAt, serverReceivedAt, serverSentAt }`；两个服务端时间为 epoch 整数毫秒，`serverSentAt >= serverReceivedAt`，信封 `serverTime === serverSentAt`。接收时间在 Schema 通过后立即记录，发送时间在构造回复时记录。网关直接回复，不进入 Tournament 队列、不推进 sequence、不续发行动时间。客户端时间只回显，不参与服务端裁决。
+
+客户端每连接仅保留一个探针，认证/重连后立即发送，以后 5 秒一次；超过 10 秒无匹配有效回复则关闭连接并重连。必须校验 requestId、回显时间、当前 socket 与本地 RTT/服务端处理时间一致性，重复、旧连接、未请求的回复不校时。计算与安全余量见 [05 §11.1](./05-frontend-spec.md)，决策见 [ADR-0006](./adr/0006-tex-60-network-fair-action-clock.md)。原幂等与截止裁决不变。
 
 ## 9. Snapshot 与投影契约（`PlayerView` / `BotView`）
 

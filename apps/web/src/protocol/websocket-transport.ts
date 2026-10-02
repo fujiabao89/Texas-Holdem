@@ -37,6 +37,8 @@ export interface PendingCommand {
   readonly actionId?: string;
   readonly appliedSequence?: string;
   readonly status: "SENDING" | "APPLIED_AWAITING_STATE" | "REJECTED";
+  /** Local identity captured at preparation; never serialized onto the wire. */
+  readonly opportunity?: { readonly handId: string | null; readonly playerId: string; readonly actorId: string | null };
 }
 
 export interface WebSocketTransportOptions {
@@ -51,6 +53,7 @@ export interface WebSocketTransportOptions {
   readonly clock?: WebSocketClock;
   /** Injectable so reconnect jitter remains deterministic in tests. */
   readonly random?: () => number;
+  readonly monotonicNow?: () => number;
 }
 
 export type CommandResultListener = (pending: PendingCommand, result: CommandResultPayload) => void;
@@ -71,11 +74,14 @@ export class WebSocketTransport {
   private readonly protocolErrorListeners = new Set<ProtocolErrorListener>();
   private retryTimer: unknown | null = null;
   private retryAttempt = 0;
+  private syncTimer: unknown | null = null;
+  private syncProbe: { readonly requestId: string; readonly clientSentAt: number } | null = null;
 
   constructor(private readonly options: WebSocketTransportOptions) {}
 
   connect(roomId: string, playerToken: string): void {
     this.cancelRetry();
+    if (this.roomId !== roomId) this.options.projectionStore.resetTimeSync(false);
     this.disconnect(this.roomId !== roomId, false);
     this.roomId = roomId;
     this.playerToken = playerToken;
@@ -83,6 +89,8 @@ export class WebSocketTransport {
   }
 
   private openConnection(roomId: string, playerToken: string): void {
+    this.stopTimeSync();
+    this.options.projectionStore.resetTimeSync();
     this.transition("CONNECTING");
     const socket = this.options.socketFactory(this.options.wsUrl);
     this.socket = socket;
@@ -112,6 +120,7 @@ export class WebSocketTransport {
 
   disconnect(clearPending = true, preserveSession = false): void {
     this.cancelRetry();
+    this.stopTimeSync();
     const socket = this.socket;
     this.socket = null;
     if (clearPending) this.pending.clear();
@@ -145,7 +154,10 @@ export class WebSocketTransport {
   prepareCommand(command: Omit<Exclude<ClientCommand, Extract<ClientCommand, { type: "AUTHENTICATE" }>>, "requestId">): PendingCommand {
     const requestId = this.options.createUuid();
     const full = ClientCommandSchema.parse({ ...command, requestId }) as PendingCommand["command"];
-    return { command: full, serialized: JSON.stringify(full), requestId, actionId: full.type === "SUBMIT_ACTION" ? full.payload.actionId : undefined, status: "SENDING" };
+    const game = this.options.projectionStore.getSnapshot().game;
+    const opportunity = (full.type === "SUBMIT_ACTION" || full.type === "USE_TIME_BANK") && game !== null
+      ? { handId: game.handId, playerId: game.viewer.playerId, actorId: game.currentActorPlayerId } : undefined;
+    return { command: full, serialized: JSON.stringify(full), requestId, actionId: full.type === "SUBMIT_ACTION" ? full.payload.actionId : undefined, status: "SENDING", opportunity };
   }
 
   prepareSubmitAction(tournamentId: string, expectedSequence: string, action: SubmitAction): PendingCommand {
@@ -155,8 +167,18 @@ export class WebSocketTransport {
   /** Retry sends the exact initial serialization, preserving requestId/actionId/payload. */
   send(command: PendingCommand): void {
     if (this.state !== "CONNECTED" && this.state !== "RESYNCING") throw new Error("WebSocket is not authenticated");
-    this.socket?.send(command.serialized);
+    if (this.socket === null || this.socket.readyState !== 1) throw new Error("WebSocket is not open");
+    if (command.command.type === "SUBMIT_ACTION" || command.command.type === "USE_TIME_BANK") {
+      const game = this.options.projectionStore.getSnapshot().game;
+      if (this.state !== "CONNECTED" || this.options.projectionStore.getSnapshot().actionsDisabled || !matchesActionOpportunity(command, game))
+        throw new Error("Action opportunity is no longer available");
+      for (const pending of this.pending.values()) {
+        if (pending.requestId !== command.requestId && blocksTableSubmission(pending, game)) throw new Error("An action is already pending");
+      }
+    }
     this.pending.set(command.requestId, command);
+    try { this.socket.send(command.serialized); }
+    catch (error) { this.pending.delete(command.requestId); throw error; }
   }
 
   /** Presentation-only recovery request; it cannot send an Action command. */
@@ -172,9 +194,11 @@ export class WebSocketTransport {
     if (this.state === "STOPPED" || this.roomId === null || this.playerToken === null) return;
     this.cancelRetry();
     if (this.state === "CLOSED") this.openConnection(this.roomId, this.playerToken);
+    else if (this.state === "CONNECTED" && this.syncProbe === null) this.startTimeSync();
   }
 
   private handleMessage(raw: string): void {
+    const receivedAt = this.options.monotonicNow?.() ?? performance.now();
     let decoded: unknown;
     try {
       decoded = JSON.parse(raw);
@@ -195,6 +219,7 @@ export class WebSocketTransport {
         this.recycleAppliedPending();
         this.retryAttempt = 0;
         this.transition("CONNECTED");
+        this.startTimeSync();
         this.retryUnresolvedPending();
         return;
       case "ROOM_SNAPSHOT":
@@ -205,6 +230,7 @@ export class WebSocketTransport {
         this.recycleAppliedPending();
         this.retryAttempt = 0;
         this.transition("CONNECTED");
+        if (this.syncProbe === null && this.syncTimer === null) this.startTimeSync();
         return;
       case "GAME_EVENT": {
         const result = this.options.projectionStore.acceptGameEvent(message as GameEventMessage);
@@ -227,6 +253,12 @@ export class WebSocketTransport {
       case "CLOCK_UPDATED":
         this.options.projectionStore.acceptClockUpdated(message.payload as ClockUpdatedPayload, message.serverTime);
         return;
+      case "TIME_SYNC_RESULT":
+        if (this.syncProbe === null || message.payload.requestId !== this.syncProbe.requestId || message.payload.clientSentAt !== this.syncProbe.clientSentAt) return;
+        if (!this.options.projectionStore.acceptTimeSync(message.payload, receivedAt)) return;
+        this.stopTimeSync();
+        this.syncTimer = (this.options.clock ?? browserClock).setTimeout(() => { this.syncTimer = null; this.startTimeSync(); }, 5_000);
+        return;
     }
   }
 
@@ -247,6 +279,7 @@ export class WebSocketTransport {
       return;
     }
     if (pending.command.type === "LEAVE_ROOM" && this.roomId !== null) this.options.tokenStore.clear(this.roomId, "LEAVE_SUCCEEDED");
+    this.recycleAppliedPending();
   }
 
   private acceptReconnect(result: ReconnectResult, serverTime: number): void {
@@ -266,7 +299,12 @@ export class WebSocketTransport {
 
   /** Unknown command delivery is retried byte-for-byte after the new snapshot barrier. */
   private retryUnresolvedPending(): void {
-    for (const pending of this.pending.values()) {
+    const game = this.options.projectionStore.getSnapshot().game;
+    for (const [requestId, pending] of this.pending) {
+      if ((pending.command.type === "SUBMIT_ACTION" || pending.command.type === "USE_TIME_BANK") && !matchesActionOpportunity(pending, game)) {
+        this.pending.delete(requestId);
+        continue;
+      }
       if (pending.status === "SENDING") this.socket?.send(pending.serialized);
     }
   }
@@ -301,6 +339,7 @@ export class WebSocketTransport {
       this.options.projectionStore.requestResync("STALE_ACTION");
       this.requestSnapshot("STALE_ACTION");
     }
+    if (code === "ACTION_TIMEOUT") this.requestAuthoritativeSnapshot("STALE_ACTION");
   }
 
   private requestSnapshot(reason: ResyncReason): boolean {
@@ -349,6 +388,7 @@ export class WebSocketTransport {
   }
 
   private transition(next: ConnectionState): void {
+    if (next === "STOPPED" || next === "CLOSED") this.stopTimeSync();
     this.state = next;
     this.options.onConnectionState?.(next);
   }
@@ -371,6 +411,45 @@ export class WebSocketTransport {
     this.retryTimer = null;
     this.retryAttempt = 0;
   }
+
+  private startTimeSync(): void {
+    if (this.state !== "CONNECTED" || this.socket?.readyState !== 1 || this.syncProbe !== null) return;
+    this.stopTimeSync();
+    const probe = { requestId: this.options.createUuid(), clientSentAt: this.options.monotonicNow?.() ?? performance.now() };
+    this.syncProbe = probe;
+    this.syncTimer = (this.options.clock ?? browserClock).setTimeout(() => {
+      this.syncTimer = null;
+      this.disconnect(false, true);
+      this.scheduleReconnect();
+    }, 10_000);
+    try { this.socket.send(JSON.stringify(ClientCommandSchema.parse({ type: "TIME_SYNC", requestId: probe.requestId, payload: { clientSentAt: probe.clientSentAt } }))); }
+    catch { this.disconnect(false, true); this.scheduleReconnect(); }
+  }
+
+  private stopTimeSync(): void {
+    if (this.syncTimer !== null) (this.options.clock ?? browserClock).clearTimeout(this.syncTimer);
+    this.syncTimer = null;
+    this.syncProbe = null;
+  }
+}
+
+export function matchesActionOpportunity(pending: PendingCommand, game: GameSnapshot | null): boolean {
+  const command = pending.command;
+  if (command.type !== "SUBMIT_ACTION" && command.type !== "USE_TIME_BANK") return false;
+  return game !== null && game.tournamentStatus === "RUNNING"
+    && command.payload.tournamentId === game.tournamentId && command.payload.expectedSequence === game.sequence
+    && game.viewer.playerId === game.currentActorPlayerId && game.viewer.legalActions !== null
+    && pending.opportunity?.handId === game.handId && pending.opportunity.playerId === game.viewer.playerId
+    && pending.opportunity.actorId === game.currentActorPlayerId;
+}
+
+export function blocksTableSubmission(pending: PendingCommand | null, game: GameSnapshot | null): boolean {
+  if (pending === null || game === null || pending.status === "REJECTED") return false;
+  if (pending.status === "SENDING") return matchesActionOpportunity(pending, game);
+  const command = pending.command;
+  return (command.type === "SUBMIT_ACTION" || command.type === "USE_TIME_BANK")
+    && command.payload.tournamentId === game.tournamentId
+    && (pending.appliedSequence === undefined || BigInt(game.sequence) < BigInt(pending.appliedSequence));
 }
 
 const browserClock: WebSocketClock = {

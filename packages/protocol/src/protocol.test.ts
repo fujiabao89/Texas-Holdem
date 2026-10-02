@@ -61,7 +61,7 @@ const source = {
 };
 
 describe("protocol wire contracts", () => {
-  it.each([1, 2, 3, 4, 6])("rejects wire version %i in both directions", (protocolVersion) => {
+  it.each([1, 2, 3, 4, 5, 7])("rejects wire version %i in both directions", (protocolVersion) => {
     expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion, requestId, payload: { roomId: "room_1", playerToken: "x".repeat(43) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
     expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion, serverTime: 1, payload: { snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "1", ...projectPlayerView(source) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
   });

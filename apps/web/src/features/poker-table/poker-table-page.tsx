@@ -14,11 +14,13 @@ import { useTableCues } from "../../audio/use-table-cues";
 import { animationTimings, visualTimings } from "../../animations/timings";
 import { useTablePresentation } from "../../animations/use-table-presentation";
 import type { HoleDealPresentation, OutcomeEvent, PresentationOverlay as PresentationOverlayState } from "../../animations/animation-queue";
-import type { PendingCommand as TransportPendingCommand } from "../../protocol/websocket-transport";
+import { blocksTableSubmission, matchesActionOpportunity, type PendingCommand as TransportPendingCommand } from "../../protocol/websocket-transport";
+import type { ClockProjection } from "../../state/projection-store";
+import { submissionTimeRemaining } from "../../state/server-clock";
 import { useProjectionState } from "../../state/use-projection-state";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
 import { actionFeedback, awardedTo, feedbackFlight, potName, publicHandRankName, publicPlayerName, relativeCenter, type Point } from "./event-feedback";
-import { canSubmitTableAction, remainingTimeMs, seatBadges, tableLayout, tableSeatSlots, tableSeats, type SeatBadge, type TableLayout } from "./table-state";
+import { canSubmitTableAction, seatBadges, tableLayout, tableSeatSlots, tableSeats, type SeatBadge, type TableLayout } from "./table-state";
 
 type AmountMode = WagerRange["kind"] | null;
 type TerminalError = Extract<ErrorCode, "AUTH_FAILED" | "UNSUPPORTED_PROTOCOL_VERSION" | "SESSION_REPLACED">;
@@ -84,14 +86,17 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   }), [websocket]);
 
   const canonicalGame = state.game;
-  const hasPendingCommand = pending !== null && (pending.status === "SENDING" || (pending.status === "APPLIED_AWAITING_STATE" && (pending.appliedSequence === undefined || state.lastSequence === null || BigInt(state.lastSequence) < BigInt(pending.appliedSequence))));
-  const submitEnabled = canSubmitTableAction(canonicalGame, connectionState, state.actionsDisabled, hasPendingCommand);
+  const hasPendingCommand = blocksTableSubmission(pending, canonicalGame);
+  const visibleFeedback = pending?.status === "SENDING" && !hasPendingCommand && feedback === message("table.actionPending") ? message("table.actionStateUpdated") : feedback;
+  const timeAvailable = useSubmissionWindow(state.clock);
+  const submitEnabled = canSubmitTableAction(canonicalGame, connectionState, state.actionsDisabled, hasPendingCommand) && timeAvailable;
   const legal = submitEnabled ? canonicalGame?.viewer.legalActions ?? null : null;
   const range = legal === null ? null : wagerRange(legal);
   const rangeForMode = range !== null && range.kind === amountMode ? range : null;
 
   const submit = (action: SubmitAction) => {
     if (canonicalGame === null || !submitEnabled) return;
+    if (!hasSubmissionTime(projection.getSnapshot().clock)) return;
     try {
       const command = websocket.prepareSubmitAction(canonicalGame.tournamentId, canonicalGame.sequence, action);
       websocket.send(command);
@@ -103,7 +108,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     }
   };
   const retry = () => {
-    if (retryCommand === null || connectionState !== "CONNECTED" || hasPendingCommand) return;
+    if (retryCommand === null || !submitEnabled || !matchesActionOpportunity(retryCommand, canonicalGame) || !hasSubmissionTime(projection.getSnapshot().clock)) return;
     try {
       const command = { ...retryCommand, status: "SENDING" as const, appliedSequence: undefined };
       websocket.send(command);
@@ -191,7 +196,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} tableElement={tableElement} deckElement={deckElement} key={presentation.overlay.eventKey} />}
       </div>
       {legal !== null && <div className="table-action-dock">
-        <BettingControls game={canonicalGame} legal={legal} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankRemainingMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === canonicalGame.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); setAllInConfirmSequence(null); }} onChooseAmount={chooseAmount} onExactChange={(value) => { setExactAmount(value); setAllInConfirmSequence(null); }} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? canonicalGame.sequence : null)} onUseTimeBank={() => { const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: canonicalGame.tournamentId, expectedSequence: canonicalGame.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />
+        <BettingControls game={canonicalGame} legal={legal} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankRemainingMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === canonicalGame.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); setAllInConfirmSequence(null); }} onChooseAmount={chooseAmount} onExactChange={(value) => { setExactAmount(value); setAllInConfirmSequence(null); }} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? canonicalGame.sequence : null)} onUseTimeBank={() => { if (!submitEnabled || !hasSubmissionTime(projection.getSnapshot().clock)) return; const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: canonicalGame.tournamentId, expectedSequence: canonicalGame.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />
       </div>}
       <div className="table-post-hand mx-auto w-full max-w-3xl">
         <HandOutcomeSummary events={presentation.outcomeEvents} game={game} />
@@ -201,7 +206,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         )}
       </div>
     </section>
-    <section className="table-clock-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-center text-xs shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus hasActor={canonicalGame.currentActorPlayerId !== null} actionDeadline={state.clock?.actionDeadline ?? canonicalGame.actionDeadline} timeBankMs={state.clock?.timeBankRemainingMs ?? canonicalGame.viewer.timeBankRemainingMs} serverTime={state.clock?.serverTime ?? 0} clockKey={`${canonicalGame.handId}:${canonicalGame.currentActorPlayerId ?? "none"}`} /></section>
+    <section className="table-clock-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-center text-xs shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus hasActor={canonicalGame.currentActorPlayerId !== null} clock={state.clock} /></section>
     <div className="table-notices mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-amber-900">
       <span className="table-landscape-hint">{message("table.landscapeHint")}</span>
       {state.actionsDisabled && <span className="rounded bg-amber-50 px-2 py-1" role="status">{message("table.syncing")}</span>}
@@ -210,8 +215,8 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
       {ownPokerStatus(state.room, canonicalGame.viewer.playerId) === "EXIT_PENDING" && <span className="rounded bg-amber-50 px-2 py-1" role="status">{message("table.exitPendingNotice")}</span>}
       {ownPokerStatus(state.room, canonicalGame.viewer.playerId) === "WITHDRAWN" && <span className="rounded bg-slate-100 px-2 py-1 text-slate-700" role="status">{message("table.withdrawnNotice")}</span>}
       {hasPendingCommand && <span className="text-neutral-600" aria-live="polite">{message("table.actionPending")}</span>}
-      {feedback !== null && <span className="rounded bg-neutral-100 px-2 py-1 text-neutral-700" role="status" aria-live="polite">{feedback}</span>}
-      {retryCommand !== null && <button className={buttonClass} disabled={connectionState !== "CONNECTED" || hasPendingCommand} onClick={retry}>{message("table.retry")}</button>}
+      {visibleFeedback !== null && <span className="rounded bg-neutral-100 px-2 py-1 text-neutral-700" role="status" aria-live="polite">{visibleFeedback}</span>}
+      {retryCommand !== null && matchesActionOpportunity(retryCommand, canonicalGame) && <button className={buttonClass} disabled={!submitEnabled} onClick={retry}>{message("table.retry")}</button>}
     </div>
     {historyOpen && <HandHistoryDrawer key={canonicalGame.tournamentId} roomId={roomId} tournamentId={canonicalGame.tournamentId} onClose={() => setHistoryOpen(false)} />}
   </TableFrame>;
@@ -417,25 +422,51 @@ const pipLayouts: Readonly<Partial<Record<Card["rank"], readonly PipPosition[]>>
   "10": [{ x: 32, y: 5 }, { x: 68, y: 5 }, { x: 32, y: 28 }, { x: 68, y: 28 }, { x: 32, y: 50 }, { x: 68, y: 50, inverted: true }, { x: 32, y: 72, inverted: true }, { x: 68, y: 72, inverted: true }, { x: 32, y: 95, inverted: true }, { x: 68, y: 95, inverted: true }],
 };
 
-function ClockStatus({ hasActor, actionDeadline, timeBankMs, serverTime, clockKey }: { readonly actionDeadline: number | null; readonly timeBankMs: number; readonly serverTime: number; readonly clockKey: string; readonly hasActor: boolean }) {
-  const [countdown, setCountdown] = useState<{ readonly clockKey: string; readonly actionDeadline: number; readonly remaining: number } | null>(null);
+function useSubmissionCountdown(clock: ClockProjection | null): number | null {
+  const [countdown, setCountdown] = useState<{ readonly clock: ClockProjection; readonly remaining: number | null } | null>(null);
   useEffect(() => {
-    if (actionDeadline === null) return;
-    const performanceNowAtReceipt = performance.now();
+    if (clock === null || clock.actionDeadline === null) return;
     const update = () => {
-      const estimated = remainingTimeMs(actionDeadline, serverTime, performanceNowAtReceipt, performance.now())!;
-      setCountdown((previous) => ({ clockKey, actionDeadline, remaining: previous !== null && previous.clockKey === clockKey && actionDeadline <= previous.actionDeadline ? Math.min(estimated, previous.remaining) : estimated }));
+      setCountdown({ clock, remaining: submissionTimeRemaining(clock.actionDeadline, clock, performance.now()) });
     };
     update();
     const interval = window.setInterval(update, 250);
     const onVisibilityChange = () => { if (document.visibilityState === "visible") update(); };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisibilityChange); };
-  }, [actionDeadline, clockKey, serverTime]);
-  const remaining = actionDeadline === null ? null : (countdown?.remaining ?? null);
+  }, [clock]);
+  return countdown?.clock === clock ? countdown?.remaining ?? null : null;
+}
+
+/** The full table only rerenders when the window closes, not on every clock tick. */
+function useSubmissionWindow(clock: ClockProjection | null): boolean {
+  const [availability, setAvailability] = useState<{ readonly clock: ClockProjection; readonly available: boolean } | null>(null);
+  useEffect(() => {
+    if (clock === null || clock.actionDeadline === null) return;
+    const update = () => setAvailability({ clock, available: hasSubmissionTime(clock) });
+    update();
+    const remaining = submissionTimeRemaining(clock.actionDeadline, clock, performance.now())!;
+    const timer = clock.roundTripMs !== null && remaining > 0 ? window.setTimeout(update, Math.ceil(remaining)) : null;
+    const onVisibilityChange = () => { if (document.visibilityState === "visible") update(); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => { if (timer !== null) window.clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibilityChange); };
+  }, [clock]);
+  return clock?.actionDeadline === null || (availability?.clock === clock && availability?.available === true);
+}
+
+function hasSubmissionTime(clock: ClockProjection | null): boolean {
+  return clock !== null && (clock.actionDeadline === null || (clock.roundTripMs !== null && submissionTimeRemaining(clock.actionDeadline, clock, performance.now())! > 0));
+}
+
+function ClockStatus({ hasActor, clock }: { readonly hasActor: boolean; readonly clock: ClockProjection | null }) {
+  const remaining = useSubmissionCountdown(clock);
+  const actionDeadline = clock?.actionDeadline ?? null;
+  const timeBankMs = clock?.timeBankRemainingMs ?? 0;
+  const calibrating = hasActor && actionDeadline !== null && clock?.roundTripMs === null;
+  const insufficient = hasActor && !calibrating && actionDeadline !== null && remaining === 0;
   return <>
-    <p className="text-xs text-[#40563d] sm:text-sm">{remaining === null ? message(hasActor && actionDeadline === null ? "table.unlimitedTime" : "table.waiting") : `${message("table.remainingTime")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(remaining / 1000) })} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>
-    <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{hasActor && actionDeadline === null ? message("table.unlimitedTime") : ""}</span>
+    <p className="text-xs text-[#40563d] sm:text-sm">{calibrating ? message("table.clockCalibrating") : remaining === null ? message(hasActor && actionDeadline === null ? "table.unlimitedTime" : "table.waiting") : `${message("table.remainingTime")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(remaining / 1000) })} · ${message("table.timeBank")}：${formatMessage("table.timeBankValue", { seconds: Math.ceil(timeBankMs / 1000) })}`}</p>
+    <span className={calibrating || (hasActor && actionDeadline === null) ? "sr-only" : undefined} role="status" aria-live="polite" aria-atomic="true">{calibrating ? message("table.clockCalibrating") : insufficient ? message("table.timeInsufficient") : hasActor && actionDeadline === null ? message("table.unlimitedTime") : clock?.roundTripMs !== null && (clock?.roundTripMs ?? 0) >= 300 ? formatMessage("table.networkSlow", { milliseconds: Math.round(clock!.roundTripMs!) }) : ""}</span>
   </>;
 }
 function ConnectionStatus({ connectionState, syncing }: { readonly connectionState: string; readonly syncing: boolean }) { return <p role="status" aria-live="polite" className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-[#40563d]">{syncing ? message("table.syncing") : connectionState === "CONNECTED" ? message("table.connectionConnected") : connectionState === "STOPPED" ? message("table.connectionReplaced") : connectionState === "CONNECTING" || connectionState === "AUTHENTICATING" ? message("table.connectionConnecting") : message("table.connectionDisconnected")}</p>; }

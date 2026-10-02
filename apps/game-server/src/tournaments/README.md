@@ -31,3 +31,5 @@ TEX-51：恢复注册返回可等待的启动结果，进行中比赛只有所�
 ## 测试
 
 `*.test.ts` 覆盖（unit 层，经根 `pnpm test:unit`）：串行化、receivedAt 截止裁决、展示窗/完整行动时钟/迟到展示回调、展示期间背压恢复与玩家撤回、Time Bank、断线/宽限/无真人、重复/非法/过期命令、事件 sequence 与 Commit Bundle、time 模式升盲、Room↔Tournament 开局/终局闭环。全部使用 Fake Clock + 注入随机源，无真实 DB / sleep。
+
+TEX-60：tournament-executor.test.ts 扩展 Action/Time Bank 的 D-1/D/D+1 Timer-first/Action-first 可复现回归，按唯一 sequence 验证自动动作（输出为逐玩家投影）。逾期原机会统一 ACTION_TIMEOUT；Timer 已推进 sequence 时优先 STALE_GAME_STATE，不被展示阶段错误掩盖。TIME_SYNC 不进入本队列。

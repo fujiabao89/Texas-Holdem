@@ -13,3 +13,5 @@ TEX-45 补充牌桌游戏类型、盲注摘要、本人标记和行动提示文�
 TEX-46 的 `table.landscapeHint` 提供手机竖屏下非阻断的横屏对局建议，不代表强制锁定方向。
 
 TEX-54 只补共享新增赛果错误码的中文映射，确保按 ErrorCode 展示兼容；赛果页面的 HTTP 恢复逻辑仍属后续任务。
+
+TEX-60：table.clockCalibrating/networkSlow/timeInsufficient 明确校时、高延迟与安全窗口耗尽；remainingTime 表示“可提交剩余时间”。ACTION_TIMEOUT 只说明操作到达服务端时超时，不宣称已自动弃牌，等待权威状态。

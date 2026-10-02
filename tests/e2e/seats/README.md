@@ -17,3 +17,5 @@ pnpm exec playwright test -c tests/e2e/playwright.config.ts seats
 断言只依赖 `data-seat`、`data-seat-slot`、`data-active`、`data-seat-badge`、`data-seat-name`、`data-seat-stack` 等稳定语义属性，不依赖 CSS class 或固定像素坐标。
 
 夹具拦截 `**/api/v1/ws`，兼容同源代理和开发环境独立 game-server 地址；不会连接真实牌局。
+
+TEX-60：table-fixture.ts 使用共享 TIME_SYNC mock 支持 v6，座位与权威行动回归不会绕过校时路径。

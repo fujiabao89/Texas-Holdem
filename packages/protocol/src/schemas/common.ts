@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** Wire major version. A different major version is never parsed optimistically. */
-export const PROTOCOL_VERSION = 5 as const;
+export const PROTOCOL_VERSION = 6 as const;
 
 const UINT64_MAX = BigInt("18446744073709551615");
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,6 +23,8 @@ export const SafeIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INT
 export const PositiveSafeIntegerSchema = SafeIntegerSchema.min(1);
 export const SeatSchema = z.number().int().min(0).max(9);
 export const EpochMillisecondsSchema = SafeIntegerSchema;
+/** Client monotonic time is echoed only, never trusted for server arbitration. */
+export const MonotonicMillisecondsSchema = z.number().min(0).max(Number.MAX_SAFE_INTEGER).finite();
 export const DecimalSequenceSchema = z.string().regex(/^(0|[1-9][0-9]*)$/).refine(
   (value) => BigInt(value) <= UINT64_MAX,
   { message: "sequence must fit uint64" },

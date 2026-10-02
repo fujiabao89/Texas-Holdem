@@ -30,3 +30,5 @@ TEX-44 新增全站动态偏好容器后，CPU 回归的降级断言精确定位
 CPU 用例先用 MutationObserver 记录飞牌或自动降级，避免跨进程轮询漏掉瞬态。90 个真实帧采样与 trace/video 共享的整条用例时限为 60 秒；没有放宽下注序列或终帧断言。验证记录见 [TEX-44](../../../docs/03-engineering/TEX-44-acceptance.md)。
 
 TEX-53 的 wire v4 夹具补齐 smallBlindSeat/bigBlindSeat，沿用既有动画与音效断言。
+
+TEX-60：table-fixture.ts 显式回复共享 v6 TIME_SYNC，保持校时路径可用；动画仍不决定行动截止或阻塞整桌。

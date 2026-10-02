@@ -457,8 +457,12 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 - `actionDeadline`、`timeBankRemainingMs` 与 `showdownDisplayUntil` 由 server 更新并出现在 Snapshot/`CLOCK_UPDATED`（[02](./02-protocol-spec.md) §8.2/§8.4/§9.2）；客户端倒计时**仅展示**（《总规划》§3.2）。
 - 当前行动者高亮 + 倒计时（《区块1-5 v0.1》§5.10）；处于 `SHOWDOWN_DISPLAY` 阶段时，行动倒计时不展示，客户端在 `showdownDisplayUntil` 窗口内持续呈现摊牌、比牌与分池结果高亮。
 - **本地倒计时归零不触发任何自动动作或状态变更**：Auto Check/Auto Fold 由服务端 Scheduler 以 `SYSTEM_TIMER` 源 Action 产生（《总规划》§3.1），前端等待事件；摊牌展示窗口到期亦由服务端推送下一手事件或快照，客户端不自行切相。
-- 每次接受带 `serverTime` 的服务端消息时记录锚点 `{ serverTimeAtReceipt, performanceNowAtReceipt }`；展示用 `estimatedServerNow = serverTimeAtReceipt + (performance.now() - performanceNowAtReceipt)`，剩余时间为 `max(0, actionDeadline - estimatedServerNow)`。新锚点不得让同一行动机会的倒计时回跳变长；只有接受到更大的 `actionDeadline`（例如合法使用 Time Bank）才允许增加显示。页面从后台恢复后立即使用最新锚点重算并触发重连/同步检查。
-- 该估算包含单向网络延迟，只服务于 UX；归零不发送 Action、不判定超时，最终裁决仍由服务端单调时钟完成。
+- 每次接受权威 Snapshot/Event/Clock 时在投影入口记录锚点 `{ serverTimeAtReceipt, performanceNowAtReceipt }`；serverTimeAtReceipt 是校时后的估计，原始 serverTime 另留作过期过滤。展示用 `estimatedServerNow = serverTimeAtReceipt + (performance.now() - performanceNowAtReceipt)`，可提交剩余时间还须扣除下述网络余量。新锚点不得让同一行动机会的倒计时回跳变长；同一机会保留较大余量，只有真实 actionDeadline 延长或新机会才允许增加显示。页面从后台恢复后立即重算并刷新校时/同步检查。
+- TEX-60 / wire v6：认证与重连后立即发送 TIME_SYNC，之后每 5 秒采样；10 秒无有效回复按失联重连。`t0/t3` 是 performance.now() 发送/接收时间，`t1/t2` 是网关接收/发送 epoch 时间。`RTT=(t3-t0)-(t2-t1)`，`offset=(t1+t2-t0-t3)/2`；RTT 与 offset 用 EWMA（0.2），estimatedServerNow 保持不倒退。回显 requestId/clientSentAt 必须匹配唯一在途探针，排除旧 socket、重复/未请求回复、负 RTT 或超过 10 秒的样本。
+- 可提交倒计时使用 `max(0, actionDeadline - estimatedServerNow - safetyMargin)`；`safetyMargin=ceil(max(50,latestRTT/2,smoothedRTT/2)+2*jitter+offsetResidual)`。jitter 为相邻 RTT 差值绝对值的 EWMA；offsetResidual 为新样本估计比平滑展示时钟领先的非负差值。锚点存在 ProjectionStore，挂载/渲染/后台恢复不重置；Snapshot 重置权威截止字段，重连不续发时间。
+- 首次校时前，限时操作暂时禁用并显示“正在校准服务器时间”；RTT >= 300ms 提示网络延迟较高、提前操作。余量内显示“剩余时间不足以保证操作送达，等待服务器确认”，关闭本地提交入口，不发自动动作、不推进状态、不宣称服务器已经弃牌。不限时行动不受余量限制。提交 handler 再次读取当前单调时间，避免最后一帧的陈旧按钮越过安全窗口。
+- 断线/状态推进后的未知 Action/Time Bank 仅在 tournament/hand/actor/player/expectedSequence 仍完全匹配时重发原字节；失效 pending 不阻塞新机会。APPLIED 回执/对应事件任一先到，最后一个到达时立即按 appliedSequence 回收。传输层同步阻止同机会并发新命令，回执不代替 canonical。
+- 网络非对称与未来突发延迟仍可能使余量不足；客户端不给任何玩家修改服务端 deadline，不等待 ACK 暂停整桌。ACTION_TIMEOUT 明确说明到达服务器时已超时，并请求权威 Snapshot；最终裁决仍由服务端单调时钟完成。
 
 ### 11.2 连接状态
 

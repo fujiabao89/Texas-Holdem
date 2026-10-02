@@ -13,3 +13,5 @@ TEX-26 额外提供只读 `subscribeAcceptedGameEvents`（仅在连续 Patch 已
 TEX-26/TEX-27 合并后，每个合法 Event 只提交一次 canonical、Clock 与 `currentHandEvents`，提交后才通知动画；Snapshot/重连先清空历史缓冲，再发出 presentation 屏障。`projection-store.test.ts` 联合断言这两种消费者的顺序、幂等和新手局身份切换。
 
 TEX-53：`projection-store.test.ts` 覆盖无需 HAND_STARTED 历史即可从 INITIAL/RECONNECT/RESYNC/FAST_FORWARD 还原权威 D/SB/BB，支持 null 清空以及跨手 patch 原子替换。字段直接消费共享协议，不在客户端推算盲注位置。
+
+TEX-60：server-clock.ts 用四时间戳、EWMA RTT/offset/jitter 和安全余量校时，完全独立于本地 Date.now()。ProjectionStore 在收到 Snapshot/Event/Clock 时保存单调锚点，校时只更新展示态；同机会的余量不缩小、估计时钟不倒退，只有真实 deadline 延长可恢复显示时间。重连保留估计并重新校时，换房清除基线。server-clock.test.ts 覆盖 50/100/300/500ms RTT、非对称抖动、处理耗时、迟到消息、挂载延迟与非法样本。

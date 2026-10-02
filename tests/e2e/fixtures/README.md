@@ -6,3 +6,5 @@ E2E 共享 fixture 与 helper（非测试文件，不被 Playwright 自动收集
 - [a11y.ts](./a11y.ts) — `@axe-core/playwright` 封装：按 impact 阈值扫描（默认 critical）。
 
 用法：`import { expect, test } from "./fixtures/observability"`（diagnostics fixture 为 `auto`，无需显式请求）。门禁行为自测见 [../observability.spec.ts](../observability.spec.ts)。
+
+- [time-sync.ts](./time-sync.ts)：显式为合法投影 mock 回复 v6 TIME_SYNC，以当前 socket 首次探针为合成时间原点；弱网测试自行控制四时间戳和回复时机，避免把即时 fixture 当作网络验证。
