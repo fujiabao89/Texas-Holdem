@@ -36,3 +36,5 @@ DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它�
 - [TEX-46 单视口牌桌与按需行动区验收](./TEX-46-acceptance.md)：5 视口 × 2/3/6/10 人桌的单视口与不遮挡矩阵证据。
 - [TEX-55-acceptance.md](./TEX-55-acceptance.md)：赛果页权威HTTP接口恢复、刷新与直接访问、未认证降级、多轮隔离与E2E验证。
 - [TEX-55-findings-ledger.md](./TEX-55-findings-ledger.md)：PR #57 的 Codex、CodeRabbit 与 Greptile 审查意见逐项核验、精确失败场景、严重度与处置台账。
+
+- [TEX-60-acceptance.md](./TEX-60-acceptance.md)：弱网四时间戳校时、安全余量、截止仲裁与重连命令的验证和部署边界。

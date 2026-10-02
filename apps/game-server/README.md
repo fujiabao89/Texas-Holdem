@@ -74,3 +74,5 @@ TEX-53 将权威 D/SB/BB 同步到完整 Snapshot 与逐事件 patch，wire v4 �
 ## TEX-54 持久化赛果
 
 `GET /api/v1/tournaments/{tournamentId}/result` 由生产装配的 `createTournamentResultRepository` 提供，同 Room 有效 HUMAN 成员凭证授权，Runtime 卸载后仍可读。鉴权按每条凭证持久化的 `token_key_id` 从当前/保留密钥环解析；轮换不会把仍开放 Room 的旧 Token 错判失效。共享严格 Schema、错误/保留期/no-store 规则见 [02](../../docs/02-protocol-spec.md) 的 TEX-54 契约。内部终局来源使用直接依赖 `zod` 防御校验，公开 DTO 仍仅在协议包定义；无数据库迁移。真实链路与既有写入边界见 [验收记录](../../docs/03-engineering/TEX-54-acceptance.md)。
+
+TEX-60：认证后的 TIME_SYNC 在 Gateway 直接回复四时间戳，不进入桌队列、不改行动截止或持久化；Action/Time Bank 的 receivedAt 在 Schema 后、访问检查前固定。协议 v6 必须与 Web 同时升级，见 [运维说明](../../docs/05-operations/network-action-clock.md)。

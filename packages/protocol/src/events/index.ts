@@ -8,9 +8,11 @@ import {
   EpochMillisecondsSchema,
   EventSequenceSchema,
   HandRankSchema,
+  MonotonicMillisecondsSchema,
   OpaqueIdSchema,
   PROTOCOL_VERSION,
   ProtocolVersionSchema,
+  RequestIdSchema,
   SafeIntegerSchema,
   SeatSchema,
 } from "../schemas/common";
@@ -44,7 +46,7 @@ export const GameEventSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("TOURNAMENT_FINISHED"), payload: z.strictObject({ winnerPlayerId: OpaqueIdSchema.nullable(), rankings: z.array(z.strictObject({ playerId: OpaqueIdSchema, finishPosition: z.number().int().min(1), tied: z.boolean() })).max(10) }).refine((value) => value.winnerPlayerId === null || value.rankings.length > 0, { message: "a champion requires nonempty rankings" }) }),
 ]);
 
-const serverMessage = <T extends z.ZodType>(type: string, payload: T) => z.strictObject({
+const serverMessage = <const TType extends string, T extends z.ZodType>(type: TType, payload: T) => z.strictObject({
   type: z.literal(type),
   protocolVersion: ProtocolVersionSchema,
   serverTime: EpochMillisecondsSchema,
@@ -80,7 +82,16 @@ export const ClockUpdatedPayloadSchema = z.strictObject({
     ctx.addIssue({ code: "custom", message: "currentActorPlayerId must be null when showdownDisplayUntil is non-null" });
   }
 });
+export const TimeSyncResultPayloadSchema = z.strictObject({
+  requestId: RequestIdSchema,
+  clientSentAt: MonotonicMillisecondsSchema,
+  serverReceivedAt: EpochMillisecondsSchema,
+  serverSentAt: EpochMillisecondsSchema,
+}).refine((value) => value.serverSentAt >= value.serverReceivedAt, { message: "server time must not regress" });
+export const TimeSyncResultMessageSchema = serverMessage("TIME_SYNC_RESULT", TimeSyncResultPayloadSchema)
+  .refine((value) => value.serverTime === value.payload.serverSentAt, { message: "serverTime must equal serverSentAt" });
 export const ServerMessageSchema = z.discriminatedUnion("type", [
+  TimeSyncResultMessageSchema,
   serverMessage("RECONNECT_RESULT", ReconnectResultSchema),
   serverMessage("ROOM_SNAPSHOT", RoomSnapshotSchema),
   serverMessage("GAME_SNAPSHOT", GameSnapshotSchema),
@@ -109,4 +120,5 @@ export type GameEvent = z.infer<typeof GameEventSchema>;
 export type GameEventMessage = z.infer<typeof GameEventMessageSchema>;
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 export type ClockUpdatedPayload = z.infer<typeof ClockUpdatedPayloadSchema>;
+export type TimeSyncResultPayload = z.infer<typeof TimeSyncResultPayloadSchema>;
 export type CloseCode = z.infer<typeof CloseCodeSchema>;

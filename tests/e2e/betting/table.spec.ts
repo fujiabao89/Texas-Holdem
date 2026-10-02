@@ -1,3 +1,4 @@
+import { replyTimeSync } from "../fixtures/time-sync";
 import { PROTOCOL_VERSION } from "../../../packages/protocol/src";
 import { criticalViolations } from "../fixtures/a11y";
 import { expect, test } from "../fixtures/observability";
@@ -35,11 +36,170 @@ async function seedTableSession(page: Page): Promise<void> {
   await page.addInitScript('sessionStorage.setItem("texas-holdem:player-token:room-1", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");sessionStorage.setItem("texas-holdem:player-id:room-1", "player-1");');
 }
 
+for (const rtt of [50, 100, 300, 500]) {
+  test(`TEX-60 ${rtt}ms RTT 校时、安全余量与迟到消息不重置倒计时`, async ({ page }) => {
+    await seedTableSession(page);
+    await page.clock.install({ time: new Date("2026-10-02T00:00:00Z") });
+    await page.clock.pauseAt(new Date("2026-10-02T00:00:01Z"));
+    let probe: { requestId: string; payload: { clientSentAt: number } } | undefined;
+    let send: ((value: unknown) => void) | undefined;
+    const commands: string[] = [];
+    await page.routeWebSocket("/api/v1/ws", (socket) => {
+      send = (value) => socket.send(JSON.stringify(value));
+      socket.onMessage((raw) => {
+        const command = JSON.parse(raw.toString());
+        commands.push(command.type);
+        if (command.type === "AUTHENTICATE") send!({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 0, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ actionDeadline: 5_000 }) } });
+        if (command.type === "TIME_SYNC") {
+          if (probe === undefined) probe = command;
+          else {
+            const serverTime = Math.floor(command.payload.clientSentAt);
+            send!({ type: "TIME_SYNC_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime, payload: { requestId: command.requestId, clientSentAt: command.payload.clientSentAt, serverReceivedAt: serverTime, serverSentAt: serverTime } });
+          }
+        }
+      });
+    });
+    await page.goto("/room/room-1/table");
+    await expect.poll(() => probe !== undefined).toBe(true);
+    await expect(page.getByText(message("table.clockCalibrating"), { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+    await page.clock.runFor(rtt);
+    const serverTime = Math.floor(probe!.payload.clientSentAt + rtt / 2);
+    send!({ type: "TIME_SYNC_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime, payload: { requestId: probe!.requestId, clientSentAt: probe!.payload.clientSentAt, serverReceivedAt: serverTime, serverSentAt: serverTime } });
+    const clock = page.getByRole("region", { name: "延时储备" });
+    await expect(page.getByRole("button", { name: "跟注 5" })).toBeEnabled();
+    if (rtt >= 300) await expect(clock).toContainText("网络延迟较高");
+    await page.clock.runFor(1_000);
+    const before = await clock.locator(":scope > p").innerText();
+    send!({ type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime, payload: gameSnapshot({ reason: "RESYNC", actionDeadline: 5_000 }) });
+    await expect(clock.locator(":scope > p")).toHaveText(before);
+    // A local wall-clock change cannot grant more server time.
+    await page.clock.setSystemTime(new Date("2020-01-01T00:00:00Z"));
+    await expect(clock.locator(":scope > p")).toHaveText(before);
+    await page.clock.runFor(4_000);
+    await expect(clock).toContainText(message("table.timeInsufficient"));
+    await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+    expect(commands.filter((type) => type === "SUBMIT_ACTION" || type === "USE_TIME_BANK")).toEqual([]);
+    send!({ type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 6_000, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 15_000, timeBankRemainingMs: 30_000, showdownDisplayUntil: null } });
+    await expect(page.getByRole("button", { name: "跟注 5" })).toBeEnabled();
+  });
+}
+
+for (const outcome of ["extend", "expire"] as const) {
+  test(`TEX-60 Time Bank 在普通操作安全窗口关闭后独立保留：${outcome}`, async ({ page }) => {
+    await seedTableSession(page);
+    await page.clock.install({ time: new Date("2026-10-02T00:00:00Z") });
+    await page.clock.pauseAt(new Date("2026-10-02T00:00:01Z"));
+    let send: ((value: unknown) => void) | undefined;
+    let probe: { requestId: string; payload: { clientSentAt: number } } | undefined;
+    const submitted: { type: string; requestId: string; payload: { tournamentId: string; expectedSequence: string } }[] = [];
+    await page.routeWebSocket("/api/v1/ws", (socket) => {
+      send = (value) => socket.send(JSON.stringify(value));
+      socket.onMessage((raw) => {
+        const command = JSON.parse(raw.toString());
+        if (command.type === "AUTHENTICATE") send!({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 0, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ actionDeadline: 5_000 }) } });
+        if (command.type === "TIME_SYNC") probe = command;
+        if (command.type === "USE_TIME_BANK" || command.type === "SUBMIT_ACTION") submitted.push(command);
+      });
+    });
+    await page.goto("/room/room-1/table");
+    await expect.poll(() => probe !== undefined).toBe(true);
+    await page.clock.runFor(500);
+    const serverTime = Math.floor(probe!.payload.clientSentAt + 250);
+    send!({ type: "TIME_SYNC_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime, payload: { requestId: probe!.requestId, clientSentAt: probe!.payload.clientSentAt, serverReceivedAt: serverTime, serverSentAt: serverTime } });
+    await page.getByRole("button", { name: "加注", exact: true }).click();
+    await expect(page.getByRole("button", { name: "确认加注至 20" })).toBeVisible();
+    // At 4,800ms the 250ms safety margin is exhausted, but the 5,000ms
+    // authoritative deadline has not elapsed. The open wager editor must close.
+    await page.clock.runFor(4_300);
+    await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "确认加注至 20" })).toHaveCount(0);
+    const timeBank = page.getByRole("button", { name: "使用延时" });
+    await expect(timeBank).toBeEnabled();
+    expect(submitted).toEqual([]);
+    if (outcome === "expire") {
+      await page.clock.runFor(200);
+      await expect(timeBank).toHaveCount(0);
+      expect(submitted).toEqual([]);
+      return;
+    }
+    await timeBank.click();
+    await expect.poll(() => submitted.length).toBe(1);
+    expect(submitted[0]).toMatchObject({ type: "USE_TIME_BANK", payload: { tournamentId: "tournament-1", expectedSequence: "1" } });
+    await expect(timeBank).toHaveCount(0); // one pending intent blocks duplicates
+    await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+    send!({ type: "COMMAND_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 4_900, payload: { requestId: submitted[0]!.requestId, status: "APPLIED", duplicate: false, appliedSequence: "1" } });
+    send!({ type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 4_900, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 15_000, timeBankRemainingMs: 30_000, showdownDisplayUntil: null } });
+    await expect(page.getByRole("button", { name: "确认加注至 20" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "返回操作" })).toBeEnabled();
+    expect(submitted).toHaveLength(1); // acknowledgement does not auto-submit a wager
+  });
+}
+
+test("TEX-60 操作超时给出明确反馈并请求权威状态", async ({ page }) => {
+  await seedTableSession(page);
+  const commands: string[] = [];
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
+      const command = JSON.parse(raw.toString());
+      commands.push(command.type);
+      if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 0, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
+      if (command.type === "SUBMIT_ACTION") socket.send(JSON.stringify({ type: "COMMAND_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 50_001, payload: { requestId: command.requestId, actionId: command.payload.actionId, status: "REJECTED", duplicate: false, error: { code: "ACTION_TIMEOUT", message: "ignored", retryable: false, traceId: "trace-timeout" } } }));
+    });
+  });
+  await page.goto("/room/room-1/table");
+  await page.getByRole("button", { name: "跟注 5" }).click();
+  await expect(page.getByText("操作到达服务器时已超时，请以最新牌局状态为准。", { exact: true })).toBeVisible();
+  await expect.poll(() => commands.includes("REQUEST_SNAPSHOT")).toBe(true);
+  await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+});
+
+test("TEX-60 重连保留真实截止时间并丢弃已失效的未知操作", async ({ page }) => {
+  await seedTableSession(page);
+  await page.clock.install({ time: new Date("2026-10-02T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-10-02T00:00:01Z"));
+  let reconnects = 0;
+  let closeCurrent: (() => Promise<void>) | undefined;
+  const actions: string[] = [];
+  await page.routeWebSocket("/api/v1/ws", (socket) => {
+    closeCurrent = () => socket.close({ code: 1006 });
+    socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
+      const command = JSON.parse(raw.toString());
+      if (command.type === "AUTHENTICATE") {
+        reconnects += 1;
+        socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: reconnects === 1 ? 0 : 8_000, payload: {
+          connectionId: `connection-${reconnects}`, resumed: true, tookOver: false, roomSnapshot,
+          gameSnapshot: gameSnapshot({ reason: "RECONNECT", sequence: String(reconnects), actionDeadline: 30_000 }),
+        } }));
+      }
+      if (command.type === "SUBMIT_ACTION") actions.push(raw.toString()); // unknown acknowledgement
+    });
+  });
+  await page.goto("/room/room-1/table");
+  const clock = page.getByRole("region", { name: "延时储备" });
+  await expect(clock).toContainText("剩余时间：30 秒");
+  await page.getByRole("button", { name: "跟注 5" }).click();
+  await expect.poll(() => actions.length).toBe(1);
+  await page.clock.runFor(8_000);
+  await closeCurrent!();
+  await page.clock.runFor(1);
+  await expect.poll(() => reconnects).toBe(2);
+  await expect(clock).toContainText("剩余时间：22 秒");
+  await expect(page.getByRole("button", { name: "跟注 5" })).toBeEnabled();
+  expect(actions).toHaveLength(1); // no replay into sequence 2
+  await page.getByRole("button", { name: "跟注 5" }).click();
+  await expect.poll(() => actions.length).toBe(2);
+  expect(JSON.parse(actions[1]!).payload.actionId).not.toBe(JSON.parse(actions[0]!).payload.actionId);
+});
+
 test("牌桌由 WS 权威投影驱动，键盘提交跟注后等待 Event 状态", async ({ page }) => {
   const submitted: unknown[] = [];
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string; requestId: string; payload?: { actionId?: string } };
       if (command.type === "AUTHENTICATE") {
         socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
@@ -68,6 +228,7 @@ test("不限时行动状态只通过独立实时区域播报", async ({ page }) 
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     send = (message) => socket.send(JSON.stringify(message));
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       if ((JSON.parse(raw.toString()) as { type: string }).type !== "AUTHENTICATE") return;
       socket.send(JSON.stringify({
         type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1,
@@ -102,6 +263,7 @@ test("全下需要第二次确认，且不会伪装成普通下注", async ({ pa
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
@@ -120,6 +282,7 @@ test("普通加注达到全下目标时仍需二次确认", async ({ page }) => 
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ viewer: { ...gameSnapshot().viewer, legalActions: { ...gameSnapshot().viewer.legalActions!, maxRaiseTo: 1000, allInTo: 1000 } } }) } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
@@ -140,6 +303,7 @@ test("改选普通加注会取消全下确认并提交加注", async ({ page }) 
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
@@ -159,6 +323,7 @@ test("点击提交会采用仍聚焦的精确加注额", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
@@ -178,6 +343,7 @@ test("输入非法精确金额会取消全下确认", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") submitted.push(command);
@@ -198,6 +364,7 @@ test("ClockUpdated 的权威 Time Bank 余额会收起操作按钮", async ({ pa
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       if ((JSON.parse(raw.toString()) as { type: string }).type !== "AUTHENTICATE") return;
       socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       socket.send(JSON.stringify({ type: "CLOCK_UPDATED", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: { tournamentId: "tournament-1", handId: "hand-1", currentActorPlayerId: "player-1", actionDeadline: 55_000, timeBankRemainingMs: 0, showdownDisplayUntil: null } }));
@@ -213,6 +380,7 @@ test("已有待发送命令时不能重试已拒绝的旧命令", async ({ page 
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string; requestId: string; payload?: { action?: { type: string }; actionId?: string } };
       if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
       if (command.type === "SUBMIT_ACTION") {
@@ -236,6 +404,7 @@ test("AUTH_FAILED 会清除 Token 并引导重新加入", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "ERROR", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { code: "AUTH_FAILED", message: "ignored", retryable: false, traceId: "trace-1" } }));
     });
   });
@@ -247,6 +416,7 @@ test("UNSUPPORTED_PROTOCOL_VERSION 会显示刷新入口", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "ERROR", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: { code: "UNSUPPORTED_PROTOCOL_VERSION", message: "ignored", retryable: false, traceId: "trace-2" } }));
     });
   });
@@ -259,6 +429,7 @@ test("房间关闭会以服务端 RoomSnapshot 覆盖牌桌", async ({ page }) =
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") {
         socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
@@ -274,6 +445,7 @@ test("成员被移出会以服务端 RoomSnapshot 停止牌桌操作", async ({ 
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       if (command.type === "AUTHENTICATE") {
         socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
@@ -289,6 +461,7 @@ test("Session Replaced 停止操作并显示明确反馈", async ({ page }) => {
   await seedTableSession(page);
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "SESSION_REPLACED", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: {} }));
     });
   });
@@ -306,6 +479,7 @@ test("TEX-26 合并后历史和音效入口共存且连接状态与牌堆不重�
   }));
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       commands.push(command.type);
       if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot() } }));
@@ -343,6 +517,7 @@ test("TEX-26 动画积压时倒计时立即采用 canonical 行动机会", async
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     send = (message) => socket.send(JSON.stringify(message));
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string };
       commands.push(command.type);
       if (command.type === "AUTHENTICATE") socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 0, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot: gameSnapshot({ board: [], handPhase: "PREFLOP", actionDeadline: 10_000 }) } }));
@@ -358,7 +533,7 @@ test("TEX-26 动画积压时倒计时立即采用 canonical 行动机会", async
   send!({ type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1_000, payload: {
     tournamentId: "tournament-1", sequence: "2", handId: "hand-1",
     event: { type: "FLOP_DEALT", payload: { cards: gameSnapshot().board } },
-    patch: { board: gameSnapshot().board, handPhase: "FLOP", currentActorPlayerId: "player-2", actionDeadline: 10_000, viewer: { legalActions: null } },
+    patch: { board: gameSnapshot().board, handPhase: "FLOP", currentActorPlayerId: "player-2", actionDeadline: 18_000, viewer: { legalActions: null } },
   } });
   await expect(page.getByText("正在发出公共牌", { exact: true })).toHaveCount(1);
   await expect(clock).toContainText("剩余时间：9 秒");

@@ -48,3 +48,5 @@ TEX-55 通过 `HttpTransport.getTournamentResult` 接入 TEX-54 权威持久化�
 PR 审查回归同时把牌桌座位筹码文字调整为满足深色桌面上的 WCAG AA 对比度，真实 WebKit axe 检查不得再以临界色值失败。
 
 TEX-46 把牌桌页收敛为单一视口：站点页头之外的剩余高度交给页面，牌桌在剩余空间内自适应，并固定预留操作区域。操作区只在服务端投影表明轮到本人且存在 `LegalActions` 时出现，隐藏与显示都不改变牌桌几何。对手信息卡和手牌缩小约三分之一，自己的手牌保留更大尺寸，Seat 跨坐桌沿；当前下注为桌内独立筹码标记，不参与 Seat 高度。短横屏手机采用左侧牌桌、右侧完整操作列，竖屏仍可完成对局并提示横屏建议。本手结果层为覆盖层。标题、权威盲注和历史/音效/连接状态位于共用顶栏。回归见 [tests/e2e/table-layout](../../tests/e2e/table-layout/single-viewport.spec.ts) 与 [前端规格](../../docs/05-frontend-spec.md) §7.5/§8.1。
+
+TEX-60：传输层每连接 5 秒应用层校时，10 秒无回复重连；ProjectionStore 持有单调接收锚点与 RTT 安全余量。牌桌显示可提交剩余时间及校时/高延迟/时间不足提示，重连不续发行动时间。规格见 [05 §11.1](../../docs/05-frontend-spec.md)，验收见 [TEX-60](../../docs/03-engineering/TEX-60-acceptance.md)。

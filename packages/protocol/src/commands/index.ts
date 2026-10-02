@@ -6,6 +6,7 @@ import {
   DecimalSequenceSchema,
   DisplayNameSchema,
   InviteCodeSchema,
+  MonotonicMillisecondsSchema,
   OpaqueIdSchema,
   PROTOCOL_VERSION,
   ProtocolVersionSchema,
@@ -65,6 +66,11 @@ const LeaveRoomCommandSchema = z.strictObject({
   requestId: RequestIdSchema,
   payload: z.strictObject({}),
 });
+const TimeSyncCommandSchema = z.strictObject({
+  type: z.literal("TIME_SYNC"),
+  requestId: RequestIdSchema,
+  payload: z.strictObject({ clientSentAt: MonotonicMillisecondsSchema }),
+});
 
 export const ClientCommandSchema = z.discriminatedUnion("type", [
   AuthenticateCommandSchema,
@@ -73,6 +79,7 @@ export const ClientCommandSchema = z.discriminatedUnion("type", [
   UseTimeBankCommandSchema,
   RequestSnapshotCommandSchema,
   LeaveRoomCommandSchema,
+  TimeSyncCommandSchema,
 ]);
 
 export const CreateRoomRequestSchema = z.strictObject({ displayName: DisplayNameSchema, config: TournamentConfigSchema });

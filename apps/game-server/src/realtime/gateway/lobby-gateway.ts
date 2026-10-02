@@ -540,6 +540,9 @@ export function registerLobbyGateway(
         return;
       }
       const command = parsed.data;
+      // Freeze ingress time before membership/view checks and queueing.
+      const receivedAt = options.now();
+      const ingressOrdinal = command.type === "SUBMIT_ACTION" ? ++nextIngressOrdinal : 0;
       if (!authenticated) {
         if (command.type !== "AUTHENTICATE") {
           sendError("AUTH_REQUIRED");
@@ -661,6 +664,16 @@ export function registerLobbyGateway(
         return;
       }
       switch (command.type) {
+        case "TIME_SYNC": {
+          const serverSentAt = options.now();
+          sendServerMessage({
+            type: "TIME_SYNC_RESULT",
+            protocolVersion: PROTOCOL_VERSION,
+            serverTime: serverSentAt,
+            payload: { requestId: command.requestId, clientSentAt: command.payload.clientSentAt, serverReceivedAt: receivedAt, serverSentAt },
+          });
+          return;
+        }
         case "SET_READY":
         case "LEAVE_ROOM":
           await applyMutation(command);
@@ -698,8 +711,8 @@ export function registerLobbyGateway(
               playerId: playerId as string,
               expectedSequence: command.payload.expectedSequence,
               action: command.payload.action,
-              receivedAt: options.now(),
-              ingressOrdinal: ++nextIngressOrdinal,
+              receivedAt,
+              ingressOrdinal,
               connectionEpoch: epoch,
             });
             const result = submitted as CommandResultPayload | null;
@@ -743,7 +756,7 @@ export function registerLobbyGateway(
               requestId: command.requestId,
               playerId: playerId as string,
               expectedSequence: command.payload.expectedSequence,
-              receivedAt: options.now(),
+              receivedAt,
               connectionEpoch: epoch,
             });
             if (result !== null) send("COMMAND_RESULT", result);

@@ -1,3 +1,4 @@
+import { replyTimeSync } from "../fixtures/time-sync";
 import { resolve } from "node:path";
 
 import type { Page, TestInfo } from "@playwright/test";
@@ -62,6 +63,7 @@ export async function installTable(page: Page, initialGame = tableSnapshot()) {
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     sendMessage = (message) => socket.send(JSON.stringify(ServerMessageSchema.parse(message)));
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       const command = JSON.parse(raw.toString()) as { type: string; payload?: Record<string, unknown> };
       commands.push(command);
       if (command.type === "AUTHENTICATE") {

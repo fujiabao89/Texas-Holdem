@@ -7,3 +7,5 @@
 TEX-53 将公开盲注座位加入严格源模型、完整视图和 patch，`protocol.test.ts` 覆盖必填/nullable/范围、Bot/观战公开一致、uint64 序列和旧 wire 版本拒绝。
 
 TEX-54 持久化赛果的输入/输出 Schema 与推导类型位于 `schemas/http.ts`，排名复用 `schemas/views.ts` 的 `RankingViewSchema`。公开错误仍统一经 `errors/` 导出；`tournament-result.test.ts` 验证严格白名单与冠军/并列/撤回一致性。
+
+TEX-60：TIME_SYNC 命令与 TIME_SYNC_RESULT 消息分别位于 commands/events；serverMessage 保留字面量 type，联合类型可穷尽分支。time-sync.test.ts 验证 v6、严格字段、单调小数时间及服务端时间约束。

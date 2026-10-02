@@ -1,3 +1,4 @@
+import { replyTimeSync } from "../fixtures/time-sync";
 import { PROTOCOL_VERSION } from "../../../packages/protocol/src";
 import { expect, test } from "../fixtures/observability";
 
@@ -16,6 +17,7 @@ test("TEX-26 Session Replaced 对话框可键盘访问", async ({ page }) => {
   await page.addInitScript('sessionStorage.setItem("texas-holdem:player-token:room-1", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");sessionStorage.setItem("texas-holdem:player-id:room-1", "player-1");');
   await page.routeWebSocket("/api/v1/ws", (socket) => {
     socket.onMessage((raw) => {
+      if (replyTimeSync(socket, raw)) return;
       if ((JSON.parse(raw.toString()) as { type: string }).type === "AUTHENTICATE") {
         socket.send(JSON.stringify({ type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: 1, payload: { connectionId: "connection-1", resumed: true, tookOver: false, roomSnapshot, gameSnapshot } }));
         socket.send(JSON.stringify({ type: "SESSION_REPLACED", protocolVersion: PROTOCOL_VERSION, serverTime: 2, payload: {} }));

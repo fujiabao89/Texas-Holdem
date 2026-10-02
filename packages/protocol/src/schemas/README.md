@@ -7,3 +7,5 @@
 TEX-54：`http.ts` 增加持久化赛果 GET 的严格 UUID 参数、空查询、成功信封与推导类型；`views.ts` 导出既有 `RankingViewSchema` 供 HTTP 与 WS 复用。结果校验冠军、身份、并列组完整性、展示序、撤回无排名与安全筹码，详见 [02](../../../../docs/02-protocol-spec.md) 的 TEX-54 小节。
 
 TEX-58：`common.ts` 的 `HandPhaseSchema` 新增 `"SHOWDOWN_DISPLAY"` 阶段；`views.ts` 增加 `showdownDisplayUntil`（可为 null）并添加跨字段严格校验（`validateShowdownAndClockInvariants`），确保展示阶段与行动权/倒计时严格互斥。wire 主版本提升至 v5。
+
+TEX-60：common.ts 提供 MonotonicMillisecondsSchema（非负有限安全范围内小数），区分客户端采样时间与服务端 epoch 整数时间。当前 PROTOCOL_VERSION 为 6；旧版本认证/消息明确拒绝。

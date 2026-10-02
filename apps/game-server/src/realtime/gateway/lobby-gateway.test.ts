@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { SeededRandomSource } from "@texas-holdem/poker-engine";
 import {
@@ -290,6 +290,54 @@ function authenticate(
 }
 
 describe("LobbyGateway", () => {
+  it("responds to authenticated TIME_SYNC without changing the tournament, and rejects unauthenticated/fake timestamps", async () => {
+    const h = await setupTournamentGateway();
+    const socket = new FakeSocket();
+    h.handler(socket);
+    authenticate(socket, h.host.roomId, h.host.playerToken);
+    await flush();
+    const beforeDeadline = h.executor.getView().actionDeadline;
+    const beforeSequence = h.executor.getView().lastWireSequence;
+    const clientSentAt = 987_654_321.25;
+    const requestId = "00000000-0000-4000-8000-000000000010";
+    socket.receive({ type: "TIME_SYNC", requestId, payload: { clientSentAt } });
+    await flush();
+    expect(socket.sent.at(-1)).toMatchObject({ type: "TIME_SYNC_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: h.clock.now(), payload: { requestId, clientSentAt, serverReceivedAt: h.clock.now(), serverSentAt: h.clock.now() } });
+    expect(h.submitted).toHaveLength(0);
+    expect(h.executor.getView().actionDeadline).toBe(beforeDeadline);
+    expect(h.executor.getView().lastWireSequence).toBe(beforeSequence);
+    socket.receive({ type: "TIME_SYNC", requestId, payload: { clientSentAt, receivedAt: 0 } });
+    expect(socket.sent.at(-1)).toMatchObject({ type: "ERROR", payload: { code: "INVALID_MESSAGE" } });
+    const unauthenticated = new FakeSocket();
+    h.handler(unauthenticated);
+    unauthenticated.receive({ type: "TIME_SYNC", requestId, payload: { clientSentAt } });
+    expect(unauthenticated.sent.at(-1)).toMatchObject({ type: "ERROR", payload: { code: "AUTH_REQUIRED" } });
+    await h.executor.dispose();
+  });
+
+  it.each(["SUBMIT_ACTION", "USE_TIME_BANK"] as const)("freezes %s receivedAt before slow membership/access checks", async (type) => {
+    const h = await setupTournamentGateway();
+    const socket = new FakeSocket();
+    h.handler(socket);
+    authenticate(socket, h.host.roomId, h.host.playerToken);
+    await flush();
+    const receivedAt = h.clock.now();
+    const original = h.manager.getSnapshot;
+    const spy = vi.spyOn(h.manager, "getSnapshot").mockImplementation((roomId) => {
+      h.clock.advance(7);
+      return original(roomId);
+    });
+    const payload = { tournamentId: "t1", expectedSequence: String(h.executor.getView().lastWireSequence) };
+    socket.receive({
+      type, requestId: "00000000-0000-4000-8000-000000000011",
+      payload: type === "SUBMIT_ACTION" ? { ...payload, actionId: "00000000-0000-4000-8000-000000000012", action: { type: "CALL" } } : payload,
+    });
+    await flush();
+    expect(h.clock.now()).toBeGreaterThan(receivedAt);
+    expect(h.submitted.at(-1)).toMatchObject({ type, receivedAt });
+    spy.mockRestore();
+    await h.executor.dispose();
+  });
   it("keeps authoritative D/SB/BB through INITIAL, GAP resync and a new authenticated connection", async () => {
     const { host, handler, executor, events } = await setupTournamentGateway();
     const hand = executor.getView().engineState.hand!;

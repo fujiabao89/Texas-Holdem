@@ -422,3 +422,7 @@ TEX-53 增加公开 D/SB/BB 契约回归：协议必填/nullable/范围与 v3 �
 协议单元测试覆盖严格嵌套白名单、并列组/冠军/撤回语义、未知字段和不安全筹码。真实 PostgreSQL 套件从 TournamentExecutor 生成生产 Commit Bundle，经原子仓储写入后从 result GET 读取，覆盖冠军、同手并列、手内主动退出、无冠军、Room 非参赛成员、多 Tournament 隔离、有效淘汰观战身份、缺失/错误/LEFT/CLOSED/撤销凭证、到期读取、11 类损坏、私密字段隔离和全局限流 no-store。
 
 重建 app 时不提供 TournamentManager 且 RoomManager 为空，证明结果不依赖旧内存。读取仓储故障单元测试检查安全500、日志不包含原始异常，其他HTTP端点继续可用。验收证据与现存手间写入/旧live筹码投影限制见 [TEX-54验收记录](./03-engineering/TEX-54-acceptance.md)，不能将未覆盖的旧写入路径宣称为已修复。
+
+TEX-60 弱网回归：server-clock.test.ts 覆盖 50/100/300/500ms RTT、非对称抖动、处理耗时、延迟渲染与时间跳变；time-sync.test.ts 覆盖 v6 严格契约与未知/非法字段；websocket-transport.test.ts 覆盖单探针/失联/重复回显/关闭清理、重连原字节与失效 pending、Event-before-ACK 回收；Gateway 验证入口时间先于慢访问检查及校时无状态副作用；Executor 用 Fake Clock 比较 D-1/D/D+1 两种入队顺序。betting/table.spec.ts 用受控浏览器时钟验证四档 RTT、校时/安全余量/超时提示、迟到 Snapshot、本地墙钟跳变及 Time Bank 延长，不以 sleep 或重试通过冒充验证。真实公网与完整时序门禁仍由 TEX-62 承担。
+
+TEX-60 PR #69 R1 增加 Time Bank 独立截止窗口浏览器回归：安全余量已耗尽且估计服务器 deadline 尚未到达时保留延时入口，验证 pending、权威延期恢复下注及估计 deadline 到期关闭；不把客户端余量当作服务端 Time Bank 截止。
