@@ -33,3 +33,15 @@ Greptile review body 为空，其两个 inline finding 均已纳入 F-02/F-03。
 同步 Gateway/observability README、02 的快照交付说明、04 的有界恢复/撤销与 CLOSED 交叉引用、06 的测试覆盖、运行手册、工程索引和本 Ledger。产品范围/路线图、01 规则、03 数据、05 前端、根 server README、Room/persistence/tests 客户端 README 与安全说明已检查，无需更新：接口、资产职责、规则、授权和字段白名单未改变；本次未增加运行配置或数据库迁移。
 
 F-01 至 F-04 各自对应原始 inline 线程，交付必须在修改验证、提交并推送后逐一回复 `已修正`。F-05 至 F-09 为重复/非阻塞汇总内容，其依据记录于本表；不把重复意见再实现一次。回复与推送回执以 GitHub 原始线程及交付摘要为准，不自动启动新的审查。
+
+## 增量核验：事件压力下的恢复期限
+
+2026-10-03，基线 `8076f6bbae402e521cd21ab3dd8da7cc72c7c6c9`。按用户本轮限定，仅处理以下新增阻塞意见。
+
+| ID | 来源 | 有效性、精确失败场景与现有覆盖 | 等级 | 处置 |
+| --- | --- | --- | --- | --- |
+| F-10 | [Codex 4173507954](https://github.com/fujiabao89/Texas-Holdem/pull/71#discussion_r4173507954) | 有效。第 0 秒触发恢复，恢复 Snapshot 回调停滞期间，累计 64 个新事件，或一个新事件等待满 5 秒；总字节均低于 256 KiB。事件数场景第 1 秒、年龄场景第 5 秒完成 Snapshot 时，字节判断清空原期限，下一轮恢复重设起点，导致原第 30 秒仍不关闭。既有事件数/年龄用例只验证首次触发，F-01 只覆盖控制字节积压；本条是未覆盖的独立失败场景，不能作为重复意见跳过。新增两条回归在修复前均于原第 30 秒未关闭而失败；事件数场景保持年龄低于阈值以独立验证。 | P1 | 修复：删除 Snapshot 完成回调中仅按字节提前清空期限的一行，由紧接着的既有 `pump()` / `check()` 统一检查事件数、年龄和字节压力，再决定是否清除期限。两个场景均保留原起点，到期关闭，迟到回调不再发送且 Timer 归零。未改阈值或调度结构。 |
+
+直接相关验证：`pnpm exec vitest run apps/game-server/src/realtime/gateway/connection-outbox.test.ts apps/game-server/src/realtime/gateway/lobby-gateway.test.ts`，2 个文件、36 项通过，其中 outbox 14 项包含两条新增回归及正常恢复排空的既有保护。另验证 game-server 类型、测试类型、改动 TS 的 ESLint/Prettier 与 `git diff --check`。
+
+同步 Gateway README、04 §9.5 和 06 的恢复期限/测试说明。任务卡/路线图、协议、运维及安全说明已检查，无需更新：仅修复既有三类背压阈值的期限保持，接口、关闭码、配置、权限和部署流程均未改变。F-10 必须在验证、提交及推送后于上述原始线程回复 `已修正`，回执以 GitHub 线程为准。

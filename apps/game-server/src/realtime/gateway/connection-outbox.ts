@@ -200,7 +200,6 @@ export function createConnectionOutbox(options: OutboxOptions) {
           recovering = false;
           const elapsed = options.now() - (recoveryStartedAt ?? options.now());
           options.onRecovered(writing.message.payload, elapsed);
-          if (queueBytes + buffered() < SEND_LIMITS.softBytes) recoveryStartedAt = null;
         } else options.onCompleted(writing.message);
         pump();
       });

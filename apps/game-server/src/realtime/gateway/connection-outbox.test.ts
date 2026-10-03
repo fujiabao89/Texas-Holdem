@@ -88,6 +88,40 @@ function harness(
 }
 
 describe("TEX-61 bounded per-connection egress", () => {
+  it.each(["events", "age"] as const)(
+    "keeps the original recovery deadline while queued %s pressure remains below the byte limit",
+    (trigger) => {
+      const h = harness();
+      h.outbox.send(reply);
+      for (let i = 1; i <= SEND_LIMITS.events; i++) h.outbox.send(event(i));
+      h.complete(); // RESYNC_REQUIRED
+      h.complete(); // Hold the recovery snapshot's completion callback.
+
+      const queued = Array.from({ length: trigger === "events" ? SEND_LIMITS.events : 1 }, (_, i) =>
+        event(101 + i),
+      );
+      expect(
+        queued.reduce((bytes, message) => bytes + Buffer.byteLength(JSON.stringify(message)), 0),
+      ).toBeLessThan(SEND_LIMITS.softBytes);
+      for (const message of queued) h.outbox.send(message);
+      const elapsedMs = trigger === "events" ? 1_000 : SEND_LIMITS.ageMs;
+      h.clock.advance(elapsedMs);
+      h.getSnapshot.mockReturnValue(snapshot(queued.at(-1)!.payload.sequence));
+      h.complete(); // New pressure requires another recovery, retaining the original start time.
+      expect(h.onResync.mock.calls.map(([reason]) => reason)).toEqual(["events", trigger]);
+      h.complete(); // Hold the next recovery snapshot until the original deadline.
+
+      h.clock.advance(SEND_LIMITS.recoveryMs - elapsedMs - SEND_LIMITS.pollMs);
+      expect(h.close).not.toHaveBeenCalled();
+      h.clock.advance(SEND_LIMITS.pollMs);
+      expect(h.close).toHaveBeenCalledExactlyOnceWith("recovery_timeout");
+      const sentCount = h.sent.length;
+      h.complete();
+      expect(h.sent).toHaveLength(sentCount);
+      expect(h.clock.pendingTimers()).toBe(0);
+    },
+  );
+
   it("keeps the original recovery deadline while control bytes remain above the soft limit", () => {
     const h = harness();
     h.outbox.send({
