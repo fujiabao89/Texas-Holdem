@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: fujiabao89/ai-pr-router-sandbox
-          ref: d4d801a580808682d6add22e2bfda59c0932187d
+          ref: be27e84f0653e5cf9ca8014373d31951416d4d91
           token: ${{ secrets.ROUTER_SOURCE_TOKEN }}
           path: .router-tool
           persist-credentials: false
