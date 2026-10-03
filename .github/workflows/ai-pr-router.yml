@@ -1,0 +1,48 @@
+# Candidate for Texas-Holdem. Install through a reviewed PR on main.
+name: AI PR Router Observer
+run-name: "ai-pr-router:${{ github.repository_id }}:${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number }}:${{ github.run_id }}"
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [in_progress, completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number
+        required: true
+        type: string
+      approve_model_for_sha:
+        description: Exact current HEAD SHA to authorize an external PR request
+        type: string
+      rerun_reason:
+        description: Explicit rerun reason; may repeat a billed request
+        type: string
+      rebuild_state:
+        description: Rebuild deleted or damaged observer state (requires reason and SHA)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+concurrency:
+  group: "ai-pr-router-${{ github.repository_id }}-${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.pull_requests[0].number || inputs.pr_number || github.run_id }}"
+  cancel-in-progress: false
+jobs:
+  observe:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch trusted router source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: fujiabao89/ai-pr-router-sandbox
+          ref: d4d801a580808682d6add22e2bfda59c0932187d
+          token: ${{ secrets.ROUTER_SOURCE_TOKEN }}
+          path: .router-tool
+          persist-credentials: false
+      - name: Assess PR in observer mode
+        uses: ./.router-tool
+        with:
+          github-token: ${{ github.token }}
+          model-token: ${{ secrets.TYPESAFE_API_KEY }}

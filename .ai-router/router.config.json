@@ -1,0 +1,135 @@
+{
+  "schema_version": "0.1",
+  "mode": "observe",
+  "policy_version": "texas-holdem-observer-1",
+  "default_risk": "MEDIUM",
+  "rules": [
+    {
+      "id": "review-policy",
+      "paths": [
+        ".ai-router/**",
+        ".github/**",
+        ".coderabbit.yaml",
+        ".greptile/**",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "CODEX.md",
+        "TRAE.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md"
+      ],
+      "risk_floor": "CRITICAL",
+      "reviewers": ["standard", "deep", "security"]
+    },
+    {
+      "id": "poker-engine",
+      "paths": ["packages/poker-engine/**"],
+      "risk_floor": "HIGH",
+      "reviewers": ["standard", "deep"]
+    },
+    {
+      "id": "protocol",
+      "paths": ["packages/protocol/**"],
+      "risk_floor": "HIGH",
+      "reviewers": ["standard", "deep"]
+    },
+    {
+      "id": "game-server",
+      "paths": ["apps/game-server/**"],
+      "risk_floor": "HIGH",
+      "reviewers": ["standard", "deep"]
+    },
+    {
+      "id": "auth-and-private-projections",
+      "paths": [
+        "apps/game-server/src/http/middleware/auth.ts",
+        "apps/game-server/src/modules/auth/**",
+        "apps/game-server/src/realtime/sessions/**",
+        "apps/game-server/src/infrastructure/persistence/player-token.ts",
+        "apps/game-server/src/projection/**",
+        "packages/protocol/src/schemas/views.ts",
+        "apps/web/src/features/auth/**",
+        "docs/04-security/**"
+      ],
+      "risk_floor": "CRITICAL",
+      "reviewers": ["standard", "deep", "security"]
+    },
+    {
+      "id": "secure-random",
+      "paths": ["packages/poker-engine/src/cards/random-source.ts"],
+      "risk_floor": "CRITICAL",
+      "reviewers": ["standard", "deep", "security"]
+    },
+    {
+      "id": "database-migrations",
+      "paths": [
+        "apps/game-server/src/infrastructure/persistence/migrations/**",
+        "apps/game-server/src/infrastructure/persistence/schema/**"
+      ],
+      "risk_floor": "CRITICAL",
+      "reviewers": ["standard", "deep"]
+    },
+    {
+      "id": "authoritative-specifications",
+      "paths": [
+        "docs/01-engine-spec.md",
+        "docs/02-protocol-spec.md",
+        "docs/03-data-model.md",
+        "docs/04-game-server-architecture.md",
+        "docs/05-frontend-spec.md",
+        "docs/06-testing-strategy.md",
+        "docs/adr/**",
+        "docs/02-architecture/**",
+        "德州扑克项目总规划.md"
+      ],
+      "risk_floor": "HIGH",
+      "reviewers": ["standard", "deep"]
+    },
+    {
+      "id": "deployment",
+      "paths": ["infra/**", "docs/05-operations/**"],
+      "risk_floor": "HIGH",
+      "reviewers": ["standard", "deep"]
+    }
+  ],
+  "low_risk_allowlist": ["docs/guides/**"],
+  "sensitive_paths": [
+    ".env",
+    ".env.*",
+    "**/.env",
+    "**/.env.*",
+    "**/*.pem",
+    "**/*.key",
+    "**/credentials/**",
+    "**/secrets/**"
+  ],
+  "context": {
+    "max_files": 3000,
+    "max_state_bytes": 65536,
+    "max_patch_bytes_per_file": 8192
+  },
+  "external_model": {
+    "enabled": true
+  },
+  "judge": {
+    "enabled": true,
+    "provider": "typesafe",
+    "model": "jev-latest",
+    "question_set_version": "pr-signals-1",
+    "confidence_threshold": 0.8,
+    "top_margin_threshold": 0.2,
+    "timeout_ms": 10000,
+    "max_calls_per_snapshot": 1
+  },
+  "suggested_reviews": {
+    "LOW": [],
+    "MEDIUM": ["standard"],
+    "HIGH": ["standard", "deep"],
+    "CRITICAL": ["standard", "deep"]
+  },
+  "human_approval_required": true,
+  "report": {
+    "language": "zh-CN",
+    "comment_key": "texas-holdem-ai-pr-router-v0.1"
+  }
+}

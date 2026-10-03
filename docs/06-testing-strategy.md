@@ -317,6 +317,12 @@ Performance CI 落地事实（2026-09-05，TEX-29）：`ci.yml` 的 `perf-smoke`
 
 场景加权裁决（2026-08-24）：初始加权为明确冻结值（见 `tests/simulator/README.md`「场景加权策略」）；在至少连续 3 次 Nightly 数据后，依据实际覆盖缺口调整权重，并在该文档记录原因与前后数据。引擎缺陷不在 Simulator 任务分支修复：模拟器确认的 P0/P1 规则缺陷创建独立 Linear 缺陷任务并阻塞验收，P2/P3 记录为后续任务。
 
+### PR 风险观察器（TEX-64，非门禁）
+
+AI PR Router 在独立 Workflow 中监听现有 CI，只生成绑定提交 SHA 的风险与审查建议，`merge_readiness=NOT_EVALUATED`。不将 Observer 设为 required check，也不改变上方测试层级和发布门槛。Greptile 与 DeepSeek Harness 仍由用户手动启动。
+
+接入配置需通过严格 JSON/问题集与路径风险校验、workflow-lint 和文档链接检查。合入默认分支后，以 TEX-61 PR 进行真实观察：核对报告 SHA、规则风险下限、开始/完成事件复用判断、单条评论更新和 fork 人工授权；首次运行还需确认已配置 Secret 的实际可用性。配置 PR 阶段不能宣称目标仓库已完成真实模型试用。步骤和限制见 [观察器接入说明](./03-engineering/ai-pr-router-observer.md#5-tex-61-pr-试用与验收)。
+
 ## 12. 缺陷分级与发布门槛
 
 ### 12.1 缺陷分级（《总规划》§9.2）

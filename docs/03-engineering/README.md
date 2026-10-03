@@ -6,6 +6,8 @@
 
 ## 索引
 
+- [ai-pr-router-observer.md](./ai-pr-router-observer.md)：TEX-64 的 PR 风险观察器接入、固定工具版本、路径风险、模型授权、状态恢复与 TEX-61 PR 试用步骤。
+
 - [dependency-patch-validation.md](./dependency-patch-validation.md)：TEX-63 最小依赖补丁升级的范围、安装与回归验证，以及 CI、评审与合并的交付边界。
 
 - [TEX-51-52-acceptance.md](./TEX-51-52-acceptance.md)：Room/身份真实重启、终局运行时卸载、持久历史权限、有界生命周期 soak 的验证证据与部署边界。
