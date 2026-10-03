@@ -21,6 +21,8 @@
 
 ## 文档地图
 
+TEX-64 的 PR 风险观察器配置、授权与 TEX-61 试用步骤见 [接入说明](./03-engineering/ai-pr-router-observer.md)。观察结果不替代本项目的 CI、业务验收、用户手动深审与人工合并。
+
 TEX-51 / TEX-52 的真实 PostgreSQL 重启、原身份继续游戏、终局卸载与历史权限证据见 [验收记录](./03-engineering/TEX-51-52-acceptance.md)，其中明确列出部署迁移、保守隔离与正式长时 soak 的边界。
 
 TEX-38 优化前端 Seat/Pot 反馈、统一音量/动态偏好、后台与追赶屏障及慢帧降级；验收证据与实机边界见 [TEX-38 验收记录](./03-engineering/TEX-38-acceptance.md)，行为契约以 05 §9.7/§10.3 为准。

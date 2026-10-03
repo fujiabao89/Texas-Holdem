@@ -1,5 +1,7 @@
 # Security documents
 
+PR 风险观察器的外发策略、作者/维护者授权、Secret 权限、敏感路径、状态与公共报告边界以 [AI PR Router 接入说明](../03-engineering/ai-pr-router-observer.md#3-secret-与模型外发授权) 为准（TEX-64）。这些设置只用于工程审查辅助，不改变游戏身份、私密投影或真钱范围。
+
 依赖补丁维护与剩余项的本地核验见 [依赖补丁验收记录](../03-engineering/dependency-patch-validation.md)。审计必须使用支持审计端点的 registry；安装冷却期校验与冻结锁文件安装保持启用。是否完成告警处理，以修复合入默认分支后的 Dependabot 复查为准。
 
 TEX-51 启动恢复只加载 ACTIVE 成员的 HMAC 摘要和受支持 key ID，不存储/重签原 token，不复活 LEFT 身份。Host/成员/参赛者不一致时隔离，诊断不打印快照、昵称或摘要。未关闭 Room 的密钥须保持可用；本次不引入轮换系统。详见 [ADR-0003](../adr/0003-tex-51-room-recovery-authority.md)。
