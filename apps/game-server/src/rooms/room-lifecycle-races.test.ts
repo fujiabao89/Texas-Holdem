@@ -62,7 +62,7 @@ class RaceSocket {
   on(event: string, listener: (...args: unknown[]) => void): void {
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
   }
-  send(raw: string): void {
+  send(raw: string, callback?: (error?: Error) => void): void {
     const message = JSON.parse(raw) as ServerMessage;
     if (
       this.failClosedSnapshot &&
@@ -79,6 +79,7 @@ class RaceSocket {
         waiter.resolve(message);
       }
     }
+    callback?.();
   }
   receive(message: unknown): void {
     for (const listener of this.listeners.get("message") ?? [])

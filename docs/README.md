@@ -1,5 +1,8 @@
 # 工程文档总索引
 
+> **TEX-61 实现核对**：每连接有界发送/背压重同步/1013 关闭与权威牌局诊断已实现；阈值和恢复语义仍由 04 §9.5 与 02 的 Snapshot 屏障契约定义。证据见 [验收记录](./03-engineering/TEX-61-acceptance.md)，运维见 [实时诊断](./05-operations/realtime-diagnostics.md)。
+
+
 > **2026-09-12 增量核对（TEX-51 / TEX-52）**：完整 Room/成员/原身份启动恢复与终局运行时回收已实施。恢复包含持久 revision 号段迁移、逐房数据隔离与基础设施故障拒绝监听，见 [ADR-0003](./adr/0003-tex-51-room-recovery-authority.md) / [恢复运行手册](./05-operations/room-recovery.md)。终局 10 分钟只读保留、CLOSED 重型对象卸载与轻量墓碑、Writer 独立数据与缓存回收，见 [04 §13](./04-game-server-architecture.md)；真实 PostgreSQL/进程重启与 bounded lifecycle soak 见 [06](./06-testing-strategy.md)。下方旧核对中的“Room 恢复/内存保留期未实现”已由此更新；数据库历史 TTL 清理仍不在本次范围内。
 
 > 状态：草稿

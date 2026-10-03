@@ -8,6 +8,16 @@
 import { Metrics, type MetricDef, type Labels } from "./metrics";
 
 export const N = {
+  autoActions: "texas_auto_actions_total",
+  staleTimers: "texas_stale_timers_total",
+  duplicateActions: "texas_duplicate_actions_total",
+  lateActions: "texas_late_actions_total",
+  resyncRequired: "texas_resync_required_total",
+  slowConnectionsClosed: "texas_slow_connections_closed_total",
+  snapshotsSent: "texas_snapshots_sent_total",
+  resyncRecoverySeconds: "texas_resync_recovery_seconds",
+  actionTimerDelaySeconds: "texas_action_timer_delay_seconds",
+  wsSendWaitSeconds: "texas_ws_send_wait_seconds",
   httpRequests: "texas_http_requests_total",
   http5xx: "texas_http_5xx_total",
   httpDurationSeconds: "texas_http_request_duration_seconds",
@@ -49,6 +59,16 @@ export const N = {
 } as const;
 
 const DEFS: readonly MetricDef[] = [
+  { name: N.autoActions, help: "权威 Timer 自动 check/fold", kind: "counter", labelNames: ["action"] },
+  { name: N.staleTimers, help: "执行点丢弃的过期计时命令", kind: "counter", labelNames: ["trigger"] },
+  { name: N.duplicateActions, help: "Action 幂等重放次数", kind: "counter", labelNames: [] },
+  { name: N.lateActions, help: "receivedAt 超过权威 deadline 的 Action", kind: "counter", labelNames: [] },
+  { name: N.resyncRequired, help: "每连接背压重同步次数", kind: "counter", labelNames: ["trigger"] },
+  { name: N.slowConnectionsClosed, help: "慢连接关闭次数", kind: "counter", labelNames: ["trigger"] },
+  { name: N.snapshotsSent, help: "已完成传输的权威快照", kind: "counter", labelNames: ["trigger"] },
+  { name: N.resyncRecoverySeconds, help: "背压触发至恢复快照传输完成耗时（非客户端 ACK）", kind: "histogram", labelNames: [] },
+  { name: N.actionTimerDelaySeconds, help: "自动 Action 在执行点相对 deadline 的滞后", kind: "histogram", labelNames: [] },
+  { name: N.wsSendWaitSeconds, help: "消息在应用发送队列的等待时间", kind: "histogram", labelNames: ["type"] },
   {
     name: N.httpRequests,
     help: "HTTP 请求总数（按方法）",

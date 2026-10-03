@@ -378,6 +378,8 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 ### 9.5 事件积压与 Fast Forward
 
+TEX-61 已实现于 `realtime/gateway/connection-outbox.ts`：每连接一次只向 Socket 提交一帧，后续帧入本连接队列，独立的 100ms 检查覆盖无新消息时的年龄和恢复超时。所有控制帧也受硬字节上限约束，达到上限前即停止接收更多帧，不能绕过事件队列无限写 Socket。
+
 慢动画/慢设备不能阻塞服务端。对每条连接独立统计尚未交给 socket 的 `GAME_EVENT` 队列与 `ws.bufferedAmount`；满足任一条件即触发 Fast Forward（《总规划》§7.2；《区块6-10 v0.2》§8.13）：
 
 - 待发送 `GAME_EVENT >= 64`；
@@ -386,7 +388,11 @@ Lobby 成员关系以 game-server 内存为运行期权威，并按 [03](./03-da
 
 触发后丢弃该连接尚未发送的旧 Game Event，发送 `RESYNC_REQUIRED`，并按 [02](./02-protocol-spec.md) §6.4 Snapshot 屏障生成最新 `GAME_SNAPSHOT`；其他连接和牌桌执行不受影响。服务端不推断客户端动画是否播放完，客户端自身动画积压时也可主动 `REQUEST_SNAPSHOT`。
 
-若总待发送量达到 `1MiB`，或 30 秒内始终无法回落到 `256KiB` 以下，则以 WS Close Code `1013` 关闭该慢连接，让客户端退避后重连；不得继续无限缓存。
+若总待发送量达到 `1MiB`，或触发背压后 30 秒内无法完成恢复 Snapshot 的传输并回落到 `256KiB` 以下，则以 WS Close Code `1013` 关闭该慢连接，让客户端退避后重连；不得继续无限缓存。事件数/年龄触发后，即使 `bufferedAmount=0`，停滞的 send callback 也不能无限保留恢复意图。持续超软字节限的 Lobby 连接同样受 30 秒限制。
+
+恢复意图只保留一份，暂停积压 Game Event；传输可继续时重新读取当前权威视图，先写出 RESYNC_REQUIRED、再写出接收者 GAME_SNAPSHOT，丢弃屏障 sequence 已覆盖的事件。被关闭连接立即取消订阅/心跳并撤销 epoch，然后经既有队列记录 DISCONNECTED；成员身份继续有效。替换、成员结束、Socket 关闭和服务关停均释放 outbox；成员结束丢弃旧牌局帧，等待在途 Lobby 命令与最终控制回执传输完成后关闭。
+
+恢复快照写出成功后，只有应用队列字节数加 Socket 缓冲低于软限，且未发送事件数和最老事件年龄均低于各自触发阈值，才能清除恢复期限；任何一项压力仍达到阈值时沿用原始 30 秒起点。快照在自己的写出边界重新投影；已写出且回调未完成时的新权威快照须在其后保留最新一份，同 sequence 的阶段/行动截止线更新也不能丢弃。成员撤销后的最终回执等待独立限制为 30 秒，即使缓冲低于软限、send callback 或在途 Lobby 命令停滞，也到期释放 outbox 并以既有成员结束码 4003 关闭；正常排空立即关闭并取消该 Timer。
 
 ### 9.6 心跳
 
@@ -446,6 +452,8 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 2–16 字符、同房间不可重复、服务端校验与输出转义（[02](./02-protocol-spec.md) §5/§13）。
 
 ### 10.5 日志
+
+TEX-61 的 `observability/game-diagnostics.ts` 以字段白名单输出 JSON 行。每个权威 HAND_STARTED 在 sequence 分配点只记一次；展示/街阶段、自动 Check/Fold、忽略的 Timer、连接变化、晚到/幂等操作、快照请求/完成、背压触发/关闭分别记独立 event/trigger。公共字段为 roomId/tournamentId/handId/playerId/eventSequence/timestamp/trigger；相关记录另带 action/errorCode/generation/currentGeneration/deadline/firedAt/receivedAt/phase/duplicate/delayMs，构建身份为 version/deploymentSha。不传 Payload、牌面或 Error 对象，指标不带实体 ID。`/health` 提供经校验的 APP_VERSION / DEPLOYMENT_SHA 并设置 no-store；配置、保留和查询见 [运行手册](./05-operations/realtime-diagnostics.md)。
 
 结构化日志至少含 `roomId`、`tournamentId`、`handId`、`playerId`、`eventSequence`、`action`、`errorCode`；**禁止**记录 API Key、`playerToken` 等敏感凭证（[02](./02-protocol-spec.md) §11；《区块6-10 v0.2》§8.11）。
 
@@ -519,7 +527,7 @@ HTTP：创建房间、邀请码加入、初始配置、退出等低频操作；W
 
 Room 快照广播隔离每个观察者的异常，必须继续其他连接的同步撤销并完成本地清理；诊断只包含 Room ID。已提交的控制面状态不因发送/观察者故障回滚。
 
-CLOSED 先广播最后 RoomSnapshot 并同步撤销邀请码/epoch/订阅/心跳；该连接在途 Lobby 命令写完回执才关闭 Socket。Room 队列拒绝后续任务，完成已在执行的事务后卸载本地对象；下游释放失败仍报告错误，不让本地已关闭 Room 无限驻留。墓碑只保存三字段，由独立作用域 timer 到期删除，迟到请求使用既有 `ROOM_NOT_FOUND`。HTTP/WS requestId 缓存归属 Room，在关闭时释放；in-flight 请求共享原执行结果，不能因清缓存再执行或回填已关闭 Room。没有提前 TTL/LRU。
+CLOSED 先广播最后 RoomSnapshot 并同步撤销邀请码/epoch/订阅/心跳；该连接等待在途 Lobby 命令及回执排空后关闭 Socket，等待上限遵循 §9.5，不能无限保留撤销连接。Room 队列拒绝后续任务，完成已在执行的事务后卸载本地对象；下游释放失败仍报告错误，不让本地已关闭 Room 无限驻留。墓碑只保存三字段，由独立作用域 timer 到期删除，迟到请求使用既有 `ROOM_NOT_FOUND`。HTTP/WS requestId 缓存归属 Room，在关闭时释放；in-flight 请求共享原执行结果，不能因清缓存再执行或回填已关闭 Room。没有提前 TTL/LRU。
 
 Writer 在 enqueue 边界复制 Bundle（保留 Buffer/Date/BigInt），Runtime 卸载只标记其队列退休，pending/in-flight/隔离项仍保留，成功排空才回收。关停 latch 不因背压回落而重开入口；手间等待结束后先停止入口和 Runtime，再执行最后 flush，最后停 Writer 调度。历史继续走数据库侧 ACTIVE Room 凭证与投影校验，Runtime 卸载不延长身份有效期，也不删除数据库历史。
 

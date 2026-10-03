@@ -3,8 +3,10 @@ import type { FastifyInstance } from "fastify";
 import { SeededRandomSource } from "@texas-holdem/poker-engine";
 import {
   PROTOCOL_VERSION,
+  ServerMessageSchema,
   type ClockUpdatedPayload,
   type GameEventMessage,
+  type ServerMessage,
   type TournamentConfig,
 } from "@texas-holdem/protocol";
 
@@ -25,6 +27,9 @@ import { createFakeClock } from "../../../../../tests/support/fake-clock";
 import { createTournamentEventBus } from "../tournament-event-bus";
 import { createConnectionEpochRegistry } from "../connection-epochs";
 import { registerLobbyGateway } from "./lobby-gateway";
+import { SEND_LIMITS } from "./connection-outbox";
+import { createServerMetrics, N } from "../../observability/server-metrics";
+import { createGameDiagnostics } from "../../observability/game-diagnostics";
 
 const config: TournamentConfig = {
   maxPlayers: 4,
@@ -44,20 +49,23 @@ class FakeSocket {
   pings = 0;
   terminated = false;
   readonly closeCodes: number[] = [];
+  bufferedAmount = 0;
+  deferCloseEvent = false;
   private readonly listeners = new Map<string, Array<(...args: unknown[]) => void>>();
 
   on(event: string, listener: (...args: unknown[]) => void): void {
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
   }
 
-  send(raw: string): void {
+  send(raw: string, callback?: (error?: Error) => void): void {
     this.sent.push(JSON.parse(raw));
+    callback?.();
   }
 
   close(code = 1000): void {
     this.closeCodes.push(code);
-    this.readyState = 3;
-    this.emit("close");
+    this.readyState = this.deferCloseEvent ? 2 : 3;
+    if (!this.deferCloseEvent) this.emit("close", code);
   }
 
   ping(): void {
@@ -237,6 +245,9 @@ async function setupTournamentGateway(
     },
   };
   const events = createTournamentEventBus();
+  const metrics = createServerMetrics();
+  const epochs = createConnectionEpochRegistry();
+  const diagnosticLines: string[] = [];
   let handler!: (socket: FakeSocket) => void;
   const app = {
     addHook() {},
@@ -251,6 +262,9 @@ async function setupTournamentGateway(
     clock,
     tournaments,
     events,
+    metrics,
+    epochs,
+    diagnostics: createGameDiagnostics(metrics, { version: "test", deploymentSha: null }, (line) => diagnosticLines.push(line)),
   });
   return {
     clock,
@@ -264,6 +278,9 @@ async function setupTournamentGateway(
     events,
     emittedEvents,
     emittedClocks,
+    metrics,
+    diagnosticLines,
+    epochs,
     executor,
     rejectTimeBank: () => {
       rejectTimeBank = true;
@@ -288,6 +305,166 @@ function authenticate(
     payload: { roomId, playerToken },
   });
 }
+
+describe("TEX-61 gateway backpressure", () => {
+  it("cancels the revocation deadline when the pending receipt drains before timeout", async () => {
+    const h = await setupTournamentGateway();
+    const socket = new FakeSocket();
+    h.handler(socket);
+    authenticate(socket, h.member.roomId, h.member.playerToken);
+    await flush();
+    let complete: (() => void) | undefined;
+    vi.spyOn(socket, "send").mockImplementation((raw, callback) => {
+      socket.sent.push(JSON.parse(raw));
+      complete = () => callback?.();
+    });
+    socket.receive({
+      type: "TIME_SYNC",
+      requestId: "00000000-0000-4000-8000-000000000010",
+      payload: { clientSentAt: h.clock.now() },
+    });
+    await flush();
+    await h.manager.submitCommand(h.host.roomId, {
+      type: "KICK_PLAYER",
+      actorPlayerId: h.host.playerId,
+      targetPlayerId: h.member.playerId,
+      expectedRevision: Number(
+        h.manager.getSnapshot(h.host.roomId)!.roomRevision,
+      ),
+    });
+    await flush();
+    expect(socket.closeCodes).toEqual([]);
+    socket.deferCloseEvent = true;
+    complete?.();
+    expect(socket.closeCodes).toEqual([4003]);
+    await h.executor.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
+    h.clock.advance(SEND_LIMITS.recoveryMs);
+    expect(socket.closeCodes).toEqual([4003]);
+    socket.deferCloseEvent = false;
+    socket.close();
+  });
+  it("bounds final-receipt draining after membership revocation even with a small stalled write", async () => {
+    const h = await setupTournamentGateway();
+    const socket = new FakeSocket();
+    h.handler(socket);
+    authenticate(socket, h.member.roomId, h.member.playerToken);
+    await flush();
+    const callbacks: Array<(error?: Error) => void> = [];
+    vi.spyOn(socket, "send").mockImplementation((raw, callback) => {
+      socket.sent.push(JSON.parse(raw));
+      if (callback !== undefined) callbacks.push(callback);
+    });
+    socket.receive({
+      type: "TIME_SYNC",
+      requestId: "00000000-0000-4000-8000-000000000010",
+      payload: { clientSentAt: h.clock.now() },
+    });
+    await flush();
+    expect((socket.sent.at(-1) as ServerMessage).type).toBe("TIME_SYNC_RESULT");
+    await h.manager.submitCommand(h.host.roomId, {
+      type: "KICK_PLAYER",
+      actorPlayerId: h.host.playerId,
+      targetPlayerId: h.member.playerId,
+      expectedRevision: Number(
+        h.manager.getSnapshot(h.host.roomId)!.roomRevision,
+      ),
+    });
+    await flush();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(callbacks).toHaveLength(1);
+    expect(socket.bufferedAmount).toBe(0);
+    expect(h.epochs.activeCount()).toBe(0);
+    expect(h.metrics.countOf(N.wsActive)).toBe(0);
+    h.clock.advance(SEND_LIMITS.recoveryMs - 1);
+    expect(socket.closeCodes).toEqual([]);
+    h.clock.advance(1);
+    expect(socket.closeCodes).toEqual([4003]);
+    const count = socket.sent.length;
+    callbacks[0]?.(); // Late completion cannot resume delivery or close twice.
+    expect(socket.sent).toHaveLength(count);
+    await h.executor.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+  it("revokes epoch and active count before a slow peer finishes the close handshake", async () => {
+    const h = await setupTournamentGateway();
+    const slow = new FakeSocket();
+    h.handler(slow); authenticate(slow, h.host.roomId, h.host.playerToken); await flush();
+    expect(h.epochs.activeCount()).toBe(1);
+    slow.deferCloseEvent = true;
+    slow.bufferedAmount = SEND_LIMITS.hardBytes;
+    h.events.requestGameSnapshots("t1");
+    expect(slow.readyState).toBe(2);
+    expect(h.epochs.activeCount()).toBe(0);
+    expect(h.metrics.countOf(N.wsActive)).toBe(0);
+    slow.deferCloseEvent = false; slow.close(1013);
+    await h.executor.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+  it("isolates a slow recipient, restores the latest hand and sequence, and hides the other player's cards", async () => {
+    const h = await setupTournamentGateway();
+    const slow = new FakeSocket(), healthy = new FakeSocket();
+    h.handler(slow); authenticate(slow, h.host.roomId, h.host.playerToken);
+    h.handler(healthy); authenticate(healthy, h.member.roomId, h.member.playerToken);
+    await flush();
+    await flush();
+    const previousHand = h.executor.getView().currentHandId;
+    slow.bufferedAmount = SEND_LIMITS.softBytes;
+    h.events.emitClockUpdated({ tournamentId: "t1", handId: previousHand,
+      currentActorPlayerId: h.host.playerId, actionDeadline: h.executor.getView().actionDeadline,
+      timeBankRemainingMs: 60_000, showdownDisplayUntil: null });
+    expect(h.metrics.countOf(N.resyncRequired, { trigger: "bytes" })).toBe(1);
+    const previousSequence = h.executor.getView().lastWireSequence;
+    await h.executor.submit({ type: "SUBMIT_ACTION", requestId: "slow-fold", actionId: "slow-fold",
+      playerId: h.host.playerId, expectedSequence: String(previousSequence),
+      action: { type: "FOLD" }, receivedAt: h.clock.now(), ingressOrdinal: 1 });
+    h.events.emitEvents(h.emittedEvents.filter((message) => Number(message.payload.sequence) > previousSequence));
+    const view = h.executor.getView();
+    expect(view.currentHandId).not.toBe(previousHand);
+    expect(healthy.sent.some((message) => (message as ServerMessage).type === "GAME_EVENT")).toBe(true);
+    expect(slow.sent.some((message) => (message as ServerMessage).type === "GAME_EVENT")).toBe(false);
+    slow.bufferedAmount = 0;
+    h.clock.advance(100);
+    const frames = slow.sent.map((message) => ServerMessageSchema.parse(message));
+    const resyncIndex = frames.findIndex((message) => message.type === "RESYNC_REQUIRED");
+    expect(resyncIndex).toBeGreaterThan(0);
+    const restored = frames[resyncIndex + 1]!;
+    expect(restored.type).toBe("GAME_SNAPSHOT");
+    if (restored.type !== "GAME_SNAPSHOT") throw new Error("snapshot expected");
+    expect(restored.payload).toMatchObject({ handId: view.currentHandId, sequence: String(view.lastWireSequence), viewer: { playerId: h.host.playerId } });
+    expect(restored.payload.players.every((player) => player.revealedCards.length === 0)).toBe(true);
+    // A delayed original batch is wholly covered by the new snapshot.
+    h.events.emitEvents(h.emittedEvents);
+    expect(slow.sent.filter((message) => (message as ServerMessage).type === "GAME_EVENT")).toHaveLength(0);
+    expect(h.metrics.countOf(N.resyncRecoverySeconds)).toBe(1);
+    expect(h.diagnosticLines.join("")).not.toContain(h.host.playerToken);
+    expect(h.diagnosticLines.join("")).not.toMatch(/holeCards|deck|rank|suit/);
+    slow.close(); healthy.close(); await h.executor.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("closes at 1MiB with 1013, removes the old subscription, and reconnects with current authority", async () => {
+    const h = await setupTournamentGateway();
+    const slow = new FakeSocket();
+    h.handler(slow); authenticate(slow, h.host.roomId, h.host.playerToken); await flush();
+    slow.bufferedAmount = SEND_LIMITS.hardBytes;
+    h.events.requestGameSnapshots("t1");
+    expect(slow.closeCodes).toContain(1013);
+    expect(h.metrics.countOf(N.slowConnectionsClosed, { trigger: "hard_bytes" })).toBe(1);
+    expect(h.metrics.countOf(N.wsClosed, { category: "slow" })).toBe(1);
+    const count = slow.sent.length;
+    h.events.requestGameSnapshots("t1");
+    expect(slow.sent).toHaveLength(count);
+    await flush();
+    const replacement = new FakeSocket();
+    h.handler(replacement); authenticate(replacement, h.host.roomId, h.host.playerToken); await flush();
+    await flush();
+    expect(replacement.sent).toContainEqual(expect.objectContaining({ type: "RECONNECT_RESULT",
+      payload: expect.objectContaining({ resumed: true, gameSnapshot: expect.objectContaining({ sequence: String(h.executor.getView().lastWireSequence) }) }) }));
+    replacement.close(); await h.executor.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+});
 
 describe("LobbyGateway", () => {
   it("responds to authenticated TIME_SYNC without changing the tournament, and rejects unauthenticated/fake timestamps", async () => {
@@ -711,6 +888,11 @@ describe("LobbyGateway", () => {
       (message) => message.payload.patch.viewer?.playerId === host.playerId,
     )!;
     events.emitEvents([event]);
+    expect(socket.sent.filter((message) => (message as ServerMessage).type === "GAME_EVENT")).toHaveLength(0);
+    await executor.submit({ type: "SUBMIT_ACTION", playerId: host.playerId, requestId: "new-event-request",
+      actionId: "new-event-action", expectedSequence: sequence, action: { type: "CALL" },
+      receivedAt: 5000, ingressOrdinal: 1 });
+    events.emitEvents(emittedEvents.filter((message) => BigInt(message.payload.sequence) > BigInt(sequence)));
     const runtimeView = executor.getView();
     const actorSeat = runtimeView.engineState.hand?.currentActor ?? null;
     events.emitClockUpdated({

@@ -23,6 +23,8 @@ import {
   type TournamentOutputSink,
 } from "./tournament-executor";
 import type { TournamentCommand } from "./tournament-commands";
+import { createGameDiagnostics, type GameDiagnostic } from "../observability/game-diagnostics";
+import { createServerMetrics, N } from "../observability/server-metrics";
 
 interface Harness {
   readonly executor: TournamentExecutor;
@@ -110,6 +112,7 @@ function makeHarness(
     isConnectionCurrent?: (roomId: string, playerId: string, epoch: number) => boolean;
     isBackpressurePaused?: () => boolean;
     onTerminal?: TournamentExecutorDeps["onTerminal"];
+    diagnostics?: TournamentExecutorDeps["diagnostics"];
   } = {},
 ): Harness {
   const clock = createFakeClock({ now: 1000 });
@@ -132,6 +135,7 @@ function makeHarness(
     isConnectionCurrent: overrides.isConnectionCurrent,
     isBackpressurePaused: overrides.isBackpressurePaused,
     onTerminal: overrides.onTerminal,
+    diagnostics: overrides.diagnostics,
   });
   return { executor, clock, output, runtime };
 }
@@ -178,6 +182,53 @@ function submitAction(
 const call = (): SubmitAction => ({ type: "CALL" });
 const check = (): SubmitAction => ({ type: "CHECK" });
 const fold = (): SubmitAction => ({ type: "FOLD" });
+
+describe("TEX-61 authoritative game diagnostics", () => {
+  it("logs actual starts once per hand and distinguishes phase timers, stale callbacks and auto folds", async () => {
+    const metrics = createServerMetrics(), records: GameDiagnostic[] = [];
+    const h = makeHarness({ diagnostics: createGameDiagnostics(metrics, { version: "test", deploymentSha: null },
+      (line) => records.push(JSON.parse(line))) });
+    await start(h);
+    const oldHandId = h.runtime.currentHandId;
+    const deadline = h.runtime.actionDeadline!;
+    const generation = h.runtime.actionTimerGeneration;
+    const actorSeat = h.executor.getEngineState().hand!.currentActor!;
+    await h.executor.submit({ type: "SYSTEM_TIMER_ACTION", handId: oldHandId!, seatIndex: actorSeat,
+      generation: generation - 1, deadline, firedAt: deadline });
+    expect(metrics.countOf(N.staleTimers, { trigger: "generation" })).toBe(1);
+    expect(h.runtime.currentHandId).toBe(oldHandId);
+    expect(records.filter((record) => record.event === "PHASE_CHANGED").map((record) => record.phase))
+      .toEqual(["DEALING", "ACTION_OPEN"]);
+    await submitAction(h, { playerId: currentActor(h)!, action: call(), receivedAt: deadline + 1 });
+    expect(metrics.countOf(N.lateActions)).toBe(1);
+    h.clock.advance(30_000); await Promise.resolve();
+    expect(metrics.countOf(N.autoActions, { action: "fold" })).toBe(1);
+    expect(metrics.countOf(N.actionTimerDelaySeconds)).toBe(1);
+    const starts = records.filter((record) => record.event === "HAND_STARTED");
+    expect(starts).toHaveLength(2);
+    expect(new Set(starts.map((record) => record.handId)).size).toBe(2);
+    expect(starts.every((record) => record.tournamentId !== null && record.eventSequence !== null && record.generation !== undefined && record.timestamp > 0)).toBe(true);
+    expect(records.find((record) => record.event === "AUTO_ACTION")).toMatchObject({ handId: oldHandId,
+      deadline, generation, action: "fold", trigger: "SYSTEM_TIMER_ACTION" });
+    await h.executor.dispose();
+  });
+
+  it("counts a repeated action without another engine transition or private log fields", async () => {
+    const metrics = createServerMetrics(), lines: string[] = [];
+    const h = makeHarness({ diagnostics: createGameDiagnostics(metrics, { version: "test", deploymentSha: null }, (line) => lines.push(line)) });
+    await start(h);
+    const command = { type: "SUBMIT_ACTION" as const, requestId: "duplicate-request", actionId: "duplicate-action",
+      playerId: currentActor(h)!, expectedSequence: String(h.runtime.lastWireSequence), action: call(),
+      receivedAt: h.clock.now(), ingressOrdinal: 1 };
+    await h.executor.submit(command);
+    const sequence = h.runtime.lastWireSequence;
+    await h.executor.submit(command);
+    expect(h.runtime.lastWireSequence).toBe(sequence);
+    expect(metrics.countOf(N.duplicateActions)).toBe(1);
+    expect(lines.join("")).not.toMatch(/holeCards|communityCards|deck|rank|suit/);
+    await h.executor.dispose();
+  });
+});
 
 describe("TournamentExecutor（串行执行）", () => {
   it.each([

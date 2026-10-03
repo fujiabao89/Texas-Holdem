@@ -403,7 +403,8 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
     });
     const sent: unknown[] = [];
     const socket = Object.assign(new EventEmitter(), {
-      OPEN: 1, readyState: 1, send: (raw: string) => sent.push(JSON.parse(raw)),
+      OPEN: 1, readyState: 1, bufferedAmount: 0,
+      send: (raw: string, callback?: (error?: Error) => void) => { sent.push(JSON.parse(raw)); callback?.(); },
       close: () => socket.emit("close"), ping() {}, terminate: () => socket.emit("close"),
     });
     handler(socket);
