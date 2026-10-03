@@ -1,6 +1,6 @@
 # AI PR Router V0.1 观察器接入（TEX-64）
 
-日期：2026-10-03。任务：[TEX-64](https://linear.app/texas-holdem/issue/TEX-64)。接入通过独立配置 PR 交付；自动入口在该 PR 合入默认分支 `main` 后启用。TEX-61 的实际 PR 试用需等待该 PR 就绪，不能以配置校验代替真实运行。
+日期：2026-10-03。初次接入任务：[TEX-64](https://linear.app/texas-holdem/issue/TEX-64)，已通过 PR #70 合入 `main`；TEX-61 的实际试用 PR 为 #71。可读报告升级由 [TEX-65](https://linear.app/texas-holdem/issue/TEX-65) 的独立配置 PR 交付，升级合入 `main` 后再普通刷新；不能以本地模板预览代替新版真实运行。
 
 ## 1. 运行范围
 
@@ -12,7 +12,7 @@
 
 ## 2. 固定工具版本与可信策略
 
-当前工具仓库为私有的 `fujiabao89/ai-pr-router-sandbox`。Workflow 使用 `ROUTER_SOURCE_TOKEN` 拉取固定提交 `d4d801a580808682d6add22e2bfda59c0932187d` 到临时 runner 的 `.router-tool/`，再运行本地 composite Action。只拉取可信工具，不 checkout、安装或执行被审 PR 的代码，不读取 CI artifact 作为指令。
+当前工具仓库为私有的 `fujiabao89/ai-pr-router-sandbox`。Workflow 使用 `ROUTER_SOURCE_TOKEN` 拉取固定提交 `be27e84f0653e5cf9ca8014373d31951416d4d91` 到临时 runner 的 `.router-tool/`，再运行本地 composite Action。该版本仅更新可读报告及旧/新模板过期提示；风险策略、JSON/ledger 和模型预算不变。只拉取可信工具，不 checkout、安装或执行被审 PR 的代码，不读取 CI artifact 作为指令。
 
 checkout 固定到 `3d3c42e5aac5ba805825da76410c181273ba90b1`（v7，与既有 CI 一致），`persist-credentials=false`。工具自身以锁定依赖编译，Action 使用 Node 24；其 setup-node 已固定在工具提交内。目标应用的 Node/pnpm 版本与依赖不变。当前 Actions 允许列表支持 GitHub 官方 Action 和本地 Action；未来改用公开工具的远程 `uses:` 时，应加入具体工具仓库/版本，不能为方便安装开放全部第三方 Action。
 
@@ -49,6 +49,12 @@ checkout 固定到 `3d3c42e5aac5ba805825da76410c181273ba90b1`（v7，与既有 C
 
 精确路径和审查能力以 JSON 策略为唯一执行事实。`standard`、`deep`、`security` 只是建议能力，不对应自动启动具体机器人。已经命中 CRITICAL 且全部审查建议确定时，工具可显示 `RULES_ONLY / SKIPPED_RULE_SUFFICIENT` 并节省 Jev 请求；不表示模型已审查。
 
+### 如何阅读新版报告
+
+正文先说明本次结论、已知影响等级及路径依据、模型是否参与、下一步和材料限制；技术枚举、完整提交 SHA、策略版本、原始诊断和模型概率保留在折叠详情。`CRITICAL` 翻译为“需重点审查”，不代表发现漏洞。`NEEDS_VERIFICATION` 显示“需要人工复核，当前判断不完整”；脱敏、文件 Diff 过长和总上下文裁剪分别说明。`STATE_TRUNCATED` 指判断材料裁剪，不表示持久 ledger 损坏。
+
+模型未请求、按规则跳过、已有/复用判断、请求失败和请求结果不确定分别描述；工作流绿色不表示代码通过审查。正文给出的常规/深入/安全审查是建议，没有读取已有审查意见、验证修复闭环或启动外部审查器。过期和关闭报告有醒目提示；沿用原机器人评论与隐藏 ledger，模板升级不需要人工重建。
+
 ## 5. TEX-61 PR 试用与验收
 
 先确认 TEX-64 配置已合入 `main`，再等待 TEX-61 的开发与提交完成，并保留其 PR 打开。这里填写实际 PR number，不是 Linear 编号 61。
@@ -81,3 +87,7 @@ checkout 固定到 `3d3c42e5aac5ba805825da76410c181273ba90b1`（v7，与既有 C
 本任务更新 `.ai-router/README.md`、Workflow README、工程/安全/项目索引和测试策略入口。扑克/协议/数据/前端/运行时业务规格已检查，无需更新，因为没有改变这些接口或业务行为；运维说明已检查，无需另建游戏运维文档，观察器恢复和停用在本文维护。TEX-61 原任务和产品路线图不改变。
 
 配置与检查通过不等于已合入 `main`，也不证明 Jev 的 PR 分类准确率。真实试用证据需在 TEX-61 PR 就绪后追加到任务验收记录。
+
+TEX-64 合入后运行：用户修正源码只读 Token 权限，再通过受信恢复入口初始化历史失败 run 未建立的状态。PR #71 的运行 37121912736 与普通刷新 37121949173 成功，仍更新唯一机器人评论 5969011141；报告为 CRITICAL / NEEDS_VERIFICATION、材料部分脱敏/截断、模型按规则跳过。该证据验证旧版安装与状态刷新，不证明当前仓库模型 Secret 已实际调用成功。
+
+TEX-65 本地升级验收：工具 `npm run verify` 通过 51 项测试（含 7 项可读报告验证）、类型、文档链接及秘密格式检查；旧/新模板均能在新快照到来时标记过期，保留同一评论和隐藏 ledger。只读读取 PR #71 HEAD 8076f6bbae402e521cd21ab3dd8da7cc72c7c6c9 的路径规则生成中文预览，没有模型请求或 GitHub 评论写入。版本更新后仍需按 main 规则合入，再普通刷新获得正式报告；具体升级 PR/CI 证据记录在 TEX-65。目录 README 和本接入说明已同步；风险配置、业务权威规格、安全权限要求与应用测试策略已检查，无需修改，因为本次只调整展示及版本引用。
