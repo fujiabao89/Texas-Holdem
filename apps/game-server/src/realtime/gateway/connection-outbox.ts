@@ -47,6 +47,7 @@ export function createConnectionOutbox(options: OutboxOptions) {
   let barrier: { tournamentId: string; sequence: bigint } | null = null;
   // Retain at most one unsent authoritative recovery; generate it only once transport can drain.
   let recovering = false;
+  let recoverySnapshotInFlight = false;
 
   const buffered = () => options.socket.bufferedAmount ?? 0;
   function dispose(): void {
@@ -54,6 +55,7 @@ export function createConnectionOutbox(options: OutboxOptions) {
     queue = [];
     queueBytes = 0;
     resyncTournament = null;
+    recoverySnapshotInFlight = false;
     if (monitor !== null) options.clock.clearInterval(monitor);
     monitor = null;
   }
@@ -184,9 +186,11 @@ export function createConnectionOutbox(options: OutboxOptions) {
     }
     busy = true;
     const writing = item;
+    recoverySnapshotInFlight = recovering && writing.message.type === "GAME_SNAPSHOT";
     try {
       options.socket.send(writing.raw, (error) => {
         busy = false;
+        recoverySnapshotInFlight = false;
         if (stopped) return;
         if (error != null) {
           close("transport_error");
@@ -196,7 +200,7 @@ export function createConnectionOutbox(options: OutboxOptions) {
           recovering = false;
           const elapsed = options.now() - (recoveryStartedAt ?? options.now());
           options.onRecovered(writing.message.payload, elapsed);
-          if (buffered() < SEND_LIMITS.softBytes) recoveryStartedAt = null;
+          if (queueBytes + buffered() < SEND_LIMITS.softBytes) recoveryStartedAt = null;
         } else options.onCompleted(writing.message);
         pump();
       });
@@ -216,7 +220,13 @@ export function createConnectionOutbox(options: OutboxOptions) {
         return;
     }
     if (message.type === "GAME_SNAPSHOT") {
-      if (resyncTournament === message.payload.tournamentId || recovering) return;
+      // Before the recovery snapshot's write boundary it will be regenerated.
+      // Once written, retain/coalesce later authority behind the immutable frame.
+      if (
+        resyncTournament === message.payload.tournamentId ||
+        (recovering && !recoverySnapshotInFlight)
+      )
+        return;
       barrier = {
         tournamentId: message.payload.tournamentId,
         sequence: BigInt(message.payload.sequence),
@@ -259,6 +269,7 @@ export function createConnectionOutbox(options: OutboxOptions) {
     queueBytes = queue.reduce((sum, item) => sum + item.bytes, 0);
     resyncTournament = null;
     recovering = false;
+    recoverySnapshotInFlight = false;
     barrier = null;
   }
   return {

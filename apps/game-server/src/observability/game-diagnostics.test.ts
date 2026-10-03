@@ -1,8 +1,51 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildIdentity, createGameDiagnostics, type GameDiagnostic } from "./game-diagnostics";
 import { createServerMetrics, N } from "./server-metrics";
 
 describe("TEX-61 safe diagnostics and build identity", () => {
+  it("contains negative recovery observations and still emits the safe log", () => {
+    const metrics = createServerMetrics(),
+      lines: string[] = [];
+    const diagnose = createGameDiagnostics(metrics, buildIdentity({}), (line) => lines.push(line));
+    expect(() =>
+      diagnose({
+        event: "SNAPSHOT_SENT",
+        trigger: "BACKPRESSURE",
+        roomId: "r1",
+        tournamentId: "t1",
+        handId: "h1",
+        playerId: "p1",
+        eventSequence: "1",
+        timestamp: 9_000,
+        delayMs: -1_000,
+      }),
+    ).not.toThrow();
+    expect(lines).toHaveLength(1);
+    expect(metrics.countOf(N.snapshotsSent, { trigger: "BACKPRESSURE" })).toBe(1);
+    expect(metrics.countOf(N.resyncRecoverySeconds)).toBe(0);
+  });
+
+  it("contains counter failures independently of log emission", () => {
+    const metrics = createServerMetrics(),
+      lines: string[] = [];
+    vi.spyOn(metrics, "inc").mockImplementation(() => {
+      throw new Error("metrics unavailable");
+    });
+    const diagnose = createGameDiagnostics(metrics, buildIdentity({}), (line) => lines.push(line));
+    expect(() =>
+      diagnose({
+        event: "RESYNC_REQUIRED",
+        trigger: "bytes",
+        roomId: "r1",
+        tournamentId: "t1",
+        handId: "h1",
+        playerId: "p1",
+        eventSequence: "1",
+        timestamp: 1_000,
+      }),
+    ).not.toThrow();
+    expect(lines).toHaveLength(1);
+  });
   it("exposes only validated version/SHA and never dumps an environment", () => {
     expect(
       buildIdentity({

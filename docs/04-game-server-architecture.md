@@ -392,6 +392,8 @@ TEX-61 已实现于 `realtime/gateway/connection-outbox.ts`：每连接一次只
 
 恢复意图只保留一份，暂停积压 Game Event；传输可继续时重新读取当前权威视图，先写出 RESYNC_REQUIRED、再写出接收者 GAME_SNAPSHOT，丢弃屏障 sequence 已覆盖的事件。被关闭连接立即取消订阅/心跳并撤销 epoch，然后经既有队列记录 DISCONNECTED；成员身份继续有效。替换、成员结束、Socket 关闭和服务关停均释放 outbox；成员结束丢弃旧牌局帧，等待在途 Lobby 命令与最终控制回执传输完成后关闭。
 
+恢复快照写出成功后，只有应用队列字节数加 Socket 缓冲低于软限才能清除恢复期限；控制帧积压仍超软限时沿用原始 30 秒起点。快照在自己的写出边界重新投影；已写出且回调未完成时的新权威快照须在其后保留最新一份，同 sequence 的阶段/行动截止线更新也不能丢弃。成员撤销后的最终回执等待独立限制为 30 秒，即使缓冲低于软限、send callback 或在途 Lobby 命令停滞，也到期释放 outbox 并以既有成员结束码 4003 关闭；正常排空立即关闭并取消该 Timer。
+
 ### 9.6 心跳
 
 服务端每 15 秒发送 WS Ping；连续 45 秒未收到 Pong 或任何有效入站帧则终止连接并进入断线流程（[02](./02-protocol-spec.md) §4.3）。
@@ -525,7 +527,7 @@ TEX-61 的 `observability/game-diagnostics.ts` 以字段白名单输出 JSON 行
 
 Room 快照广播隔离每个观察者的异常，必须继续其他连接的同步撤销并完成本地清理；诊断只包含 Room ID。已提交的控制面状态不因发送/观察者故障回滚。
 
-CLOSED 先广播最后 RoomSnapshot 并同步撤销邀请码/epoch/订阅/心跳；该连接在途 Lobby 命令写完回执才关闭 Socket。Room 队列拒绝后续任务，完成已在执行的事务后卸载本地对象；下游释放失败仍报告错误，不让本地已关闭 Room 无限驻留。墓碑只保存三字段，由独立作用域 timer 到期删除，迟到请求使用既有 `ROOM_NOT_FOUND`。HTTP/WS requestId 缓存归属 Room，在关闭时释放；in-flight 请求共享原执行结果，不能因清缓存再执行或回填已关闭 Room。没有提前 TTL/LRU。
+CLOSED 先广播最后 RoomSnapshot 并同步撤销邀请码/epoch/订阅/心跳；该连接等待在途 Lobby 命令及回执排空后关闭 Socket，等待上限遵循 §9.5，不能无限保留撤销连接。Room 队列拒绝后续任务，完成已在执行的事务后卸载本地对象；下游释放失败仍报告错误，不让本地已关闭 Room 无限驻留。墓碑只保存三字段，由独立作用域 timer 到期删除，迟到请求使用既有 `ROOM_NOT_FOUND`。HTTP/WS requestId 缓存归属 Room，在关闭时释放；in-flight 请求共享原执行结果，不能因清缓存再执行或回填已关闭 Room。没有提前 TTL/LRU。
 
 Writer 在 enqueue 边界复制 Bundle（保留 Buffer/Date/BigInt），Runtime 卸载只标记其队列退休，pending/in-flight/隔离项仍保留，成功排空才回收。关停 latch 不因背压回落而重开入口；手间等待结束后先停止入口和 Runtime，再执行最后 flush，最后停 Writer 调度。历史继续走数据库侧 ACTIVE Room 凭证与投影校验，Runtime 卸载不延长身份有效期，也不删除数据库历史。
 

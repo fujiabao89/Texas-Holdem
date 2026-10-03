@@ -1,6 +1,7 @@
 # Engineering documents
 
 - [TEX-61-acceptance.md](./TEX-61-acceptance.md)：慢客户端队列阈值、序列屏障、权威时序诊断和本地验证边界。
+- [TEX-61-findings-ledger.md](./TEX-61-findings-ledger.md)：PR #71 的 Codex、Greptile、CodeRabbit 意见逐条复核、最小修复、重复/风格建议处置与验证证据。
 
 
 开发流程、编码约定、测试策略、错误处理和可观测性规范。

@@ -6,3 +6,5 @@ TEX-61：`game-diagnostics.ts` 定义普通诊断日志的字段白名单、构�
 TEX-52：`texas_active_tournaments` 仅统计 RUNNING；新增 registered tournaments、finished-retained tournaments、frozen tournaments、registered rooms、closed-room tombstones、registered Writer queues 的 gauge，避免历史驻留数量冒充活跃量。精确名称在 `server-metrics.ts`，全部无 room/player 标签。保留期内 registered 大于 active 属正常；过期后应回落，未提交/隔离 Writer 队列按真实积压保留。
 
 日志、指标、链路追踪、审计事件和告警适配。
+
+普通诊断的日志写入和指标更新分别隔离异常：日志出口失效仍可计数，指标拒绝观测（包括墙钟回拨产生的负延迟）仍可记录安全日志，不能中断牌局或出站恢复。`game-diagnostics.test.ts` 覆盖两类失败；outbox 回归验证真实异步完成回调仍继续排空。

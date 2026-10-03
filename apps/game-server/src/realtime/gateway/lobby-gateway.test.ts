@@ -307,6 +307,85 @@ function authenticate(
 }
 
 describe("TEX-61 gateway backpressure", () => {
+  it("cancels the revocation deadline when the pending receipt drains before timeout", async () => {
+    const h = await setupTournamentGateway();
+    const socket = new FakeSocket();
+    h.handler(socket);
+    authenticate(socket, h.member.roomId, h.member.playerToken);
+    await flush();
+    let complete: (() => void) | undefined;
+    vi.spyOn(socket, "send").mockImplementation((raw, callback) => {
+      socket.sent.push(JSON.parse(raw));
+      complete = () => callback?.();
+    });
+    socket.receive({
+      type: "TIME_SYNC",
+      requestId: "00000000-0000-4000-8000-000000000010",
+      payload: { clientSentAt: h.clock.now() },
+    });
+    await flush();
+    await h.manager.submitCommand(h.host.roomId, {
+      type: "KICK_PLAYER",
+      actorPlayerId: h.host.playerId,
+      targetPlayerId: h.member.playerId,
+      expectedRevision: Number(
+        h.manager.getSnapshot(h.host.roomId)!.roomRevision,
+      ),
+    });
+    await flush();
+    expect(socket.closeCodes).toEqual([]);
+    socket.deferCloseEvent = true;
+    complete?.();
+    expect(socket.closeCodes).toEqual([4003]);
+    await h.executor.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
+    h.clock.advance(SEND_LIMITS.recoveryMs);
+    expect(socket.closeCodes).toEqual([4003]);
+    socket.deferCloseEvent = false;
+    socket.close();
+  });
+  it("bounds final-receipt draining after membership revocation even with a small stalled write", async () => {
+    const h = await setupTournamentGateway();
+    const socket = new FakeSocket();
+    h.handler(socket);
+    authenticate(socket, h.member.roomId, h.member.playerToken);
+    await flush();
+    const callbacks: Array<(error?: Error) => void> = [];
+    vi.spyOn(socket, "send").mockImplementation((raw, callback) => {
+      socket.sent.push(JSON.parse(raw));
+      if (callback !== undefined) callbacks.push(callback);
+    });
+    socket.receive({
+      type: "TIME_SYNC",
+      requestId: "00000000-0000-4000-8000-000000000010",
+      payload: { clientSentAt: h.clock.now() },
+    });
+    await flush();
+    expect((socket.sent.at(-1) as ServerMessage).type).toBe("TIME_SYNC_RESULT");
+    await h.manager.submitCommand(h.host.roomId, {
+      type: "KICK_PLAYER",
+      actorPlayerId: h.host.playerId,
+      targetPlayerId: h.member.playerId,
+      expectedRevision: Number(
+        h.manager.getSnapshot(h.host.roomId)!.roomRevision,
+      ),
+    });
+    await flush();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(callbacks).toHaveLength(1);
+    expect(socket.bufferedAmount).toBe(0);
+    expect(h.epochs.activeCount()).toBe(0);
+    expect(h.metrics.countOf(N.wsActive)).toBe(0);
+    h.clock.advance(SEND_LIMITS.recoveryMs - 1);
+    expect(socket.closeCodes).toEqual([]);
+    h.clock.advance(1);
+    expect(socket.closeCodes).toEqual([4003]);
+    const count = socket.sent.length;
+    callbacks[0]?.(); // Late completion cannot resume delivery or close twice.
+    expect(socket.sent).toHaveLength(count);
+    await h.executor.dispose();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
   it("revokes epoch and active count before a slow peer finishes the close handshake", async () => {
     const h = await setupTournamentGateway();
     const slow = new FakeSocket();

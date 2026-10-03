@@ -7,6 +7,8 @@ import {
 } from "@texas-holdem/protocol";
 import { createFakeClock } from "../../../../../tests/support/fake-clock";
 import { createConnectionOutbox, SEND_LIMITS } from "./connection-outbox";
+import { createGameDiagnostics } from "../../observability/game-diagnostics";
+import { createServerMetrics, N } from "../../observability/server-metrics";
 
 // Transport-only fixtures. Recipient projection and strict schemas are tested in lobby-gateway.
 const snapshot = (sequence = "100", handId = "h2") =>
@@ -37,7 +39,12 @@ const reply: ServerMessage = {
   payload: {},
 };
 
-function harness() {
+function harness(
+  options: {
+    now?: () => number;
+    onRecovered?: (snapshot: GameSnapshot, elapsedMs: number) => void;
+  } = {},
+) {
   const clock = createFakeClock();
   const sent: ServerMessage[] = [];
   const callbacks: Array<(error?: Error) => void> = [];
@@ -52,11 +59,11 @@ function harness() {
   };
   const close = vi.fn();
   const onResync = vi.fn();
-  const onRecovered = vi.fn();
+  const onRecovered = vi.fn(options.onRecovered);
   const getSnapshot = vi.fn(() => snapshot());
   const outbox = createConnectionOutbox({
     socket,
-    now: clock.now,
+    now: options.now ?? clock.now,
     clock,
     snapshot: getSnapshot,
     close,
@@ -81,6 +88,109 @@ function harness() {
 }
 
 describe("TEX-61 bounded per-connection egress", () => {
+  it("keeps the original recovery deadline while control bytes remain above the soft limit", () => {
+    const h = harness();
+    h.outbox.send({
+      type: "GAME_SNAPSHOT",
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: 0,
+      payload: snapshot("0"),
+    });
+    h.complete();
+    h.outbox.send(reply); // Hold one control write while a bounded backlog accumulates.
+    const control: ServerMessage = {
+      type: "TIME_SYNC_RESULT",
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: 0,
+      payload: {
+        requestId: "00000000-0000-4000-8000-000000000010",
+        clientSentAt: 0,
+        serverReceivedAt: 0,
+        serverSentAt: 0,
+      },
+    };
+    const bytes = Buffer.byteLength(JSON.stringify(control));
+    for (let i = 0; i <= Math.ceil(SEND_LIMITS.softBytes / bytes); i++) h.outbox.send(control);
+    h.clock.advance(5_000);
+    h.complete(); // RESYNC_REQUIRED
+    h.complete(); // GAME_SNAPSHOT
+    h.complete(); // Snapshot complete, but the original control backlog still exceeds 256 KiB.
+    h.clock.advance(24_900);
+    expect(h.close).not.toHaveBeenCalled();
+    h.clock.advance(100);
+    expect(h.close).toHaveBeenCalledExactlyOnceWith("recovery_timeout");
+    h.complete();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("delivers the latest same-sequence snapshot received after a recovery write started", () => {
+    const h = harness();
+    h.outbox.send(reply);
+    for (let i = 1; i <= 64; i++) h.outbox.send(event(i));
+    h.complete();
+    h.complete(); // The old recovery snapshot is now immutable and in flight.
+    h.outbox.send({
+      type: "GAME_SNAPSHOT",
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: 1,
+      payload: { ...snapshot(), currentActorPlayerId: "p1", actionDeadline: 42_000 },
+    });
+    h.outbox.send({
+      type: "GAME_SNAPSHOT",
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: 2,
+      payload: { ...snapshot(), currentActorPlayerId: "p1", actionDeadline: 50_000 },
+    });
+    h.outbox.send(event(100));
+    h.outbox.send(event(101));
+    h.complete();
+    expect(h.sent.at(-1)).toMatchObject({
+      type: "GAME_SNAPSHOT",
+      payload: { sequence: "100", currentActorPlayerId: "p1", actionDeadline: 50_000 },
+    });
+    h.complete();
+    expect(h.sent.at(-1)).toMatchObject({ type: "GAME_EVENT", payload: { sequence: "101" } });
+    expect(h.sent.filter((message) => message.type === "GAME_SNAPSHOT")).toHaveLength(2);
+    h.complete();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("continues asynchronous recovery and draining when wall time rolls back during the snapshot write", () => {
+    let wallMs = 10_000;
+    const metrics = createServerMetrics();
+    const diagnose = createGameDiagnostics(
+      metrics,
+      { version: "test", deploymentSha: null },
+      () => {},
+    );
+    const h = harness({
+      now: () => wallMs,
+      onRecovered: (value, elapsed) =>
+        diagnose({
+          event: "SNAPSHOT_SENT",
+          trigger: "BACKPRESSURE",
+          roomId: "r1",
+          tournamentId: "t1",
+          handId: value.handId,
+          playerId: "p1",
+          eventSequence: value.sequence,
+          timestamp: wallMs,
+          delayMs: elapsed,
+        }),
+    });
+    h.outbox.send(reply);
+    for (let i = 1; i <= 64; i++) h.outbox.send(event(i));
+    h.complete();
+    h.complete();
+    h.outbox.send(reply);
+    wallMs = 9_000;
+    expect(() => h.complete()).not.toThrow(); // Real asynchronous callback, outside send's try/catch.
+    expect(h.sent.at(-1)?.type).toBe("SESSION_REPLACED");
+    h.complete();
+    expect(metrics.countOf(N.snapshotsSent, { trigger: "BACKPRESSURE" })).toBe(1);
+    expect(h.outbox.isIdle()).toBe(true);
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
   it("refreshes same-sequence authority after RESYNC_REQUIRED waits on I/O", () => {
     const h = harness();
     h.outbox.send(reply);

@@ -104,19 +104,23 @@ export function createGameDiagnostics(
     } catch {
       /* Diagnostics must never change authority or delivery. */
     }
-    if (event === "AUTO_ACTION") metrics.inc(N.autoActions, { action: action! });
-    if (event === "TIMER_IGNORED") metrics.inc(N.staleTimers, { trigger });
-    if (event === "ACTION_RESULT") {
-      if (duplicate) metrics.inc(N.duplicateActions);
-      if (trigger === "late") metrics.inc(N.lateActions);
+    try {
+      if (event === "AUTO_ACTION") metrics.inc(N.autoActions, { action: action! });
+      if (event === "TIMER_IGNORED") metrics.inc(N.staleTimers, { trigger });
+      if (event === "ACTION_RESULT") {
+        if (duplicate) metrics.inc(N.duplicateActions);
+        if (trigger === "late") metrics.inc(N.lateActions);
+      }
+      if (event === "RESYNC_REQUIRED") metrics.inc(N.resyncRequired, { trigger });
+      if (event === "SLOW_CONNECTION_CLOSED") metrics.inc(N.slowConnectionsClosed, { trigger });
+      if (event === "SNAPSHOT_SENT") {
+        metrics.inc(N.snapshotsSent, { trigger });
+        if (delayMs !== undefined) metrics.observe(N.resyncRecoverySeconds, delayMs / 1000);
+      }
+      if (event === "AUTO_ACTION" && delayMs !== undefined)
+        metrics.observe(N.actionTimerDelaySeconds, delayMs / 1000);
+    } catch {
+      /* Metric failures must not interrupt recovery or authoritative processing. */
     }
-    if (event === "RESYNC_REQUIRED") metrics.inc(N.resyncRequired, { trigger });
-    if (event === "SLOW_CONNECTION_CLOSED") metrics.inc(N.slowConnectionsClosed, { trigger });
-    if (event === "SNAPSHOT_SENT") {
-      metrics.inc(N.snapshotsSent, { trigger });
-      if (delayMs !== undefined) metrics.observe(N.resyncRecoverySeconds, delayMs / 1000);
-    }
-    if (event === "AUTO_ACTION" && delayMs !== undefined)
-      metrics.observe(N.actionTimerDelaySeconds, delayMs / 1000);
   };
 }

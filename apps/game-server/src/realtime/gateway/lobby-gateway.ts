@@ -24,7 +24,7 @@ import { TournamentDomainError } from "../../tournaments/tournament-errors";
 import type { TournamentManager } from "../../tournaments/tournament-manager";
 import { createConnectionEpochRegistry, type ConnectionEpochRegistry } from "../connection-epochs";
 import type { TournamentEventBus } from "../tournament-event-bus";
-import { createConnectionOutbox } from "./connection-outbox";
+import { createConnectionOutbox, SEND_LIMITS } from "./connection-outbox";
 import type { GameDiagnostics } from "../../observability/game-diagnostics";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -247,6 +247,7 @@ export function registerLobbyGateway(
     let triedAuth = false;
     let authStartMs = 0;
     let pendingLobbyMutations = 0;
+    let membershipDrainTimer: unknown | null = null;
     const diagnose = (event: Parameters<GameDiagnostics>[0]["event"], trigger: string,
       snapshot?: GameSnapshot, delayMs?: number): void => {
       const tournamentId = snapshot?.tournamentId ?? (roomId === null ? null : manager.getSnapshot(roomId)?.activeTournamentId ?? null);
@@ -288,8 +289,12 @@ export function registerLobbyGateway(
     });
 
     const closeRevokedSocketWhenIdle = (): void => {
-      if (membershipRevoked && pendingLobbyMutations === 0 && outbox.isIdle())
+      if (membershipRevoked && socket.readyState === socket.OPEN && pendingLobbyMutations === 0 && outbox.isIdle()) {
+        if (membershipDrainTimer !== null) clock.clearTimeout(membershipDrainTimer);
+        membershipDrainTimer = null;
+        outbox.dispose();
         socket.close(CLOSE_CODES.AUTH_FAILED, "room membership ended");
+      }
     };
 
     const authTimer = clock.setTimeout(() => {
@@ -433,8 +438,16 @@ export function registerLobbyGateway(
       clearSubscription();
       clearHeartbeat();
       clock.clearTimeout(authTimer);
-      // Final Lobby acknowledgements may still be sent; dispose once the socket closes.
+      // Final Lobby acknowledgements may drain until idle or the revocation deadline.
       outbox.endMembership();
+      // Revocation removes heartbeat enforcement, so even a small stalled write
+      // needs an independent bound while final Lobby receipts are allowed to drain.
+      membershipDrainTimer = clock.setTimeout(() => {
+        membershipDrainTimer = null;
+        outbox.dispose();
+        if (socket.readyState === socket.OPEN)
+          socket.close(CLOSE_CODES.AUTH_FAILED, "room membership ended");
+      }, SEND_LIMITS.recoveryMs);
       const current = currentConnection();
       if (current !== undefined && connectionKey !== null && roomId !== null && playerId !== null) {
         if (authenticated) metrics?.dec(MetricName.wsActive);
@@ -465,6 +478,8 @@ export function registerLobbyGateway(
     });
     socket.on("close", (code: number) => {
       outbox.dispose();
+      if (membershipDrainTimer !== null) clock.clearTimeout(membershipDrainTimer);
+      membershipDrainTimer = null;
       clock.clearTimeout(authTimer);
       clearSubscription();
       clearHeartbeat();

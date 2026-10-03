@@ -1,5 +1,7 @@
 # TEX-61 验收记录
 
+PR #71 的 Codex、Greptile、CodeRabbit 逐条核验与最小修复见 [Findings Ledger](./TEX-61-findings-ledger.md)，其中包含控制积压期限、在途快照后的更新、撤销回执期限及诊断指标隔离的复现与验证。
+
 任务：[TEX-61](https://linear.app/texas-holdem/issue/TEX-61)。用户直接委派 Codex 实现、提交、推送并创建 PR；从包含 TEX-59/60 的 origin/main 开始，分支 `fix/TEX-61-slow-client-backpressure-observability`。没有修改其他任务工作区的未提交文件。
 
 ## 范围与证据
