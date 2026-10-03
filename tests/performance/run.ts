@@ -408,6 +408,16 @@ async function main(): Promise<number> {
       `[perf] 场景=${plan.name} rooms=${plan.rooms} players=${plan.players} durationMs=${plan.durationMs}（reduced=${plan.reducedEvidence}）`,
     );
     console.log(`[perf] 门禁 verdict=${verdict}`);
+    const counters = metrics.snapshot();
+    console.log(
+      `[perf] 功能计数 ${JSON.stringify({
+        invariantViolations: counters.invariantViolations,
+        sequenceViolations: counters.sequenceViolations,
+        processCrash: counters.processCrash,
+        http5xx: counters.http5xx,
+        appliedActions: counters.actionLatencyMs.length,
+      })}`,
+    );
 
     if (verdict === "fail") return EXIT.fail;
     if (plan.reducedEvidence) {

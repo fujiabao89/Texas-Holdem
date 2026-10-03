@@ -106,6 +106,7 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 | 离开与断线：主动离开、断线满 10 分钟 `EXIT_PENDING → WITHDRAWN`、无真人 `CLOSED`/`ABANDONED_NO_HUMAN` | Integration | 04 §6.6/§9.3；01 §13 |
 | WebSocket 异常：重复 `requestId/actionId` 返回原结果、幂等键换 Payload 被拒、缺失/重复 sequence、旧状态 Action、多设备接管与 Close 4001 | Multiplayer | 02 §7/§10/§12/§14 |
 | Snapshot 屏障：Snapshot `S` 后首个 Event 必为 `S+1`；建 Snapshot 时并发动作不丢失；sequence 十进制字符串跨安全整数仍精确 | Multiplayer | 02 §4.1/§6.4 |
+| 压测序列检查同样按接收顺序接受权威 Snapshot 屏障，允许覆盖旧事件；屏障后缺序/重复/乱序及快照回退仍失败，RESYNC_REQUIRED 不替代 Snapshot | Performance Unit / 真实链路 smoke | 02 §6.4；`tests/performance/driver-sequence.test.ts` |
 | 多客户端一致性：公开状态一致、私有信息按 PlayerView/Patch 隔离；逐事件 `apply(before, patch) == after`；Event 丢失/重复时客户端重取 Snapshot 而非继续错误应用 | Multiplayer | 02 §6.3/§9/§14 |
 | 心跳：15 秒 Ping、45 秒无活动断开、正常 Pong 不误断；后台恢复走完整 Snapshot | Integration / Multiplayer | 02 §4.3/§10 |
 | 重连：刷新、Wi-Fi/蜂窝切换、后台恢复；恢复原 Seat/Stack/Hole Cards/Board；不重播旧动画 | Multiplayer / E2E | 02 §10；04 §9 |

@@ -23,6 +23,9 @@ test-results/
 # ===== 测试产物（Simulator 聚合统计与失败现场）=====
 tests/simulator/.artifacts/
 
+# ===== 测试产物（真实链路压测脱敏统计）=====
+tests/performance/.artifacts/
+
 # ===== 环境变量 =====
 .env
 .env.*

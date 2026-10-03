@@ -40,6 +40,7 @@ interface AnyMessage {
     readonly event?: { readonly type?: string };
     readonly sequence?: string;
     readonly tournamentId?: string;
+    readonly gameSnapshot?: { readonly tournamentId: string; readonly sequence: string } | null;
     readonly patch?: {
       readonly currentActorPlayerId?: string | null;
       readonly tournamentStatus?: string;
@@ -53,24 +54,33 @@ interface AnyMessage {
 }
 
 /**
- * 运行末尾扫描单连接收到的 GAME_EVENT：按 tournamentId 分组检查 sequence 严格 +1。
- * 任何非严格递增的落点都计为断点（真实链路 sequence/投影断言，见 docs/06 §10.1 burst）。
+ * 按接收顺序扫描 Snapshot/Event，按 tournamentId 校验屏障后的 sequence 严格 +1。
+ * 权威 Snapshot 可以覆盖未发送事件，但不允许回退；RESYNC_REQUIRED 本身不建立屏障。
+ * 使用 bigint 保留协议十进制序列在安全整数以上的精度（02 §6.4）。
  */
 export function countSequenceViolations(
   client: { readonly messages: readonly { readonly type: string; readonly payload?: unknown }[] },
   metrics: MetricsCollector,
 ): number {
-  const lastSeq = new Map<string, number>();
+  const lastSeq = new Map<string, bigint>();
   let found = 0;
   for (const raw of client.messages) {
     const message = raw as unknown as AnyMessage;
-    if (message.type !== "GAME_EVENT") continue;
-    const tournamentId = message.payload?.tournamentId;
-    const sequence = message.payload?.sequence;
+    const isSnapshot = message.type === "GAME_SNAPSHOT" || message.type === "RECONNECT_RESULT";
+    if (message.type !== "GAME_EVENT" && !isSnapshot) continue;
+    const payload =
+      message.type === "RECONNECT_RESULT" ? message.payload?.gameSnapshot : message.payload;
+    const tournamentId = payload?.tournamentId;
+    const sequence = payload?.sequence;
     if (typeof tournamentId !== "string" || typeof sequence !== "string") continue;
-    const seq = Number(sequence);
+    const seq = BigInt(sequence);
     const previous = lastSeq.get(tournamentId);
-    if (previous !== undefined && seq !== previous + 1) found += 1;
+    if (isSnapshot) {
+      if (previous !== undefined && seq < previous) {
+        found += 1;
+        continue;
+      }
+    } else if (previous !== undefined && seq !== previous + 1n) found += 1;
     lastSeq.set(tournamentId, seq);
   }
   if (found > 0) metrics.inc("sequenceViolations", found);
@@ -81,7 +91,11 @@ export function countSequenceViolations(
  * burst/正常门禁仅在 APPLIED 的“完成时刻” ≤ 窗口截止且未收尾时才计入 actionLatency/
  * appliedCount（CodeRabbit：发送前查窗不足，完成时也须查）。
  */
-export function shouldRecordApplied(completedAtMs: number, deadlineMs: number, stop: boolean): boolean {
+export function shouldRecordApplied(
+  completedAtMs: number,
+  deadlineMs: number,
+  stop: boolean,
+): boolean {
   return !stop && completedAtMs <= deadlineMs;
 }
 

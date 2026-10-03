@@ -200,4 +200,5 @@ jobs:
         with:
           name: perf-smoke-${{ github.sha }}
           path: tests/performance/.artifacts
+          include-hidden-files: true
           if-no-files-found: ignore
