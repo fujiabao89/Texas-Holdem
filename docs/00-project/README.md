@@ -7,6 +7,8 @@
 
 ## 依赖维护
 
+- [TEX-64 PR 风险观察器接入](https://linear.app/texas-holdem/issue/TEX-64)：用户委派 Codex 接入 AI PR Router V0.1，分支 `chore/TEX-64-ai-pr-router-observer`；范围限配置、独立 Workflow 与文档，TEX-61 的服务端实现仍由原任务负责。接入与试用条件见 [工程说明](../03-engineering/ai-pr-router-observer.md)。
+
 - [TEX-63 最小依赖补丁升级与安装验证](https://linear.app/texas-holdem/issue/TEX-63)：用户直接委派 Codex；仅升级必要依赖并保留无关锁定节点，分支 `chore/TEX-63-minimal-dependency-patches`。范围、本地验证与待 CI 验证项见 [验收记录](../03-engineering/dependency-patch-validation.md)；不改变产品路线图。
 
 ## P0 执行文档

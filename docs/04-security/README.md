@@ -2,6 +2,7 @@
 
 TEX-61：普通牌局诊断仅使用 `game-diagnostics.ts` 的字段白名单，禁止 Token、昵称、Deck、牌面、完整事件/命令或 Error 对象。ID 只进入结构化日志，不进入指标标签。恢复快照仍经当前身份/epoch 和接收者投影生成；成员结束后丢弃该连接未发送的旧牌局帧。`/health` 只暴露经格式校验的版本与 SHA，不枚举环境变量。保留和权限要求见 [运行手册](../05-operations/realtime-diagnostics.md)。
 
+PR 风险观察器的外发策略、作者/维护者授权、Secret 权限、敏感路径、状态与公共报告边界以 [AI PR Router 接入说明](../03-engineering/ai-pr-router-observer.md#3-secret-与模型外发授权) 为准（TEX-64）。这些设置只用于工程审查辅助，不改变游戏身份、私密投影或真钱范围。
 
 依赖补丁维护与剩余项的本地核验见 [依赖补丁验收记录](../03-engineering/dependency-patch-validation.md)。审计必须使用支持审计端点的 registry；安装冷却期校验与冻结锁文件安装保持启用。是否完成告警处理，以修复合入默认分支后的 Dependabot 复查为准。
 
