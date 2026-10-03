@@ -283,6 +283,8 @@ P0 容量目标固定为单实例 **100 Room / 1,000 WS**；首轮基准不以�
 
 ### 10.2 监控验收【工程基线】
 
+TEX-61 新增慢连接关闭门槛：`texas_slow_connections_closed_total` 相对同实例连接建立数 >5%，10 分钟窗口内连接建立数至少 20 且持续 10 分钟，按 P1 调查/通知。重同步次数作为诊断信号，不对每次正常恢复告警；自动 Check/Fold 与被正确忽略的 Timer 不单独升级为故障。埋点/脱敏/有界资源测试与部署采集/真实通知送达是不同证据，见 [TEX-61 验收](./03-engineering/TEX-61-acceptance.md)。
+
 - 每个 P0/P1 指标均需验证“代码产生 → 采集 → Dashboard → 告警”完整链路，不能只验证埋点函数被调用。
 - 发布前通过故障注入触发一次 Game Error/Invariant Violation、重连率、Action Rejection Rate 告警；校验告警包含 `environment`/`version` 标签、可经结构化应用日志字段（`roomId`/`tournamentId`）关联具体房间/比赛，且不含私密牌或 Token。`roomId`/`tournamentId` 不进指标标签（per-room 高基数违反有限标签集合红线），以日志字段承载关联（查询指引见 `docs/05-operations/README.md`）。
 - 告警总负责人为项目总负责人；P0 告警发送至其启用推送/电话提醒的即时渠道并以邮件兜底，P1 告警发送至同一即时渠道。具体服务账号可随部署环境选择，但未验证送达前不得宣称“监控已完成”。

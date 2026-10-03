@@ -483,6 +483,8 @@ type ReconnectResult = {
 
 ## 10. 连接生命周期与重连
 
+TEX-61 已落实每连接发送背压；阈值唯一来源为 [04 §9.5](./04-game-server-architecture.md#95-事件积压与-fast-forward)。背压恢复依次发送 `RESYNC_REQUIRED(BACKPRESSURE)` 与最新 `GAME_SNAPSHOT(reason=RESYNC)`，客户端沿用现有原子替换/清动画/禁用 Action 屏障。服务端在可发送时重新生成接收者投影，并丢弃 sequence 小于或等于屏障的旧事件（包括屏障生成前已准备、之后才扇出的同批事件）。标准 WS Close 1013 经既有退避重连；不失效成员 Token，不回放旧动画。send callback 只表示服务端传输完成，不是客户端读取/动画完成 ACK；wire v6 与 Schema 不变。
+
 - `ConnectionStatus` 与 `PokerStatus` 解耦：断线只改 `ConnectionStatus`，不改变任何扑克状态（`PokerStatus=ACTIVE` 与 `ConnectionStatus=DISCONNECTED` 可共存）（《区块6-10 v0.2》§6.3/§7.17）。
 - 断线玩家保留 Seat、筹码与本手已投入筹码；有限时下轮到其行动按普通超时 Auto Check/Auto Fold；不限时下保留 **10 分钟断线宽限**（《总规划》§4.1；《区块6-10 v0.2》§8.1）。
 - 刷新、Wi-Fi/蜂窝切换、手机后台恢复**走同一重连流程**：恢复后重连并获取最新 Snapshot（《区块6-10 v0.2》§7.17/§8.3）。

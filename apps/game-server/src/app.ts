@@ -23,6 +23,7 @@ import { createServerMetrics, N as MetricName } from "./observability/server-met
 import { createNodeIdSource, type IdSource } from "./rooms/id-source";
 import type { RoomManager } from "./rooms/room-manager";
 import type { TournamentManager } from "./tournaments/tournament-manager";
+import { buildIdentity, createGameDiagnostics, type BuildIdentity, type GameDiagnostics } from "./observability/game-diagnostics";
 
 /** 规则权威校验适配：engine 返回 readonly 冻结配置，复制为协议可变类型（只调用，不复制规则）。 */
 function validateRoomConfig(config: TournamentConfig): TournamentConfig {
@@ -72,6 +73,8 @@ export interface BuildAppOptions {
   readonly rateLimit?: { readonly max: number; readonly timeWindow: string };
   /** TEX-29 服务端指标注册表；缺省创建空注册表并暴露 /metrics。 */
   readonly metrics?: Metrics;
+  readonly buildIdentity?: BuildIdentity;
+  readonly diagnostics?: GameDiagnostics;
 }
 
 /**
@@ -97,6 +100,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     idempotency.bindRoomResidency(() => false);
   });
   const metrics = options.metrics ?? createServerMetrics();
+  const identity = options.buildIdentity ?? buildIdentity();
+  const diagnostics = options.diagnostics ?? createGameDiagnostics(metrics, identity, () => {});
   // HTTP 观测（TEX-29）：请求计数/耗时、5xx。标签仅含方法（有界），不含路径（路径含 roomId）。
   const httpStart = new WeakMap<object, bigint>();
   app.addHook("onRequest", (request, _reply, done) => {
@@ -167,8 +172,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   // /health 有意豁免全局限流（在插件 onRoute 生效前注册）：廉价端点，健康检查不应被限流误伤。
-  app.get("/health", async () => {
-    return { status: "ok" };
+  app.get("/health", async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    return { status: "ok", build: identity };
   });
 
   // /metrics：Prometheus 文本抓取端点（TEX-29）。不包含任何 room/player 标识标签。
@@ -217,6 +223,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       events: options.tournamentEvents,
       epochs: options.connectionEpochs,
       metrics,
+      diagnostics,
     });
   });
 

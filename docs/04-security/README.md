@@ -1,5 +1,8 @@
 # Security documents
 
+TEX-61：普通牌局诊断仅使用 `game-diagnostics.ts` 的字段白名单，禁止 Token、昵称、Deck、牌面、完整事件/命令或 Error 对象。ID 只进入结构化日志，不进入指标标签。恢复快照仍经当前身份/epoch 和接收者投影生成；成员结束后丢弃该连接未发送的旧牌局帧。`/health` 只暴露经格式校验的版本与 SHA，不枚举环境变量。保留和权限要求见 [运行手册](../05-operations/realtime-diagnostics.md)。
+
+
 依赖补丁维护与剩余项的本地核验见 [依赖补丁验收记录](../03-engineering/dependency-patch-validation.md)。审计必须使用支持审计端点的 registry；安装冷却期校验与冻结锁文件安装保持启用。是否完成告警处理，以修复合入默认分支后的 Dependabot 复查为准。
 
 TEX-51 启动恢复只加载 ACTIVE 成员的 HMAC 摘要和受支持 key ID，不存储/重签原 token，不复活 LEFT 身份。Host/成员/参赛者不一致时隔离，诊断不打印快照、昵称或摘要。未关闭 Room 的密钥须保持可用；本次不引入轮换系统。详见 [ADR-0003](../adr/0003-tex-51-room-recovery-authority.md)。

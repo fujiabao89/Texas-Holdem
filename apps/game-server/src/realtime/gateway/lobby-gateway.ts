@@ -24,6 +24,8 @@ import { TournamentDomainError } from "../../tournaments/tournament-errors";
 import type { TournamentManager } from "../../tournaments/tournament-manager";
 import { createConnectionEpochRegistry, type ConnectionEpochRegistry } from "../connection-epochs";
 import type { TournamentEventBus } from "../tournament-event-bus";
+import { createConnectionOutbox } from "./connection-outbox";
+import type { GameDiagnostics } from "../../observability/game-diagnostics";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const HEARTBEAT_TIMEOUT_MS = 45_000;
@@ -46,6 +48,7 @@ export interface LobbyGatewayOptions {
   readonly epochs?: ConnectionEpochRegistry;
   /** TEX-29 指标句柄：WS 连接/消息/重连/Action 埋点；缺省不埋点。 */
   readonly metrics?: Metrics;
+  readonly diagnostics?: GameDiagnostics;
 }
 
 interface ActiveConnection {
@@ -129,6 +132,7 @@ export function registerLobbyGateway(
           ? "membership_ended"
           : "auth_failed";
     if (code === 1006) return "abnormal";
+    if (code === 1013) return "slow";
     return "other";
   }
 
@@ -243,9 +247,48 @@ export function registerLobbyGateway(
     let triedAuth = false;
     let authStartMs = 0;
     let pendingLobbyMutations = 0;
+    const diagnose = (event: Parameters<GameDiagnostics>[0]["event"], trigger: string,
+      snapshot?: GameSnapshot, delayMs?: number): void => {
+      const tournamentId = snapshot?.tournamentId ?? (roomId === null ? null : manager.getSnapshot(roomId)?.activeTournamentId ?? null);
+      const runtime = tournamentId === null ? undefined : options.tournaments?.getView(tournamentId);
+      options.diagnostics?.({ event, trigger, roomId: roomId ?? "", playerId,
+        tournamentId, handId: snapshot?.handId ?? runtime?.currentHandId ?? null,
+        eventSequence: snapshot?.sequence ?? (runtime === undefined ? null : String(runtime.lastWireSequence)),
+        timestamp: options.now(), delayMs });
+    };
+    const outbox = createConnectionOutbox({
+      socket, now: options.now, clock,
+      snapshot: (tournamentId) => {
+        if (!isCurrentConnection() || roomId === null || playerId === null) return null;
+        if (manager.getSnapshot(roomId)?.activeTournamentId !== tournamentId) return null;
+        return gameSnapshotFor(tournamentId, roomId, playerId, "RESYNC");
+      },
+      close: (trigger) => {
+        diagnose("SLOW_CONNECTION_CLOSED", trigger);
+        clearSubscription();
+        clearHeartbeat();
+        // Do not leave a closing slow socket's epoch valid during the WS close handshake.
+        detachCurrentConnection();
+        socket.close(1013, "slow client; reconnect with backoff");
+      },
+      onResync: (trigger) => diagnose("RESYNC_REQUIRED", trigger),
+      onRecovered: (snapshot, elapsed) => diagnose("SNAPSHOT_SENT", "BACKPRESSURE", snapshot, elapsed),
+      onCompleted: (message) => {
+        if (message.type === "RECONNECT_RESULT" && message.payload.gameSnapshot !== null)
+          diagnose("SNAPSHOT_SENT", message.payload.gameSnapshot.reason, message.payload.gameSnapshot);
+        if (message.type === "GAME_SNAPSHOT")
+          diagnose("SNAPSHOT_SENT", message.payload.reason, message.payload);
+        closeRevokedSocketWhenIdle();
+      },
+      onWritten: (message, bytes, waitedMs) => {
+        metrics?.inc(MetricName.wsMessagesWritten, { type: message.type });
+        metrics?.inc(MetricName.wsMessageBytes, { type: message.type }, bytes);
+        metrics?.observe(MetricName.wsSendWaitSeconds, waitedMs / 1000, { type: message.type });
+      },
+    });
 
     const closeRevokedSocketWhenIdle = (): void => {
-      if (membershipRevoked && pendingLobbyMutations === 0)
+      if (membershipRevoked && pendingLobbyMutations === 0 && outbox.isIdle())
         socket.close(CLOSE_CODES.AUTH_FAILED, "room membership ended");
     };
 
@@ -283,19 +326,13 @@ export function registerLobbyGateway(
         serverTime: options.now(),
         payload,
       });
-      const frame = JSON.stringify(message);
-      socket.send(frame);
-      metrics?.inc(MetricName.wsMessagesWritten, { type });
-      metrics?.inc(MetricName.wsMessageBytes, { type }, Buffer.byteLength(frame));
+      outbox.send(message);
     };
     const sendServerMessage = (message: ServerMessage): void => {
       // Ownership is reserved before async authentication side effects finish;
       // retain the reconnect snapshot as the first realtime state barrier.
       if (!authenticated || socket.readyState !== socket.OPEN) return;
-      const frame = JSON.stringify(ServerMessageSchema.parse(message));
-      socket.send(frame);
-      metrics?.inc(MetricName.wsMessagesWritten, { type: message.type });
-      metrics?.inc(MetricName.wsMessageBytes, { type: message.type }, Buffer.byteLength(frame));
+      outbox.send(ServerMessageSchema.parse(message));
     };
     const sendError = (code: ErrorCode): void => {
       send(
@@ -313,12 +350,24 @@ export function registerLobbyGateway(
       if (heartbeat !== null) clock.clearInterval(heartbeat);
       heartbeat = null;
     };
+    const detachCurrentConnection = (): void => {
+      const current = currentConnection();
+      if (!isCurrentConnection() || current === undefined || connectionKey === null || roomId === null || playerId === null) return;
+      if (authenticated) metrics?.dec(MetricName.wsActive);
+      activeConnections.delete(connectionKey);
+      epochs.release(roomId, playerId, current.epoch);
+      void manager.submitCommand(roomId, { type: "SET_CONNECTION_STATUS", playerId, connectionStatus: "DISCONNECTED" }).catch(() => undefined);
+      const tournamentId = manager.getSnapshot(roomId)?.activeTournamentId;
+      if (tournamentId !== null && tournamentId !== undefined)
+        void options.tournaments?.setConnection(tournamentId, playerId, false).catch(() => undefined);
+    };
     const replace = (): void => {
       clearSubscription();
       clearHeartbeat();
       if (authenticated) metrics?.dec(MetricName.wsActive);
       send("SESSION_REPLACED", {});
       socket.close(CLOSE_CODES.SESSION_REPLACED, "replaced by a newer connection");
+      outbox.dispose();
     };
     const rollbackReservation = (): void => {
       if (
@@ -384,6 +433,8 @@ export function registerLobbyGateway(
       clearSubscription();
       clearHeartbeat();
       clock.clearTimeout(authTimer);
+      // Final Lobby acknowledgements may still be sent; dispose once the socket closes.
+      outbox.endMembership();
       const current = currentConnection();
       if (current !== undefined && connectionKey !== null && roomId !== null && playerId !== null) {
         if (authenticated) metrics?.dec(MetricName.wsActive);
@@ -406,51 +457,21 @@ export function registerLobbyGateway(
     };
 
     socket.on("message", (raw: Buffer) => {
+      if (socket.readyState !== socket.OPEN) return;
       void handleMessage(raw.toString());
     });
     socket.on("pong", () => {
       lastActivityAt = options.now();
     });
     socket.on("close", (code: number) => {
+      outbox.dispose();
       clock.clearTimeout(authTimer);
       clearSubscription();
       clearHeartbeat();
-      const current = currentConnection();
-      const isCurrent =
-        isCurrentConnection() &&
-        current !== undefined &&
-        connectionKey !== null &&
-        roomId !== null &&
-        playerId !== null;
-      // TEX-29：活跃 WS 计数只在真正取代(current)且非接管关闭时递减——接管由 replace() 处理。
-      if (isCurrent && authenticated && code !== CLOSE_CODES.SESSION_REPLACED)
-        metrics?.dec(MetricName.wsActive);
       metrics?.inc(MetricName.wsClosed, {
         category: closeCategory(code, authenticated, membershipRevoked),
       });
-      if (
-        isCurrent &&
-        current !== undefined &&
-        connectionKey !== null &&
-        roomId !== null &&
-        playerId !== null
-      ) {
-        activeConnections.delete(connectionKey);
-        epochs.release(roomId, playerId, current.epoch);
-        void manager
-          .submitCommand(roomId, {
-            type: "SET_CONNECTION_STATUS",
-            playerId,
-            connectionStatus: "DISCONNECTED",
-          })
-          .catch(() => undefined);
-        const activeTournamentId = manager.getSnapshot(roomId)?.activeTournamentId;
-        if (activeTournamentId !== null && activeTournamentId !== undefined) {
-          void options.tournaments
-            ?.setConnection(activeTournamentId, playerId, false)
-            .catch(() => undefined);
-        }
-      }
+      detachCurrentConnection();
     });
 
     async function applyMutation(command: LobbyMutation): Promise<void> {
@@ -769,6 +790,7 @@ export function registerLobbyGateway(
           return;
         }
         case "REQUEST_SNAPSHOT": {
+          diagnose("SNAPSHOT_REQUESTED", command.payload.reason);
           const snapshot = manager.getSnapshot(roomId as string);
           if (
             snapshot === undefined ||

@@ -1,5 +1,8 @@
 # Game server source
 
+TEX-61：`main.ts` 向 Gateway 与 TournamentExecutor 注入同一脱敏诊断 sink；`app.ts` 的 `/health` 仅暴露经校验的构建版本/SHA。发送队列资源随替换、离开、闭房和服务关停释放，参见 [realtime/gateway](./realtime/gateway/README.md) 与 [observability](./observability/README.md)。
+
+
 服务端源码根目录。不得将扑克规则、牌力计算或底池裁决放在此处；它们属于共享引擎包。
 
 ## 模块

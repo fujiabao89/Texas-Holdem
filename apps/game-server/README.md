@@ -1,5 +1,8 @@
 # Game server
 
+TEX-61：每连接有界发送队列、背压重同步/1013 关闭及权威牌局诊断已实现。阈值以 [04 §9.5](../../docs/04-game-server-architecture.md#95-事件积压与-fast-forward) 为准；`GET /health` 返回 `{status, build: {version, deploymentSha}}` 并禁用缓存。构建时注入 `APP_VERSION` / `DEPLOYMENT_SHA`；日志字段、保留、告警和排查见 [运行手册](../../docs/05-operations/realtime-diagnostics.md)，验证证据见 [TEX-61](../../docs/03-engineering/TEX-61-acceptance.md)。
+
+
 游戏服务运行时（Node.js + Fastify + `@fastify/websocket`）：鉴权、房间调度、连接管理、持久化编排和对纯扑克引擎的调用。服务端是权威状态源，客户端只提交命令。
 
 ## 命令
