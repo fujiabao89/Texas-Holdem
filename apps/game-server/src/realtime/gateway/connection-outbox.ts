@@ -115,7 +115,13 @@ export function createConnectionOutbox(options: OutboxOptions) {
     if (trigger !== null && tournamentId !== undefined) beginResync(tournamentId, trigger);
     // Lobby-only sockets also stop growing and time out at a sustained soft byte limit.
     if (total >= SEND_LIMITS.softBytes) recoveryStartedAt ??= options.now();
-    if (resyncTournament === null && !recovering && !busy && total < SEND_LIMITS.softBytes)
+    if (
+      resyncTournament === null &&
+      !recovering &&
+      !busy &&
+      !queue.some(({ message }) => message.type === "GAME_SNAPSHOT") &&
+      total < SEND_LIMITS.softBytes
+    )
       recoveryStartedAt = null;
   }
   function pump(): void {

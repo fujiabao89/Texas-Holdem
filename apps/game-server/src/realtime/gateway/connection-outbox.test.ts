@@ -88,6 +88,38 @@ function harness(
 }
 
 describe("TEX-61 bounded per-connection egress", () => {
+  it.each(["100", "101"])(
+    "retains the recovery deadline until a later snapshot at sequence %s completes",
+    (sequence) => {
+      const h = harness();
+      h.outbox.send(reply);
+      for (let i = 1; i <= SEND_LIMITS.events; i++) h.outbox.send(event(i));
+      h.complete();
+      h.complete(); // The initial recovery snapshot is in flight.
+      const newer: ServerMessage = {
+        type: "GAME_SNAPSHOT",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: 1,
+        payload: { ...snapshot(sequence), currentActorPlayerId: "p1", actionDeadline: 42_000 },
+      };
+      expect(Buffer.byteLength(JSON.stringify(newer))).toBeLessThan(SEND_LIMITS.softBytes);
+      h.outbox.send(newer);
+      h.clock.advance(1_000);
+      h.complete(); // The newer snapshot is now in flight, with zero socket buffered bytes.
+      expect(h.sent.at(-1)).toEqual(newer);
+      expect(h.socket.bufferedAmount).toBe(0);
+
+      h.clock.advance(SEND_LIMITS.recoveryMs - 1_000 - SEND_LIMITS.pollMs);
+      expect(h.close).not.toHaveBeenCalled();
+      h.clock.advance(SEND_LIMITS.pollMs);
+      expect(h.close).toHaveBeenCalledExactlyOnceWith("recovery_timeout");
+      const sentCount = h.sent.length;
+      h.complete();
+      expect(h.sent).toHaveLength(sentCount);
+      expect(h.clock.pendingTimers()).toBe(0);
+    },
+  );
+
   it.each(["events", "age"] as const)(
     "keeps the original recovery deadline while queued %s pressure remains below the byte limit",
     (trigger) => {
@@ -187,6 +219,8 @@ describe("TEX-61 bounded per-connection egress", () => {
     expect(h.sent.filter((message) => message.type === "GAME_SNAPSHOT")).toHaveLength(2);
     h.complete();
     expect(h.clock.pendingTimers()).toBe(0);
+    h.clock.advance(SEND_LIMITS.recoveryMs);
+    expect(h.close).not.toHaveBeenCalled();
   });
 
   it("continues asynchronous recovery and draining when wall time rolls back during the snapshot write", () => {

@@ -45,3 +45,15 @@ F-01 至 F-04 各自对应原始 inline 线程，交付必须在修改验证、�
 直接相关验证：`pnpm exec vitest run apps/game-server/src/realtime/gateway/connection-outbox.test.ts apps/game-server/src/realtime/gateway/lobby-gateway.test.ts`，2 个文件、36 项通过，其中 outbox 14 项包含两条新增回归及正常恢复排空的既有保护。另验证 game-server 类型、测试类型、改动 TS 的 ESLint/Prettier 与 `git diff --check`。
 
 同步 Gateway README、04 §9.5 和 06 的恢复期限/测试说明。任务卡/路线图、协议、运维及安全说明已检查，无需更新：仅修复既有三类背压阈值的期限保持，接口、关闭码、配置、权限和部署流程均未改变。F-10 必须在验证、提交及推送后于上述原始线程回复 `已修正`，回执以 GitHub 线程为准。
+
+## 增量核验：后续快照的恢复期限
+
+2026-10-09，基线 `d89de26816239aa45b320a1597a72e14fd4480b6`。读取 Greptile 全部已发布评论与 review bodies；未触发新审查。
+
+| ID | 来源 | 有效性、精确失败场景与现有覆盖 | 等级 | 处置 |
+| --- | --- | --- | --- | --- |
+| F-11 | [Greptile 4173967201](https://github.com/fujiabao89/Texas-Holdem/pull/71#discussion_r4173967201) | 有效。第 0 秒触发恢复；sequence=100 的恢复快照在途时收到更新快照（同 sequence 或 sequence=101，带新行动者/截止线）。第 1 秒完成旧快照后，`check()` 见低字节、无事件压力且 `busy=false`，清空原期限，再发送后续快照；后者回调一直停滞且 Socket 缓冲为零，原第 30 秒不会关闭。F-02 已验证后续快照交付，但会完成所有回调；F-10 验证事件数/年龄压力，没有覆盖小型后续快照回调停滞。两条新增回归在修改前均失败。 | P1 | 最小修复：既有清除期限条件增加“没有排队 GAME_SNAPSHOT”，保留后续快照发送前的期限；已在途帧继续由既有 `busy` 检查保护。不新增时间窗口、状态机或接口。新增同/更高序列快照超时回归，验证原第 30 秒关闭及迟到回调/Timer 清理；既有正常交付测试增加期限过后不误关闭断言。 |
+
+F-02/F-03 再核验：后续快照仍会合并保留并按顺序发送，成员撤销仍具有独立 30 秒排空期限；对应回归通过，原始线程已在此前推送后回复 `已修正`，无需重复改动或重复回复。Greptile review body 均为空，没有另一个结构性重构要求。
+
+直接相关验证：Gateway/outbox 两个文件、38 项通过；`pnpm test:ws` 两个文件、11 项通过；`pnpm --filter @texas-holdem/game-server typecheck`、`pnpm exec tsc --noEmit -p tsconfig.test.json`、改动 TS 的 ESLint/Prettier 与 `git diff --check`。本轮未重复数据库长时压测或浏览器完整场景，CI 以新提交的运行结果为准。同步 Gateway README、04 §9.5 和 06 的恢复期限说明；任务卡/路线图、协议、运维及安全说明已检查，无需更新：阈值、Close 码、权限、配置和部署流程未变。F-11 在验证、提交并推送后于原始线程回复 `已修正`，回执以 GitHub 线程为准。
