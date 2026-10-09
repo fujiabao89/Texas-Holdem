@@ -1,5 +1,8 @@
 # Operations documents
 
+- [实时背压与牌局诊断（TEX-61）](./realtime-diagnostics.md)：部署身份、JSON 日志、指标、告警阈值、保留与故障排查。
+
+
 ## TEX-52 运行时回收
 
 终局比赛保留 10 分钟只读；CLOSED 立即撤销连接/令牌并卸载重型对象，轻量墓碑 10 分钟后到期。监测 `texas_registered_tournaments`、`texas_finished_retained_tournaments`、`texas_frozen_tournaments`、`texas_closed_room_tombstones` 与 `texas_persistence_registered_queues`，不能把终局保留计为 active。过期后计数不回落应调查；pending/隔离 Writer 队列为真实未提交数据，不得为降低指标清空。关停会先冻结生产者再 final flush，超时未提交数必须报告。数据库历史保留策略不变；此任务没有删除任何历史数据。

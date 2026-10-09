@@ -1,5 +1,8 @@
 # persistence（TEX-22）
 
+TEX-61：恢复 Gateway 测试的 Socket 替身补齐 send callback / bufferedAmount，验证终局保留 Snapshot 能通过有界 outbox。未改变 Writer、检查点、仓储或数据库结构。
+
+
 TEX-52：Writer 在 `enqueue` 复制 Bundle 并保留 Buffer/Date/BigInt，嵌套普通对象/数组冻结；不引用 Runtime 可变对象。`releaseTournament` 只退休已存在队列，空且无 in-flight 时回收；pending/in-flight/隔离 Bundle 不丢弃，成功排空后才释放。`queueCount` 观测仍驻留队列。最终 flush 前先停止入口/Runtime，`dispose` 停止重试/age/flush timer；未提交 Bundle 数仍可观测，不伪称已提交。
 
 持久化运行时编排：异步 Writer 与崩溃恢复。权威规格：docs/03-data-model.md §4/§7、docs/04-game-server-architecture.md §12/§13。

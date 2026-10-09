@@ -33,6 +33,8 @@ pnpm test:perf -- --scenario headroom --sha <hex>           # 正式：130 × 10
 
 裁决区分 `pass / fail / insufficient-sample / not-measured`：样本不足与未测量**不等于通过**（docs/06 §10.1）。延迟为 driver 观测值（含本机回环 RTT）；Release 判据建议同时读取被测实例 `/metrics` 的服务端直方图（`texas_action_to_event_seconds`、`texas_reconnect_recovery_seconds`）。
 
+序列校验按接收顺序处理 `RECONNECT_RESULT.gameSnapshot`、`GAME_SNAPSHOT` 和 `GAME_EVENT`，以权威 Snapshot 建立屏障；快照可以覆盖未发送事件，之后仍严格要求 `S+1`，不能用 `RESYNC_REQUIRED` 本身掩盖缺序。重复/乱序事件与快照回退仍计为违反，十进制序列使用 bigint 精确比较。确定性回归见 [driver-sequence.test.ts](./driver-sequence.test.ts)。
+
 ## 正式运行的边界（诚实性约定）
 
 - **PR CI 只跑 smoke**（`.github/workflows/ci.yml` 的 `perf-smoke` job，真实 PostgreSQL service 容器）。
@@ -43,6 +45,8 @@ pnpm test:perf -- --scenario headroom --sha <hex>           # 正式：130 × 10
 ## 产物与脱敏
 
 产物写入 `tests/performance/.artifacts/perf-<scenario>-<ts>.json`（默认；`--out` 可改）：`meta`（scenario/sha/runId/机器规格/reducedEvidence/note）、`load`（实际 rooms/players/duration/opTarget）、`metrics`（计数 + 延迟摘要 + 比率）、`gates`（逐项 SLO 判定与 verdict）。写盘前经 `redaction.ts` 递归脱敏并由 `sensitiveKeysIn` 断言：**Token/Deck/Burn/未公开底牌/隐藏 Reasoning 永不进入产物**（docs/06 §10.2 红线）。playerToken 只在 driver 内存，从不落盘。
+
+CLI 同时输出功能计数（不变量/序列违反、崩溃、HTTP 5xx、成功动作样本数），便于直接定位失败项。产物目录由 Git 忽略；PR CI 上传该隐藏目录时显式启用 `include-hidden-files`，保留成功或失败的脱敏 JSON 证据。
 
 退出码：`0` 通过；`1` 失败；`2` 参数/环境错误；`3` 证据不足/缩减运行（不折算为通过）。
 

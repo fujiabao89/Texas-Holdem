@@ -28,6 +28,7 @@ import { createPersistenceWriter } from "./persistence/persistence-writer";
 import { recoverRoomsOnStartup } from "./persistence/room-recovery";
 import { createTestRngFactory } from "./test-rng-factory";
 import { createServerMetrics, N as MetricName } from "./observability/server-metrics";
+import { buildIdentity, createGameDiagnostics } from "./observability/game-diagnostics";
 import { createRateLimiter, parseRateLimitProfile } from "./http/middleware/rate-limit";
 
 /**
@@ -51,6 +52,8 @@ const rngFactory = createTestRngFactory(rngTestSeed);
 // TEX-29：服务端指标注册表与限流档位（默认 default；load-test 仅隔离压测环境且禁生产）。
 const rateLimitProfile = parseRateLimitProfile();
 const metrics = createServerMetrics();
+const identity = buildIdentity();
+const diagnostics = createGameDiagnostics(metrics, identity);
 const globalRateLimit =
   rateLimitProfile === "load-test" ? { max: 3000, timeWindow: "1 minute" as const } : undefined;
 
@@ -133,6 +136,7 @@ tournamentManager = createTournamentManager({
     },
   },
   executorDeps: {
+    diagnostics,
     isConnectionCurrent: connectionEpochs.isCurrent,
     // 同步 hard 背压检查：手末 bundle 自身触达 hard 时也能在推进下一手前停下（§12.2）。
     isBackpressurePaused: () => backpressureLatch.hardPaused,
@@ -179,6 +183,8 @@ const app = buildApp({
   tournamentEvents,
   connectionEpochs,
   metrics,
+  buildIdentity: identity,
+  diagnostics,
   rateLimiter: createRateLimiter(Date.now, rateLimitProfile),
   rateLimit: globalRateLimit,
   // Hand History 投影读取（TEX-36）：归档历史经 token 摘要数据库侧鉴权，

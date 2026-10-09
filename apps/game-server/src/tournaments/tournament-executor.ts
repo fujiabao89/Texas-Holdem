@@ -46,6 +46,7 @@ import { TournamentDomainError } from "./tournament-errors";
 import { buildHandCommitBundle } from "./tournament-persistence";
 import { stableStringify } from "../infrastructure/persistence/checksum";
 import type { TournamentCommand } from "./tournament-commands";
+import type { GameDiagnostic, GameDiagnostics } from "../observability/game-diagnostics";
 import {
   runtimeView,
   type PlayerRuntimeRecord,
@@ -76,6 +77,7 @@ export interface TournamentOutputSink {
 }
 
 export interface TournamentExecutorDeps {
+  readonly diagnostics?: GameDiagnostics;
   readonly output: TournamentOutputSink;
   /** 终局输出全部完成且队列释放执行权后只通知一次（§13.2）；由 Manager 管理保留期。 */
   readonly onTerminal?: (context: {
@@ -113,6 +115,7 @@ export class TournamentExecutor {
   private disposeRequested = false;
   private disposal: Promise<void> | null = null;
   private resolveDisposal: (() => void) | null = null;
+  private transitionTrigger = "START";
 
   constructor(state: TournamentRuntimeState, deps: TournamentExecutorDeps) {
     this.state = state;
@@ -221,6 +224,7 @@ export class TournamentExecutor {
   }
 
   private process(command: TournamentCommand): CommandResultPayload | null {
+    this.transitionTrigger = command.type;
     if (this.disposeRequested) throw new TournamentDomainError("TOURNAMENT_NOT_ACTIVE");
     // Engine Critical Error 冻结后：拒绝业务命令，停止该桌后续执行（04 §7.4/§15）。
     if (this.state.status === "FROZEN") {
@@ -230,6 +234,7 @@ export class TournamentExecutor {
       if (command.type === "USE_TIME_BANK") {
         return this.rejected("GAME_UNAVAILABLE", command.requestId);
       }
+      this.diagnoseIgnoredTimer(command, "frozen");
       return null; // 内部/计时回调直接丢弃
     }
     // 保留期只读：Action/Time Bank 仍先重放幂等结果，其他命令与迟到计时回调均不再改状态。
@@ -238,16 +243,33 @@ export class TournamentExecutor {
       command.type !== "SUBMIT_ACTION" &&
       command.type !== "USE_TIME_BANK"
     ) {
+      this.diagnoseIgnoredTimer(command, "terminal");
       return null;
     }
     switch (command.type) {
       case "START":
         this.processStart();
         return null;
-      case "SUBMIT_ACTION":
-        return this.processAction(command);
-      case "USE_TIME_BANK":
-        return this.processUseTimeBank(command);
+      case "SUBMIT_ACTION": {
+        const handId = this.state.currentHandId;
+        const deadline = this.state.actionDeadline;
+        const result = this.processAction(command);
+        if (result !== null) this.diagnose("ACTION_RESULT",
+          !result.duplicate && deadline !== null && command.receivedAt > deadline ? "late" : result.duplicate ? "duplicate" : result.status,
+          { handId, playerId: command.playerId, action: command.action.type,
+            errorCode: result.error?.code, duplicate: result.duplicate, receivedAt: command.receivedAt, deadline });
+        return result;
+      }
+      case "USE_TIME_BANK": {
+        const handId = this.state.currentHandId;
+        const deadline = this.state.actionDeadline;
+        const result = this.processUseTimeBank(command);
+        if (result !== null) this.diagnose("ACTION_RESULT",
+          !result.duplicate && deadline !== null && command.receivedAt > deadline ? "late" : result.duplicate ? "duplicate" : result.status,
+          { handId, playerId: command.playerId, action: command.type, errorCode: result.error?.code,
+            duplicate: result.duplicate, receivedAt: command.receivedAt, deadline });
+        return result;
+      }
       case "SYSTEM_TIMER_ACTION":
         this.processActionTimer(command);
         return null;
@@ -306,6 +328,8 @@ export class TournamentExecutor {
         this.clearPresentationPhaseTimer();
         this.state.actionDeadline = null;
         this.state.currentLegalActions = null;
+        if (this.state.presentationPhase !== "BETWEEN_HANDS")
+          this.diagnose("PHASE_CHANGED", this.transitionTrigger, { phase: "BETWEEN_HANDS" });
         this.state.presentationPhase = "BETWEEN_HANDS";
         const completedNewHand = engineState.handNumber > this.state.committedThroughHand;
         const needsShowdownDisplay =
@@ -541,14 +565,15 @@ export class TournamentExecutor {
     command: Extract<TournamentCommand, { type: "SYSTEM_TIMER_ACTION" }>,
   ): void {
     const engineState = this.state.engine.getState();
-    if (engineState.phase === "finished") return;
-    if (this.state.presentationPhase !== "ACTION_OPEN") return;
     const hand = engineState.hand;
     // 执行前复核固化的字段与 generation；任一不匹配 → stale no-op（§8.2）。
-    if (hand === null || this.state.currentHandId !== command.handId) return;
-    if (hand.currentActor !== command.seatIndex) return;
-    if (this.state.actionTimerGeneration !== command.generation) return;
-    if (this.state.actionDeadline !== command.deadline) return;
+    const stale = engineState.phase === "finished" ? "terminal"
+      : this.state.currentHandId !== command.handId || hand === null ? "hand"
+      : this.state.presentationPhase !== "ACTION_OPEN" ? "phase"
+      : hand.currentActor !== command.seatIndex ? "actor"
+      : this.state.actionTimerGeneration !== command.generation ? "generation"
+      : this.state.actionDeadline !== command.deadline ? "deadline" : null;
+    if (stale !== null) { this.diagnoseIgnoredTimer(command, stale); return; }
     const legal = this.state.engine.getLegalActions();
     const action: PlayerAction = legal.canCheck
       ? { type: "check", seatIndex: command.seatIndex, source: "system_timer" }
@@ -560,21 +585,28 @@ export class TournamentExecutor {
       if (isCriticalEngineError(error)) this.freeze(error);
       return;
     }
+    this.diagnose("AUTO_ACTION", "SYSTEM_TIMER_ACTION", {
+      playerId: this.playerBySeat(command.seatIndex)?.playerId ?? null,
+      action: action.type, deadline: command.deadline, firedAt: command.firedAt,
+      generation: command.generation, delayMs: Math.max(0, this.state.clock() - command.deadline),
+    });
     this.afterEngineTransition();
   }
 
   private processPresentationPhaseTimer(
     command: Extract<TournamentCommand, { type: "PRESENTATION_PHASE_TIMER" }>,
   ): void {
-    if (command.tournamentId !== this.state.tournamentId) return;
-    if (command.handId !== this.state.currentHandId) return;
-    if (command.phase !== this.state.presentationPhase) return;
-    if (command.generation !== this.state.phaseTimerGeneration) return;
+    const stale = command.tournamentId !== this.state.tournamentId ? "tournament"
+      : command.handId !== this.state.currentHandId ? "hand"
+      : command.phase !== this.state.presentationPhase ? "phase"
+      : command.generation !== this.state.phaseTimerGeneration ? "generation" : null;
+    if (stale !== null) { this.diagnoseIgnoredTimer(command, stale); return; }
     this.state.phaseTimerHandle = null;
 
     if (command.phase === "SHOWDOWN_DISPLAY") {
       this.state.presentationPhase = "BETWEEN_HANDS";
       this.state.showdownDisplayUntil = null;
+      this.diagnose("PHASE_CHANGED", command.type, { phase: "BETWEEN_HANDS", generation: command.generation, firedAt: command.firedAt });
       // 先公开 HAND_END，再推进终局或下一手；客户端不能自行越过展示阶段。
       this.deps.output.requestGameSnapshots?.(this.state.tournamentId);
       this.advance();
@@ -585,15 +617,16 @@ export class TournamentExecutor {
     if (hand === null || !this.state.engine.getState().handInProgress) return;
     this.state.presentationPhase = "ACTION_OPEN";
     this.setActionTimer();
+    this.diagnose("PHASE_CHANGED", command.type, { phase: "ACTION_OPEN", generation: command.generation, firedAt: command.firedAt, deadline: this.state.actionDeadline });
     // ACTION_OPENED 等价契约：同 sequence 的权威 Snapshot 原子公开 actor、LegalActions 与完整 deadline。
     this.deps.output.requestGameSnapshots?.(this.state.tournamentId);
   }
 
   private processGraceTimer(command: Extract<TournamentCommand, { type: "GRACE_TIMER" }>): void {
     const record = this.state.players.get(command.playerId);
-    if (record === undefined) return;
-    if (record.connected) return; // 已重连 → no-op
-    if (record.graceGeneration !== command.generation) return; // stale
+    if (record === undefined || record.connected || record.graceGeneration !== command.generation) {
+      this.diagnoseIgnoredTimer(command, record?.connected ? "reconnected" : "generation"); return;
+    }
     if (this.state.engine.getState().phase === "finished") return;
     record.graceHandle = null;
     this.processWithdraw({
@@ -657,6 +690,8 @@ export class TournamentExecutor {
         });
       }, DISCONNECT_GRACE_MS);
     }
+    this.diagnose("CONNECTION_CHANGED", command.connected ? "CONNECTED" : "DISCONNECTED",
+      { playerId: command.playerId, generation: record.graceGeneration });
   }
 
   private processElapsedTime(
@@ -748,6 +783,7 @@ export class TournamentExecutor {
     if (handId === null) return;
     this.state.phaseTimerGeneration += 1;
     const generation = this.state.phaseTimerGeneration;
+    this.diagnose("PHASE_CHANGED", this.transitionTrigger, { phase, generation });
     const tournamentId = this.state.tournamentId;
     this.state.phaseTimerHandle = this.state.scheduler.setTimeout(() => {
       this.submitInternal({
@@ -901,6 +937,9 @@ export class TournamentExecutor {
         });
       }
       this.state.lastWireSequence = wireSeq;
+      if (event.type === "HAND_STARTED") this.diagnose("HAND_STARTED", this.transitionTrigger);
+      if (event.type === "FLOP_DEALT" || event.type === "TURN_DEALT" || event.type === "RIVER_DEALT")
+        this.diagnose("PHASE_CHANGED", this.transitionTrigger, { phase: event.type.replace("_DEALT", "") });
       for (const viewerPlayerId of this.state.players.keys()) {
         const wireEvent = projectWireEvent(event, {
           seatToPlayer: this.state.seatToPlayer,
@@ -1020,6 +1059,28 @@ export class TournamentExecutor {
   }
 
   // ---- 内部工具 ----
+
+  private diagnose(event: GameDiagnostic["event"], trigger: string, fields: Partial<GameDiagnostic> = {}): void {
+    try {
+      this.deps.diagnostics?.({ event, trigger, roomId: this.state.roomId,
+        tournamentId: this.state.tournamentId, handId: this.state.currentHandId, playerId: null,
+        eventSequence: String(this.state.lastWireSequence), timestamp: this.state.clock(),
+        generation: this.state.actionTimerGeneration, ...fields });
+    } catch { /* Observability cannot abort an authoritative transition. */ }
+  }
+
+  private diagnoseIgnoredTimer(command: TournamentCommand, trigger: string): void {
+    if (command.type !== "SYSTEM_TIMER_ACTION" && command.type !== "PRESENTATION_PHASE_TIMER" && command.type !== "GRACE_TIMER") return;
+    this.diagnose("TIMER_IGNORED", trigger, {
+      handId: "handId" in command ? command.handId : this.state.currentHandId,
+      playerId: "playerId" in command ? command.playerId : null,
+      generation: command.generation, firedAt: command.firedAt,
+      currentGeneration: command.type === "SYSTEM_TIMER_ACTION" ? this.state.actionTimerGeneration
+        : command.type === "PRESENTATION_PHASE_TIMER" ? this.state.phaseTimerGeneration
+        : this.state.players.get(command.playerId)?.graceGeneration,
+      action: command.type, deadline: "deadline" in command ? command.deadline : undefined,
+    });
+  }
 
   private seatOf(playerId: string): number | null {
     const record = this.state.players.get(playerId);

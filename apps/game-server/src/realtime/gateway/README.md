@@ -1,5 +1,10 @@
 # Gateway
 
+TEX-61：`connection-outbox.ts` 对每连接串行发送并监控未交给 Socket 的事件数/年龄及总字节。触发背压后只保留一个恢复意图，在传输可继续时重新投影当前 Snapshot，按顺序写出 RESYNC_REQUIRED / GAME_SNAPSHOT，过滤快照 sequence 已覆盖的迟到扇出。所有控制回复也受硬字节限约束。成员撤销丢弃旧牌局帧，最终 Lobby 回执传输完成后关闭。阈值唯一权威为 [04 §9.5](../../../../../docs/04-game-server-architecture.md#95-事件积压与-fast-forward)；传输完成只表示 send callback 成功，不表示客户端读到或播放完成。
+
+`connection-outbox.test.ts` 验证阈值边界、控制积压及事件数/年龄压力均不重置恢复期限、在途恢复快照后的同序列更新、后续快照传输完成前保留恢复期限及正常排空后取消期限、回拨时指标异常隔离、字节上限和延迟回调清理；`lobby-gateway.test.ts` 验证玩家隔离、换手最新快照、序列屏障、1013 与重新认证，以及成员撤销后回执排空/超时两条关闭路径。最终回执等待上限以 04 §9.5 为准，到期释放 outbox 并按成员结束关闭，不延长身份权限。既有真实 WS 测试同时覆盖 Node send callback 的行为。
+
+
 TEX-52：Room CLOSED 同步发送最终房间投影、撤销所有 epoch/订阅/心跳，Socket 关闭等待该连接在途 Lobby 命令的回执发送完毕。Gateway 全局订阅在 app.close 时注销。请求同 Room 的终局保留 Tournament 时允许最终 Snapshot 和原 Action/TimeBank 幂等查账，新动作由执行器拒绝；旧赛不能控制新赛，跨房间仍拒绝。
 
 WebSocket 接入、认证握手和消息路由入口。

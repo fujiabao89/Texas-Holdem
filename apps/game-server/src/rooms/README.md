@@ -1,5 +1,8 @@
 # rooms — Room/Lobby 权威状态与串行执行
 
+TEX-61：`room-lifecycle-races.test.ts` 的 Socket 替身同步完成 send callback，适配生产有界 outbox；既有闭房回执、订阅撤销及失败隔离断言保持有效。本任务不改变 Room 规则。
+
+
 TEX-52：CLOSED 提交后同步失效邀请码/鉴权、发布最后 RoomSnapshot；停止队列入口并等待在途控制事务、关联 Tournament 清理后删除重型 Runtime。保留期仅保留 `{roomId, closedReason, closedAt}` 三字段 tombstone 10 分钟，timer 使用独立 closure，不能保留原成员/凭证。迟到请求沿用 `ROOM_NOT_FOUND`（不新增 wire 错误码）。`runtimeCounts()` 区分 registered / active / closedTombstones；`dispose()` 只卸载内存，不把关停误持久化成 CLOSED。来源 Tournament 的 CLOSE 命令在 Room 队列执行点验证 activeTournamentId，旧赛不能关闭新赛。
 
 进程关停会先拒绝尚未准入的 `createRoom`，但等待已进入持久化事务的创建完成运行时注册与凭证返回，再统一卸载运行时；不得在 DB 已提交后因 `disposed` 丢弃响应而制造无人持有 Token 的持久化 Room。

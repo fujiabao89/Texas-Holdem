@@ -17,6 +17,8 @@ TEX-51 恢复专项：`src/persistence/room-recovery.test.ts` 验证身份/配�
 
 ## 1. Purpose 与测试优先级
 
+TEX-61 PR #71 审查回归：控制帧积压或事件数/年龄仍达阈值时恢复成功不能重置原期限；恢复快照已写出后同 sequence 更新须继续交付，后续快照回调停滞时须保留原期限、正常排空后取消期限；撤销成员的小帧回调停滞须限时关闭，正常排空须取消期限；墙钟回拨与指标失败不得中断异步发送。复现、定级与跳过依据见 [Findings Ledger](./03-engineering/TEX-61-findings-ledger.md)。
+
 规则正确性是本产品的核心价值：P0 级缺陷（错误发牌、重复牌、Pot/赢家错误、私密底牌泄露、比赛死锁）直接禁止上线（《总规划》§9.2）。测试优先级据此排序（《区块6-10 v0.2》§9.1）：
 
 1. Poker Engine 规则测试、状态一致性（Invariant）与随机长跑——最危险的是极端牌局状态错误；
@@ -106,6 +108,7 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 | 离开与断线：主动离开、断线满 10 分钟 `EXIT_PENDING → WITHDRAWN`、无真人 `CLOSED`/`ABANDONED_NO_HUMAN` | Integration | 04 §6.6/§9.3；01 §13 |
 | WebSocket 异常：重复 `requestId/actionId` 返回原结果、幂等键换 Payload 被拒、缺失/重复 sequence、旧状态 Action、多设备接管与 Close 4001 | Multiplayer | 02 §7/§10/§12/§14 |
 | Snapshot 屏障：Snapshot `S` 后首个 Event 必为 `S+1`；建 Snapshot 时并发动作不丢失；sequence 十进制字符串跨安全整数仍精确 | Multiplayer | 02 §4.1/§6.4 |
+| 压测序列检查同样按接收顺序接受权威 Snapshot 屏障，允许覆盖旧事件；屏障后缺序/重复/乱序及快照回退仍失败，RESYNC_REQUIRED 不替代 Snapshot | Performance Unit / 真实链路 smoke | 02 §6.4；`tests/performance/driver-sequence.test.ts` |
 | 多客户端一致性：公开状态一致、私有信息按 PlayerView/Patch 隔离；逐事件 `apply(before, patch) == after`；Event 丢失/重复时客户端重取 Snapshot 而非继续错误应用 | Multiplayer | 02 §6.3/§9/§14 |
 | 心跳：15 秒 Ping、45 秒无活动断开、正常 Pong 不误断；后台恢复走完整 Snapshot | Integration / Multiplayer | 02 §4.3/§10 |
 | 重连：刷新、Wi-Fi/蜂窝切换、后台恢复；恢复原 Seat/Stack/Hole Cards/Board；不重播旧动画 | Multiplayer / E2E | 02 §10；04 §9 |
@@ -282,6 +285,8 @@ P0 容量目标固定为单实例 **100 Room / 1,000 WS**；首轮基准不以�
 容量测试必须使用真实投影与序列化路径，不能用空 handler 替代；100/1,000 是必须满足全部 SLO 的发布容量，130/1,300 是 30% 安全余量而非对外承诺容量。P1 AI 压测将 AI 延迟与游戏服务容量分别测量，避免第三方波动掩盖本地瓶颈。
 
 ### 10.2 监控验收【工程基线】
+
+TEX-61 新增慢连接关闭门槛：`texas_slow_connections_closed_total` 相对同实例连接建立数 >5%，10 分钟窗口内连接建立数至少 20 且持续 10 分钟，按 P1 调查/通知。重同步次数作为诊断信号，不对每次正常恢复告警；自动 Check/Fold 与被正确忽略的 Timer 不单独升级为故障。埋点/脱敏/有界资源测试与部署采集/真实通知送达是不同证据，见 [TEX-61 验收](./03-engineering/TEX-61-acceptance.md)。
 
 - 每个 P0/P1 指标均需验证“代码产生 → 采集 → Dashboard → 告警”完整链路，不能只验证埋点函数被调用。
 - 发布前通过故障注入触发一次 Game Error/Invariant Violation、重连率、Action Rejection Rate 告警；校验告警包含 `environment`/`version` 标签、可经结构化应用日志字段（`roomId`/`tournamentId`）关联具体房间/比赛，且不含私密牌或 Token。`roomId`/`tournamentId` 不进指标标签（per-room 高基数违反有限标签集合红线），以日志字段承载关联（查询指引见 `docs/05-operations/README.md`）。

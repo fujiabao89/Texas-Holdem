@@ -1,5 +1,8 @@
 # Project documents
 
+- [TEX-61 实现慢客户端背压、重同步与牌局诊断日志](https://linear.app/texas-holdem/issue/TEX-61)：用户直接将实现/提交/推送/PR 交付委派 Codex，分支 `fix/TEX-61-slow-client-backpressure-observability`；基于已合入 TEX-59/60。范围与验收见 [验收记录](../03-engineering/TEX-61-acceptance.md)。浏览器弱网时序完整门禁继续由 TEX-62 承担。
+
+
 项目范围、术语与计划。实现细节应引用而非复制架构文档。
 
 ## 依赖维护
