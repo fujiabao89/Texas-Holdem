@@ -15,3 +15,5 @@ Hard Forward 保留可见模式、120ms 过渡和 3 秒提示；已有公开结�
 验证：`pnpm exec vitest run --project unit apps/web/src/animations --maxWorkers 1`。`presentation-lifecycle.test.ts` 专测跨手、后台、快进、去重、静态分池、降级音效与清理；浏览器回归见 [animation-audio](../../../../tests/e2e/animation-audio/README.md)。权威体验契约见 [前端规格 §9.7](../../../../docs/05-frontend-spec.md#97-tex-38-体验优化契约2026-09-05)。
 
 TEX-35：React 适配器在结果经过实际绘制后，以本地 `markOutcomeVisible` 开始 1,000ms 阅读窗口；跨手与恢复等待该窗口，过期 handId/事件引用不会重新计时。该通知不发送到服务端，canonical、sequence 和 deadline 不等待展示。后台与卸载取消绘制回调和阅读任务。
+
+后台只保留最新手的公开 Reveal/Pot 记录，隐藏时不渲染、不启动阅读计时；恢复后 fresh 手末 Snapshot 的比赛、手和接收者必须匹配才恢复静态摘要，更新的手直接丢弃该缓存。
