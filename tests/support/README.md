@@ -40,3 +40,5 @@ it("示例", () => {
 - 各文件自测（`*.test.ts`）归属 unit 层（根 `pnpm test:unit`）。
 
 TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返回的 Latin-1 字节串执行严格 UTF-8 解码；Chromium/WebKit 原生文本不转换，异常编码明确失败。只修复被动测试观察，不修改应用消息。单测覆盖中文/Emoji/希腊字母、ASCII、Buffer 和非法字节。公开派奖证据只导出 handId、玩家 ID/测试昵称和金额，不导出牌面或原始 payload。
+
+终局驾驶按完整批次边界计数：普通摊牌等待 GAME_SNAPSHOT/RECONNECT_RESULT 的终局状态；Fold-to-win 等待下一手 HAND_STARTED，最终手等待 TOURNAMENT_FINISHED。SHOWDOWN_STARTED Patch 的 HAND_END 和第一条 POT_AWARDED 都不能提前完成目标，确保多 Pot 分配已收齐。hand-boundary 单测覆盖该竞争；真实目标分支仍显式校验权威分配，恢复 Snapshot 不可掩盖缺失事件。

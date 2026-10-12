@@ -22,6 +22,7 @@ import {
 } from "../../../support/network-proxy";
 import {
   authoritativeViolations,
+  completedHandIds,
   timelineViolations,
   isSafeEvidence,
   type DomSample,
@@ -451,17 +452,7 @@ export const test = base.extend<{ timeline: TimelineSession }>({
       async drive(handCount, policy = "passive") {
         // A terminal authority snapshot lets the driver continue even when the regression
         // drops settlement events. Branch assertions still require the actual events.
-        const completedFor = (player: PlayerProbe) =>
-          new Set(
-            [
-              ...player.events
-                .filter((event) => event.payload.event.type === "POT_AWARDED")
-                .map((event) => event.payload.handId),
-              ...player.frames
-                .filter((frame) => frame.phase === "SHOWDOWN_DISPLAY" || frame.phase === "HAND_END")
-                .map((frame) => frame.handId),
-            ].filter((handId) => handId !== null),
-          ).size;
+        const completedFor = (player: PlayerProbe) => completedHandIds(player.frames).size;
         const completed = () => completedFor(players[0]!);
         stopDriving = () => completed() >= handCount;
         try {

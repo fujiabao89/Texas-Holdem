@@ -1,6 +1,12 @@
 name: Timeline release gate
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - '.github/workflows/timeline.yml'
+      - 'tests/e2e/real/timeline/**'
+      - 'tests/e2e/playwright.timeline.config.ts'
   workflow_dispatch:
     inputs:
       sha:
@@ -13,6 +19,7 @@ permissions:
 
 jobs:
   timeline-rc:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'timeline-rc')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -32,11 +39,11 @@ jobs:
     steps:
       - name: Validate immutable candidate SHA
         env:
-          CANDIDATE_SHA: ${{ inputs.sha }}
+          CANDIDATE_SHA: ${{ inputs.sha || github.event.pull_request.head.sha }}
         run: '[[ "$CANDIDATE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.sha }}
+          ref: ${{ inputs.sha || github.event.pull_request.head.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22

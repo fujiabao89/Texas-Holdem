@@ -100,6 +100,42 @@ export interface DomSample {
   awardLines?: string[];
 }
 
+export function completedHandIds(
+  frames: readonly {
+    type: string;
+    handId: string | null;
+    sequence: string | null;
+    event?: string;
+    phase?: string | null;
+  }[],
+): Set<string> {
+  const completed = new Set<string>();
+  const awarded = new Map<string, bigint>();
+  for (const frame of frames) {
+    if (frame.handId === null || frame.sequence === null) continue;
+    const sequence = BigInt(frame.sequence);
+    if (
+      (frame.type === "GAME_SNAPSHOT" || frame.type === "RECONNECT_RESULT") &&
+      (frame.phase === "SHOWDOWN_DISPLAY" || frame.phase === "HAND_END")
+    )
+      completed.add(frame.handId);
+    if (frame.type !== "GAME_EVENT") continue;
+    if (frame.event === "POT_AWARDED") awarded.set(frame.handId, sequence);
+    if (frame.event === "HAND_STARTED" || frame.event === "TOURNAMENT_FINISHED") {
+      for (const [handId, lastAward] of awarded) {
+        if (
+          sequence > lastAward &&
+          (frame.event === "TOURNAMENT_FINISHED" || handId !== frame.handId)
+        ) {
+          completed.add(handId);
+          awarded.delete(handId);
+        }
+      }
+    }
+  }
+  return completed;
+}
+
 export function timelineViolations(samples: readonly DomSample[]): string[] {
   let outcome: { hand: string; start: number } | null = null;
   let showdownStart: number | null = null;
