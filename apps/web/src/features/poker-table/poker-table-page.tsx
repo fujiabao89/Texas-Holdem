@@ -86,11 +86,13 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
   }), [websocket]);
 
   const canonicalGame = state.game;
+  const presentationMatchesHand = presentation.game === null || (presentation.game.tournamentId === canonicalGame?.tournamentId
+    && presentation.game.handId === canonicalGame.handId);
   const hasPendingCommand = blocksTableSubmission(pending, canonicalGame);
   const visibleFeedback = pending?.status === "SENDING" && !hasPendingCommand && feedback === message("table.actionPending") ? message("table.actionStateUpdated") : feedback;
   const timeAvailable = useSubmissionWindow(state.clock);
   const deadlineAvailable = useSubmissionWindow(state.clock, false);
-  const opportunityAvailable = canSubmitTableAction(canonicalGame, connectionState, state.actionsDisabled, hasPendingCommand);
+  const opportunityAvailable = presentationMatchesHand && canSubmitTableAction(canonicalGame, connectionState, state.actionsDisabled, hasPendingCommand);
   const submitEnabled = opportunityAvailable && timeAvailable;
   const timeBankEnabled = opportunityAvailable && deadlineAvailable && state.clock?.actionDeadline != null && state.clock.timeBankRemainingMs > 0;
   const legal = submitEnabled || timeBankEnabled ? canonicalGame?.viewer.legalActions ?? null : null;
@@ -175,8 +177,8 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         <div className="table-center-info absolute left-1/2 top-[31%] z-20 flex -translate-x-1/2 items-center gap-2 text-center sm:top-[34%]">
           <span className="table-phase rounded-full bg-emerald-100/35 px-2.5 py-1 text-[10px] font-semibold text-emerald-50 backdrop-blur sm:px-3 sm:text-xs">{phaseName(game.handPhase)}</span>
           <span data-pot-total data-pot-index={game.pots.length === 1 ? 0 : undefined} data-awarded={game.pots.length === 1 && presentation.overlay?.event.type === "POT_AWARDED" && presentation.overlay.event.payload.potIndex === 0} className="table-pot-total rounded-full bg-amber-300/85 px-2.5 py-1 text-[10px] font-bold text-amber-950 shadow-sm sm:px-3 sm:text-xs"><span className="table-pot-label">{message("table.pot")}</span><strong>{game.pots.reduce((total, pot) => total + pot.amount, 0).toLocaleString("zh-CN")}</strong></span>
-          <span className="table-actor-caption text-[10px] font-medium text-emerald-100/75" title={`${message("table.currentActor")}：${actorName(canonicalGame) ?? message("table.waiting")}`}>
-            <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{actorName(canonicalGame) ?? message("table.waiting")}</span>
+          <span className="table-actor-caption text-[10px] font-medium text-emerald-100/75" title={`${message("table.currentActor")}：${presentationMatchesHand ? actorName(canonicalGame) ?? message("table.waiting") : message("table.waiting")}`}>
+            <span>{message("table.currentActor")}：</span><span className="font-semibold text-white">{presentationMatchesHand ? actorName(canonicalGame) ?? message("table.waiting") : message("table.waiting")}</span>
           </span>
         </div>
         <div className="table-board-zone absolute left-1/2 top-1/2 z-20 w-[94%] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-emerald-100/10 bg-emerald-100/20 p-2.5 shadow-inner sm:w-auto sm:p-3" aria-label={message("table.board")}>
@@ -188,7 +190,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         </div>}
         <div data-muck className="pointer-events-none absolute left-0 -top-6 rounded-lg border border-dashed border-emerald-100/20 px-2 py-1 text-[8px] text-emerald-100/60 sm:text-[10px]" aria-label={message("table.feedback.muck")}>{message("table.feedback.muck")}</div>
         <div className="absolute inset-0 z-30" aria-label={message("room.seats")}>
-          {tableSeats(game).map((player, seat) => <SeatCard game={game} currentActorPlayerId={canonicalGame.currentActorPlayerId} holeDeal={presentation.holeDeal} revealedPlayerIds={presentation.revealedPlayerIds} overlay={presentation.overlay} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
+          {tableSeats(game).map((player, seat) => <SeatCard game={game} currentActorPlayerId={presentationMatchesHand ? canonicalGame.currentActorPlayerId : null} holeDeal={presentation.holeDeal} revealedPlayerIds={presentation.revealedPlayerIds} overlay={presentation.overlay} room={state.room} player={player} seat={seat} slot={seatSlots[seat] ?? null} key={seat} />)}
         </div>
         <div className="table-bets pointer-events-none absolute inset-0 z-20" aria-label={message("table.streetBet")}>
           {game.players.filter((player) => player.streetBet > 0).map((player) => {
@@ -209,7 +211,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         )}
       </div>
     </section>
-    <section className="table-clock-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-center text-xs shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus hasActor={canonicalGame.currentActorPlayerId !== null} clock={state.clock} /></section>
+    <section className="table-clock-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-center text-xs shadow-sm" aria-labelledby="clock-heading"><h2 id="clock-heading" className="sr-only">{message("table.timeBank")}</h2><ClockStatus hasActor={presentationMatchesHand && canonicalGame.currentActorPlayerId !== null} clock={presentationMatchesHand ? state.clock : null} /></section>
     <div className="table-notices mx-auto flex w-full max-w-3xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-amber-900">
       <span className="table-landscape-hint">{message("table.landscapeHint")}</span>
       {state.actionsDisabled && <span className="rounded bg-amber-50 px-2 py-1" role="status">{message("table.syncing")}</span>}
