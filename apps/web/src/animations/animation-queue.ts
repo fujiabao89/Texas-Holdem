@@ -118,13 +118,13 @@ export class AnimationQueue {
       this.commitAllFinalFrames();
       this.pump();
     }
-    this.replace({ ...this.state, reducedMotion, notice: null });
+    this.replace({ ...this.state, reducedMotion, notice: this.state.mode === "HARD_FORWARD" ? this.state.notice : null });
   }
 
   setForeground(foreground: boolean): void {
     if (this.foreground === foreground) return;
     this.foreground = foreground;
-    if (!foreground) this.cancel();
+    if (!foreground) { this.cancel(); this.outcomeVisibleSince = null; }
   }
 
   /** Snapshot and reconnect are barriers: discard old work and never replay it. */
