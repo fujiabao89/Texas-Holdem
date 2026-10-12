@@ -81,6 +81,17 @@ describe("presentation lifecycle", () => {
     expect(clock.pendingTimers()).toBe(0);
   });
 
+  it("does not restart an old recap window on an immediate background return", () => {
+    const { queue, clock, push } = setup();
+    queue.setReducedMotion(true);
+    push(award);
+    queue.setForeground(false);
+    queue.setForeground(true);
+    queue.alignToSnapshot(gameSnapshot({ handId: "hand-2", sequence: "100" }));
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2" }, outcomeEvents: [], notice: null });
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
   it("hard-forwards an already queued hand boundary after displaying the old result", () => {
     const { queue, clock, push } = setup();
     push(award);
