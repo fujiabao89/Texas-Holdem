@@ -54,6 +54,8 @@ export interface AnimationClock {
 }
 
 export interface AnimationQueueOptions {
+  /** The React adapter starts reading time only after the result has painted. */
+  readonly requireOutcomeVisibility?: boolean;
   readonly clock?: AnimationClock;
   readonly onHardForward?: () => void;
   readonly onEventStarted?: (event: GameEvent, options?: { readonly immediate: boolean }) => void;
@@ -95,6 +97,8 @@ export class AnimationQueue {
   private plannedHandId: string | null = null;
   private forwardOutcomeEvents: readonly OutcomeEvent[] = [];
   private outcomeVisibleSince: number | null = null;
+  private confirmedOutcomeEvents: readonly OutcomeEvent[] | null = null;
+  private pendingReadingTransition: { callback: () => void; minimumMs: number } | null = null;
   private state: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: [], outcomeEvents: [], notice: null, reducedMotion: false };
   private holeDealHandId: string | null = null;
   private holeDealActive = false;
@@ -108,6 +112,17 @@ export class AnimationQueue {
 
   getSnapshot = (): PresentationState => this.state;
   subscribe = (listener: Listener): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
+
+  markOutcomeVisible(handId: string | null, events: readonly OutcomeEvent[]): void {
+    if (!this.foreground || handId !== this.state.game?.handId || events !== this.state.outcomeEvents
+      || events === this.confirmedOutcomeEvents || !events.some((event) => event.type === "POT_AWARDED")) return;
+    this.confirmedOutcomeEvents = events;
+    this.outcomeVisibleSince = this.clock.now();
+    const pending = this.pendingReadingTransition;
+    this.pendingReadingTransition = null;
+    if (pending !== null) this.scheduleReadingTransition(pending.callback, pending.minimumMs);
+    else if (this.active === null && this.state.mode !== "HARD_FORWARD") { this.clearTimer(); this.pump(); }
+  }
 
   setReducedMotion(reducedMotion: boolean): void {
     if (this.reducedMotion === reducedMotion) return;
@@ -124,7 +139,7 @@ export class AnimationQueue {
   setForeground(foreground: boolean): void {
     if (this.foreground === foreground) return;
     this.foreground = foreground;
-    if (!foreground) { this.cancel(); this.outcomeVisibleSince = null; }
+    if (!foreground) { this.cancel(); this.outcomeVisibleSince = null; this.confirmedOutcomeEvents = null; }
   }
 
   /** Snapshot and reconnect are barriers: discard old work and never replay it. */
@@ -155,13 +170,13 @@ export class AnimationQueue {
     if (holdMs > 0) {
       this.forwardOutcomeEvents = game?.handId === recap.game?.handId ? recap.outcomeEvents : [];
       this.replace({ ...recap, overlay: null, holeDeal: null, mode: "HARD_FORWARD", notice: "SYNCED", reducedMotion: this.reducedMotion });
-      this.transitionTimer = this.clock.setTimeout(() => {
+      this.scheduleReadingTransition(() => {
         this.transitionTimer = null;
         this.replace({ ...this.state, game: this.tailTarget, overlay: null, mode: "NORMAL", holeDeal: null,
           revealedPlayerIds: revealedPlayerIdsFor(this.tailTarget), outcomeEvents: this.forwardOutcomeEvents, notice: "SYNCED" });
         this.expireNotice();
         this.pump();
-      }, holdMs);
+      }, Number.isFinite(holdMs) ? holdMs : animationTimings.handEnd);
       return;
     }
     this.outcomeVisibleSince = null;
@@ -210,7 +225,7 @@ export class AnimationQueue {
     const holdMs = next !== undefined && next.afterCanonical.handId !== this.state.game?.handId
       ? this.remainingOutcomeHold() : 0;
     if (holdMs > 0) {
-      this.timer = this.clock.setTimeout(() => { this.timer = null; this.pump(); }, holdMs);
+      if (Number.isFinite(holdMs)) this.timer = this.clock.setTimeout(() => { this.timer = null; this.pump(); }, holdMs);
       return;
     }
     const item = this.queue.shift();
@@ -313,7 +328,7 @@ export class AnimationQueue {
     const request = () => { try { this.options.onHardForward?.(); } catch { /* latest canonical is still displayed */ } };
     // Hold an actual public result before a Snapshot barrier clears the recap.
     if (!requestAfterHold) request();
-    this.transitionTimer = this.clock.setTimeout(() => {
+    this.scheduleReadingTransition(() => {
       this.transitionTimer = null;
       this.replace({ ...this.state, game: this.tailTarget, outcomeEvents: this.forwardOutcomeEvents, revealedPlayerIds: revealedPlayerIdsFor(this.tailTarget), mode: "NORMAL", notice: "SYNCED" });
       if (requestAfterHold) request();
@@ -334,8 +349,18 @@ export class AnimationQueue {
   }
 
   private remainingOutcomeHold(): number {
+    if (this.options.requireOutcomeVisibility && this.state.outcomeEvents.some((event) => event.type === "POT_AWARDED")
+      && this.confirmedOutcomeEvents !== this.state.outcomeEvents) return Infinity;
     return this.outcomeVisibleSince === null || !this.state.outcomeEvents.some((event) => event.type === "POT_AWARDED")
       ? 0 : Math.max(0, animationTimings.handEnd - (this.clock.now() - this.outcomeVisibleSince));
+  }
+
+  private scheduleReadingTransition(callback: () => void, minimumMs: number): void {
+    if (!Number.isFinite(this.remainingOutcomeHold())) {
+      this.pendingReadingTransition = { callback, minimumMs };
+      return;
+    }
+    this.transitionTimer = this.clock.setTimeout(callback, Math.max(minimumMs, this.remainingOutcomeHold()));
   }
 
   private currentHoleDeal(viewerCardsForReveal: readonly Card[] = []): HoleDealPresentation | null {
@@ -360,6 +385,7 @@ export class AnimationQueue {
   }
 
   private clearTransitions(): void {
+    this.pendingReadingTransition = null;
     if (this.transitionTimer !== null) this.clock.clearTimeout(this.transitionTimer);
     if (this.noticeTimer !== null) this.clock.clearTimeout(this.noticeTimer);
     this.transitionTimer = null;
