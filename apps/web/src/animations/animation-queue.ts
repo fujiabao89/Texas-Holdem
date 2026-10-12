@@ -127,6 +127,7 @@ export class AnimationQueue {
 
   setReducedMotion(reducedMotion: boolean): void {
     if (this.reducedMotion === reducedMotion) return;
+    const interruptedShowdown = reducedMotion && this.foreground && this.state.overlay?.kind === "SHOWDOWN";
     this.reducedMotion = reducedMotion;
     if (reducedMotion && this.state.mode !== "HARD_FORWARD") {
       this.notifyPresentationReset();
@@ -134,7 +135,8 @@ export class AnimationQueue {
       this.commitAllFinalFrames();
       this.pump();
     }
-    this.replace({ ...this.state, reducedMotion, notice: this.state.mode === "HARD_FORWARD" ? this.state.notice : null });
+    this.replace({ ...this.state, reducedMotion, notice: interruptedShowdown ? "SYNCED" : this.state.mode === "HARD_FORWARD" ? this.state.notice : null });
+    if (interruptedShowdown && this.state.mode !== "HARD_FORWARD") this.expireNotice();
   }
 
   setForeground(foreground: boolean): void {

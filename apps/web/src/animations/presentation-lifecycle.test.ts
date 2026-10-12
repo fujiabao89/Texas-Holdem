@@ -24,6 +24,17 @@ function setup(options: ConstructorParameters<typeof AnimationQueue>[0] = {}) {
 }
 
 describe("presentation lifecycle", () => {
+  it("explains an interrupted showdown when frame degradation commits its static result", () => {
+    const { queue, clock, push } = setup();
+    push({ type: "SHOWDOWN_STARTED", payload: { contenderPlayerIds: ["player-1", "player-2"] } });
+    push(award);
+    queue.setReducedMotion(true);
+    expect(queue.getSnapshot()).toMatchObject({ overlay: null, outcomeEvents: [award], reducedMotion: true, notice: "SYNCED" });
+    clock.advance(3000);
+    expect(queue.getSnapshot().notice).toBeNull();
+    queue.cancel();
+    expect(clock.pendingTimers()).toBe(0);
+  });
   it("starts the minimum reading window after a delayed visible result, not its transport commit", () => {
     const { queue, clock, push } = setup({ requireOutcomeVisibility: true });
     queue.setReducedMotion(true);
