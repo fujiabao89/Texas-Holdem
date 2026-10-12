@@ -1,5 +1,7 @@
 # Game server
 
+TEX-61 回归修复：健康连接的阶段 Snapshot 不再清空待发送的摊牌/结算事件，事件与阶段更新保持 FIFO；背压恢复条件与阈值不变。针对性验证见 [Gateway](./src/realtime/gateway/README.md)。
+
 TEX-61：每连接有界发送队列、背压重同步/1013 关闭及权威牌局诊断已实现。阈值以 [04 §9.5](../../docs/04-game-server-architecture.md#95-事件积压与-fast-forward) 为准；`GET /health` 返回 `{status, build: {version, deploymentSha}}` 并禁用缓存。构建时注入 `APP_VERSION` / `DEPLOYMENT_SHA`；日志字段、保留、告警和排查见 [运行手册](../../docs/05-operations/realtime-diagnostics.md)，验证证据见 [TEX-61](../../docs/03-engineering/TEX-61-acceptance.md)。
 
 

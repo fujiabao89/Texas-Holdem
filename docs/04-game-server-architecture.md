@@ -388,6 +388,8 @@ TEX-61 已实现于 `realtime/gateway/connection-outbox.ts`：每连接一次只
 
 触发后丢弃该连接尚未发送的旧 Game Event，发送 `RESYNC_REQUIRED`，并按 [02](./02-protocol-spec.md) §6.4 Snapshot 屏障生成最新 `GAME_SNAPSHOT`；其他连接和牌桌执行不受影响。服务端不推断客户端动画是否播放完，客户端自身动画积压时也可主动 `REQUEST_SNAPSHOT`。
 
+正常连接未触发背压时，阶段 Snapshot 与先前已入队的事件保持 FIFO 顺序；不得因为 Snapshot 覆盖同一 sequence 就删除尚未写出的 Reveal、Pot 分配或换手事件。同 sequence 的阶段/行动开放更新也按顺序发送。只有恢复路径可以替换未发送的旧 Game 帧，普通阶段切换不构成背压恢复。
+
 若总待发送量达到 `1MiB`，或触发背压后 30 秒内无法完成恢复 Snapshot 的传输并回落到 `256KiB` 以下，则以 WS Close Code `1013` 关闭该慢连接，让客户端退避后重连；不得继续无限缓存。事件数/年龄触发后，即使 `bufferedAmount=0`，停滞的 send callback 也不能无限保留恢复意图。持续超软字节限的 Lobby 连接同样受 30 秒限制。
 
 恢复意图只保留一份，暂停积压 Game Event；传输可继续时重新读取当前权威视图，先写出 RESYNC_REQUIRED、再写出接收者 GAME_SNAPSHOT，丢弃屏障 sequence 已覆盖的事件。被关闭连接立即取消订阅/心跳并撤销 epoch，然后经既有队列记录 DISCONNECTED；成员身份继续有效。替换、成员结束、Socket 关闭和服务关停均释放 outbox；成员结束丢弃旧牌局帧，等待在途 Lobby 命令与最终控制回执传输完成后关闭。

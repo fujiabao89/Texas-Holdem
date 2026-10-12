@@ -236,7 +236,10 @@ export function createConnectionOutbox(options: OutboxOptions) {
         tournamentId: message.payload.tournamentId,
         sequence: BigInt(message.payload.sequence),
       };
-      removeGameFrames(message.payload.tournamentId);
+      // Ordinary phase snapshots follow their event batch in FIFO order. Only
+      // an active backpressure recovery may replace unsent game frames; doing
+      // this on every snapshot erases showdown/award events on healthy sockets.
+      if (recovering) removeGameFrames(message.payload.tournamentId);
     }
     if (message.type === "RECONNECT_RESULT" && message.payload.gameSnapshot !== null) {
       const snapshot = message.payload.gameSnapshot;
