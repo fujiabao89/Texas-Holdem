@@ -52,10 +52,11 @@ export interface AcceptedGameEvent {
   readonly afterCanonical: GameSnapshot;
 }
 
-/** A fresh Snapshot invalidates every queued presentation task. */
+/** Authority always updates immediately; continuous phase updates keep semantic playback. */
 export interface ProjectionBarrier {
   readonly game: GameSnapshot | null;
   readonly kind: "GAME_SNAPSHOT" | "RECONNECT_RESULT";
+  readonly continuous?: boolean;
 }
 
 type Listener = () => void;
@@ -153,6 +154,10 @@ export class ProjectionStore {
 
   acceptGameSnapshot(snapshot: GameSnapshot, serverTime = 0): void {
     GameSnapshotSchema.parse(snapshot);
+    const continuous = !this.state.actionsDisabled
+      && this.state.game?.tournamentId === snapshot.tournamentId
+      && this.state.game.handId === snapshot.handId
+      && this.state.lastSequence === snapshot.sequence;
     this.replace({
       ...this.state,
       game: snapshot,
@@ -162,7 +167,7 @@ export class ProjectionStore {
       clock: this.clockProjection(clockFromSnapshot(snapshot), serverTime),
       currentHandEvents: [],
     });
-    this.emitBarrier({ game: snapshot, kind: "GAME_SNAPSHOT" });
+    this.emitBarrier({ game: snapshot, kind: "GAME_SNAPSHOT", continuous });
   }
 
   acceptGameEvent(message: GameEventMessage): "APPLIED" | "IGNORED" | "RESYNC" {

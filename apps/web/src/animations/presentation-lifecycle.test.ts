@@ -24,7 +24,7 @@ function setup(options: ConstructorParameters<typeof AnimationQueue>[0] = {}) {
 }
 
 describe("presentation lifecycle", () => {
-  it("keeps fresh sounds and public split-pot results in reduced motion without timed work", () => {
+  it("keeps reduced-motion split-pot results for a second before switching hands", () => {
     const cues = vi.fn();
     const { queue, clock, push } = setup({ onEventStarted: cues });
     queue.setReducedMotion(true);
@@ -33,7 +33,65 @@ describe("presentation lifecycle", () => {
     expect(queue.getSnapshot()).toMatchObject({ reducedMotion: true, outcomeEvents: [award], overlay: null });
     expect(clock.pendingTimers()).toBe(0);
     push(started, "hand-2");
+    clock.advance(999);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-1" }, outcomeEvents: [award] });
+    clock.advance(1);
     expect(queue.getSnapshot().outcomeEvents).toEqual([]);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-2");
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("preserves queued public awards across an ordinary same-sequence phase snapshot", () => {
+    const { queue, clock, push } = setup();
+    const { after } = push(award);
+    queue.alignToSnapshot({ ...after, handPhase: "SHOWDOWN_DISPLAY", currentActorPlayerId: null, actionDeadline: null }, true);
+    expect(queue.getSnapshot().overlay?.kind).toBe("POT_AWARD");
+    clock.advance(animationTimings.winner + animationTimings.potAward);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handPhase: "SHOWDOWN_DISPLAY" }, outcomeEvents: [award] });
+    queue.cancel();
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("keeps an accepted result when degradation flushes a queue already spanning another hand", () => {
+    const { queue, clock, push } = setup();
+    push(award);
+    push(started, "hand-2");
+    push(check, "hand-2");
+    queue.setReducedMotion(true);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-1" }, outcomeEvents: [award], overlay: null });
+    clock.advance(999);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-1");
+    clock.advance(1);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2", sequence: "4" }, outcomeEvents: [] });
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("holds a static recap across a recovery snapshot without replaying its event cue", () => {
+    const cues = vi.fn();
+    const { queue, clock, push } = setup({ onEventStarted: cues });
+    push(award);
+    queue.alignToSnapshot(gameSnapshot({ handId: "hand-2", sequence: "100" }));
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-1" }, outcomeEvents: [award], overlay: null, notice: "SYNCED" });
+    clock.advance(999);
+    expect(queue.getSnapshot().outcomeEvents).toEqual([award]);
+    clock.advance(1);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2" }, outcomeEvents: [] });
+    expect(cues).toHaveBeenCalledTimes(1);
+    queue.cancel();
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("hard-forwards an already queued hand boundary after displaying the old result", () => {
+    const { queue, clock, push } = setup();
+    push(award);
+    push(started, "hand-2");
+    for (let i = 0; i < 42; i++) push(check, "hand-2");
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-1" }, outcomeEvents: [award], mode: "HARD_FORWARD" });
+    clock.advance(999);
+    expect(queue.getSnapshot().outcomeEvents).toEqual([award]);
+    clock.advance(1);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2" }, outcomeEvents: [] });
+    queue.cancel();
   });
 
   it("does not replay duplicate events, including when their cue has completed", () => {

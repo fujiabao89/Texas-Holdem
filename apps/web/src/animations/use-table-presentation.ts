@@ -49,7 +49,7 @@ export function useTablePresentation(
     };
     queue.setForeground(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", onVisibility);
-    const unsubscribeBarrier = projection.subscribeBarriers((barrier) => queue.alignToSnapshot(barrier.game));
+    const unsubscribeBarrier = projection.subscribeBarriers((barrier) => queue.alignToSnapshot(barrier.game, barrier.continuous));
     const unsubscribeEvents = projection.subscribeAcceptedGameEvents((event) => queue.enqueue(event.message, event.afterCanonical));
     return () => { document.removeEventListener("visibilitychange", onVisibility); unsubscribeEvents(); unsubscribeBarrier(); queue.cancel(); };
   }, [projection, queue, websocket, frameHealth]);

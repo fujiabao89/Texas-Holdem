@@ -20,6 +20,19 @@ function event(sequence: string, tournamentId = "tournament-1") {
 }
 
 describe("ProjectionStore", () => {
+  it("keeps same-sequence phase playback continuous, but not after resync or reconnect", () => {
+    const store = new ProjectionStore();
+    const flags: Array<boolean | undefined> = [];
+    store.subscribeBarriers((barrier) => flags.push(barrier.continuous));
+    store.acceptGameSnapshot(gameSnapshot());
+    const opened = gameSnapshot({ actionDeadline: 30_000 });
+    store.acceptGameSnapshot(opened);
+    expect(store.getSnapshot().game?.actionDeadline).toBe(30_000);
+    store.requestResync("GAP");
+    store.acceptGameSnapshot(opened);
+    store.acceptReconnectResult(roomSnapshot(), opened);
+    expect(flags).toEqual([false, true, false, undefined]);
+  });
   it.each(["INITIAL", "RECONNECT", "RESYNC", "FAST_FORWARD"] as const)("restores blind seats from a %s snapshot without any HAND_STARTED history", (reason) => {
     const store = new ProjectionStore();
     store.acceptGameSnapshot(gameSnapshot());

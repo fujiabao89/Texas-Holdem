@@ -94,6 +94,7 @@ export class AnimationQueue {
   private noticeTimer: unknown | null = null;
   private plannedHandId: string | null = null;
   private forwardOutcomeEvents: readonly OutcomeEvent[] = [];
+  private outcomeVisibleSince: number | null = null;
   private state: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: [], outcomeEvents: [], notice: null, reducedMotion: false };
   private holeDealHandId: string | null = null;
   private holeDealActive = false;
@@ -115,6 +116,7 @@ export class AnimationQueue {
       this.notifyPresentationReset();
       this.clearTransitions();
       this.commitAllFinalFrames();
+      this.pump();
     }
     this.replace({ ...this.state, reducedMotion, notice: null });
   }
@@ -126,16 +128,43 @@ export class AnimationQueue {
   }
 
   /** Snapshot and reconnect are barriers: discard old work and never replay it. */
-  alignToSnapshot(game: GameSnapshot | null): void {
+  alignToSnapshot(game: GameSnapshot | null, continuous = false): void {
+    if (continuous && game !== null && this.tailTarget?.tournamentId === game.tournamentId
+      && this.tailTarget.handId === game.handId && this.tailTarget.sequence === game.sequence) {
+      this.tailTarget = game;
+      if (this.active === null && this.queue.length === 0 && this.state.mode !== "HARD_FORWARD") {
+        this.replace({ ...this.state, game });
+      }
+      return;
+    }
     const synced = this.state.notice === "SYNCED";
     this.notifyPresentationReset();
     this.clearTimer();
     this.clearTransitions();
+    // A recovery drops decoration, but not an accepted public result before
+    // the reader has had its minimum window. Never infer awards from a snapshot.
+    this.commitAllFinalFrames(this.foreground);
+    const recap = this.state;
+    const holdMs = this.foreground && game?.tournamentId === recap.game?.tournamentId
+      ? this.remainingOutcomeHold() : 0;
     this.active = null;
     this.queue.splice(0);
     this.tailTarget = game;
     this.resetHoleDeal();
     this.resetDealPlan();
+    if (holdMs > 0) {
+      this.forwardOutcomeEvents = game?.handId === recap.game?.handId ? recap.outcomeEvents : [];
+      this.replace({ ...recap, overlay: null, holeDeal: null, mode: "HARD_FORWARD", notice: "SYNCED", reducedMotion: this.reducedMotion });
+      this.transitionTimer = this.clock.setTimeout(() => {
+        this.transitionTimer = null;
+        this.replace({ ...this.state, game: this.tailTarget, overlay: null, mode: "NORMAL", holeDeal: null,
+          revealedPlayerIds: revealedPlayerIdsFor(this.tailTarget), outcomeEvents: this.forwardOutcomeEvents, notice: "SYNCED" });
+        this.expireNotice();
+        this.pump();
+      }, holdMs);
+      return;
+    }
+    this.outcomeVisibleSince = null;
     this.replace({ game, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(game), outcomeEvents: [], notice: synced ? "SYNCED" : null, reducedMotion: this.reducedMotion });
     if (synced) this.expireNotice();
   }
@@ -159,11 +188,10 @@ export class AnimationQueue {
       this.forwardOutcomeEvents = nextOutcomeEvents(this.forwardOutcomeEvents, message.payload.event, item.beforePresentation?.handId !== afterCanonical.handId);
       return;
     }
-    if (this.reducedMotion || !this.foreground) {
+    if (!this.foreground) {
       this.commitFinalFrame(item);
       this.resetHoleDeal();
       this.replace({ ...this.state, game: afterCanonical, overlay: null, holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(afterCanonical) });
-      if (this.reducedMotion && this.foreground) this.notifyEventStarted(message.payload.event, true);
       return;
     }
     this.queue.push(item);
@@ -174,12 +202,27 @@ export class AnimationQueue {
   }
 
   /** Cancellation is also a final-frame path, never a stale partial frame. */
-  cancel(): void { this.notifyPresentationReset(); this.clearTransitions(); this.commitAllFinalFrames(); this.resetDealPlan(); this.replace({ ...this.state, notice: null }); }
+  cancel(): void { this.notifyPresentationReset(); this.clearTransitions(); this.commitAllFinalFrames(false); this.resetDealPlan(); this.replace({ ...this.state, notice: null }); }
 
   private pump(): void {
-    if (this.active !== null || this.state.mode === "HARD_FORWARD") return;
+    if (this.active !== null || this.timer !== null || this.state.mode === "HARD_FORWARD") return;
+    const next = this.queue[0];
+    const holdMs = next !== undefined && next.afterCanonical.handId !== this.state.game?.handId
+      ? this.remainingOutcomeHold() : 0;
+    if (holdMs > 0) {
+      this.timer = this.clock.setTimeout(() => { this.timer = null; this.pump(); }, holdMs);
+      return;
+    }
     const item = this.queue.shift();
-    if (item === undefined) { this.replace({ ...this.state, mode: "NORMAL" }); return; }
+    if (item === undefined) { this.replace({ ...this.state, game: this.tailTarget ?? this.state.game, mode: "NORMAL" }); return; }
+    if (this.reducedMotion) {
+      this.commitFinalFrame(item);
+      this.resetHoleDeal();
+      this.replace({ ...this.state, overlay: null, holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(item.afterCanonical) });
+      this.notifyEventStarted(item.message.payload.event, true);
+      this.pump();
+      return;
+    }
     this.active = item;
     this.activeDeadline = this.clock.now() + item.durationMs;
     if (item.message.payload.event.type === "HAND_STARTED" || this.holeDealHandId !== item.message.payload.handId) this.resetHoleDeal(item.message.payload.handId);
@@ -212,6 +255,8 @@ export class AnimationQueue {
   }
 
   private commitFinalFrame(item: QueueItem): void {
+    if (this.state.game?.handId !== item.afterCanonical.handId) this.outcomeVisibleSince = null;
+    if (item.message.payload.event.type === "POT_AWARDED") this.outcomeVisibleSince = this.foreground ? this.clock.now() : null;
     if (item.message.payload.event.type === "DEAL_HOLE_CARD") {
       const playerId = item.message.payload.event.payload.playerId;
       this.dealtCardCounts.set(playerId, Math.min(2, (this.dealtCardCounts.get(playerId) ?? 0) + 1));
@@ -229,18 +274,24 @@ export class AnimationQueue {
     });
   }
 
-  private commitAllFinalFrames(): void {
+  private commitAllFinalFrames(preserveOutcome = true): void {
     this.clearTimer();
     // Flush once, without rendering every skipped frame or replaying its cue.
-    let game = this.state.mode === "HARD_FORWARD" ? this.tailTarget : this.state.game;
-    let outcomeEvents = this.state.mode === "HARD_FORWARD" ? this.forwardOutcomeEvents : this.state.outcomeEvents;
-    for (const item of [...(this.active === null ? [] : [this.active]), ...this.queue]) {
+    let game = !preserveOutcome && this.state.mode === "HARD_FORWARD" ? this.tailTarget : this.state.game;
+    let outcomeEvents = !preserveOutcome && this.state.mode === "HARD_FORWARD" ? this.forwardOutcomeEvents : this.state.outcomeEvents;
+    const items = [...(this.active === null ? [] : [this.active]), ...this.queue];
+    let consumed = 0;
+    for (const item of items) {
+      if (preserveOutcome && game?.handId !== item.afterCanonical.handId
+        && outcomeEvents.some((event) => event.type === "POT_AWARDED")) break;
+      if (game?.handId !== item.afterCanonical.handId) this.outcomeVisibleSince = null;
       outcomeEvents = nextOutcomeEvents(outcomeEvents, item.message.payload.event, game?.handId !== item.afterCanonical.handId);
+      if (item.message.payload.event.type === "POT_AWARDED") this.outcomeVisibleSince = this.foreground ? this.clock.now() : null;
       game = item.afterCanonical;
+      consumed += 1;
     }
     this.active = null;
-    this.queue.splice(0);
-    this.tailTarget = game;
+    this.queue.splice(0, this.queue.length, ...items.slice(consumed));
     this.resetHoleDeal();
     this.replace({ ...this.state, game, outcomeEvents, revealedPlayerIds: revealedPlayerIdsFor(game), overlay: null, mode: "NORMAL", holeDeal: null });
   }
@@ -250,6 +301,12 @@ export class AnimationQueue {
     this.clearTransitions();
     this.commitAllFinalFrames();
     this.forwardOutcomeEvents = this.state.outcomeEvents;
+    let forwardHandId = this.state.game?.handId;
+    for (const item of this.queue) {
+      this.forwardOutcomeEvents = nextOutcomeEvents(this.forwardOutcomeEvents, item.message.payload.event, forwardHandId !== item.afterCanonical.handId);
+      forwardHandId = item.afterCanonical.handId;
+    }
+    this.queue.splice(0);
     const requestAfterHold = this.state.outcomeEvents.length > 0;
     const holdMs = requestAfterHold ? animationTimings.handEnd : animationTimings.hardForwardFade;
     this.replace({ ...this.state, mode: "HARD_FORWARD", notice: "SYNCED" });
@@ -274,6 +331,11 @@ export class AnimationQueue {
     return event.payload.cardIndex === 1
       && this.firstRoundRecipients.size > 0
       && this.secondRoundRecipients.size === this.firstRoundRecipients.size;
+  }
+
+  private remainingOutcomeHold(): number {
+    return this.outcomeVisibleSince === null || !this.state.outcomeEvents.some((event) => event.type === "POT_AWARDED")
+      ? 0 : Math.max(0, animationTimings.handEnd - (this.clock.now() - this.outcomeVisibleSince));
   }
 
   private currentHoleDeal(viewerCardsForReveal: readonly Card[] = []): HoleDealPresentation | null {
