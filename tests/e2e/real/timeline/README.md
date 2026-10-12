@@ -28,3 +28,5 @@ Node 22+、仓库固定 pnpm、PostgreSQL 16；时序配置每次先执行 Next 
 真实旧 Timer 回调的确定性拒绝由 TEX-59 runtime 单测补充；E2E 断言实际 AUTO_ACTION 不早于当前 deadline，不能因未出现 TIMER_IGNORED 就宣称已触发旧回调。桌面移动视口、代理网络与 Xvfb 后台不替代 TEX-56 移动实机/公网/人工多人复玩。GitHub 产物保留及受控 Release 档案要求见 [工作流 README](../../../../.github/workflows/README.md)。
 
 TEX-62 复验修正：终局事件接收先于语义展示完成，因此验收等待 DOM 中每项权威分配实际出现（最多 45 秒），随后仍执行最低停留/混手/重复发牌校验。首手闭合行动状态可能由重连 Snapshot 提供，R1 对照同 handId/sequence 的先前 GAME_SNAPSHOT 或 RECONNECT_RESULT 与行动开放 Snapshot，不要求额外广播同内容帧。
+
+TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返回的 Latin-1 字节串执行严格 UTF-8 解码；Chromium/WebKit 原生文本不转换，异常编码明确失败。只修复被动测试观察，不修改应用消息。单测覆盖中文/Emoji/希腊字母、ASCII、Buffer 和非法字节。公开派奖证据只导出 handId、玩家 ID/测试昵称和金额，不导出牌面或原始 payload。

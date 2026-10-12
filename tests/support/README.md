@@ -38,3 +38,5 @@ it("示例", () => {
 - 引擎内部的 `SeededRandomSource`（docs/01-engine-spec.md §15）由 TEX-13 在 `packages/poker-engine` 实现；本目录不定义引擎接口。
 - Fixture 必须通过公开入口构造场景，禁止篡改被测模块私有状态（docs/06-testing-strategy.md §3.4）。
 - 各文件自测（`*.test.ts`）归属 unit 层（根 `pnpm test:unit`）。
+
+TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返回的 Latin-1 字节串执行严格 UTF-8 解码；Chromium/WebKit 原生文本不转换，异常编码明确失败。只修复被动测试观察，不修改应用消息。单测覆盖中文/Emoji/希腊字母、ASCII、Buffer 和非法字节。公开派奖证据只导出 handId、玩家 ID/测试昵称和金额，不导出牌面或原始 payload。

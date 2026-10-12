@@ -28,6 +28,7 @@ import {
   type SafeDiagnostic,
 } from "../../../support/timeline-evidence";
 import { readRunIdentity } from "../support/run-identity";
+import { observedWebSocketText } from "../../../support/websocket-text";
 import {
   createRoomViaUi,
   readInviteCode,
@@ -226,7 +227,12 @@ async function domEvidence(
   );
 }
 
-function observe(page: Page, context: BrowserContext, proxy: NetworkProxy): PlayerProbe {
+function observe(
+  page: Page,
+  context: BrowserContext,
+  proxy: NetworkProxy,
+  browserName: string,
+): PlayerProbe {
   const probe: PlayerProbe = {
     page,
     context,
@@ -258,7 +264,7 @@ function observe(page: Page, context: BrowserContext, proxy: NetworkProxy): Play
     socket.on("framereceived", (frame) => {
       let stage = "decode";
       try {
-        const decoded = JSON.parse(String(frame.payload)) as {
+        const decoded = JSON.parse(observedWebSocketText(frame.payload, browserName)) as {
           type?: string;
           payload?: { event?: { type?: string } };
         };
@@ -367,7 +373,7 @@ export const test = base.extend<{ timeline: TimelineSession }>({
           });
           await installObservation(context, proxy.port, identity.serverPort);
           const page = await context.newPage();
-          players.push(observe(page, context, proxy));
+          players.push(observe(page, context, proxy, browser.browserType().name()));
         }
         const host = players[0]!.page;
         await createRoomViaUi(host, {
@@ -588,6 +594,18 @@ export const test = base.extend<{ timeline: TimelineSession }>({
         players: players.map((player, index) => ({
           index,
           frames: player.frames,
+          allocations: player.events.flatMap((frame) =>
+            frame.payload.event.type !== "POT_AWARDED"
+              ? []
+              : frame.payload.event.payload.awards.map((award) => ({
+                  handId: frame.payload.handId,
+                  playerId: award.playerId,
+                  amount: award.amount,
+                  displayName:
+                    player.game?.players.find((candidate) => candidate.playerId === award.playerId)
+                      ?.displayName ?? null,
+                })),
+          ),
           dom: doms[index],
           network: {
             operations: player.proxy.operations,
