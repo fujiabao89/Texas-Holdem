@@ -1,6 +1,6 @@
 # Test support utilities
 
-跨层复用的测试基础设施（TEX-12）。全部为纯 TypeScript 工厂函数：不读写系统时间、不注册全局定时器、不连接任何真实数据库，可在并行测试间安全共用（每个测试自建实例，不共享可变状态）。
+跨层复用的测试基础设施。随机源、Fake Clock 和 Fixture 使用纯 TypeScript 工厂；TEX-62 的网络代理使用真实 TCP、单调时间和定时器，每次测试自建并关闭实例，不共享可变状态。
 
 ## 模块
 
@@ -12,6 +12,8 @@
 | [fake-clock.ts](./fake-clock.ts) | 受控时钟：手动 `advance`、按到期顺序执行、`dispose()` 清空全部 timer 并可断言无遗留 |
 | [fixtures.ts](./fixtures.ts) | `defineFixture`：不可变 Builder（`with()` 返回新实例）、运行时校验聚合报错（含字段路径）。**约定：`packages/protocol` 落地后，validate 应升级为协议 Schema 校验** |
 | [test-db.ts](./test-db.ts) | 测试数据库隔离：唯一 `runId`、schema 命名 `tex_test_<runId>`（≤63 字节）、缺配置时受控跳过；连接串永不进入输出 |
+| [network-proxy.ts](./network-proxy.ts) | 双向真实 TCP 字节代理：每方向 RTT/2、固定 seed 抖动、保持字节顺序、断连/恢复及停止上游读取；转发样本仅记录字节数和时间。`close()` 清理连接及定时器 |
+| [timeline-evidence.ts](./timeline-evidence.ts) | 服务端诊断白名单投影、跨手 DOM/动画与时钟断言、门禁执行数量校验；不导出牌面或原始消息 |
 
 ## 用法示例
 

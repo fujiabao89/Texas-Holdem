@@ -25,7 +25,7 @@ import {
 
 const serverPort = Number(process.env.TEX_E2E_REAL_SERVER_PORT ?? 3201);
 const webPort = Number(process.env.TEX_E2E_REAL_WEB_PORT ?? 3202);
-const seed = process.env.TEX_E2E_REAL_SEED ?? "280820";
+const seed = process.env.TEX_E2E_REAL_SEED ?? (process.env.TEX_TIMELINE_SCENARIO === "split" ? "280835" : "280820");
 const runId = createRealRunId();
 const schemaName = schemaNameForRunId(runId);
 const serverBaseUrl = `http://127.0.0.1:${serverPort}`;
@@ -40,6 +40,7 @@ writeRunIdentity({ runId, schemaName, serverPort, webPort });
 
 export default defineConfig({
   testDir: "./real",
+  testIgnore: /timeline\//,
   outputDir: ".artifacts-real",
   fullyParallel: false,
   workers: 1,

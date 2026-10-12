@@ -32,6 +32,8 @@ describe("分层测试入口", () => {
     "test:ws",
     "test:e2e",
     "test:e2e:real",
+    "test:e2e:timeline",
+    "test:e2e:timeline:rc",
     "test:sim",
     "test:perf",
   ];
@@ -93,5 +95,16 @@ describe("分层测试入口", () => {
       default?: { retries?: number };
     };
     expect(configModule.default?.retries).toBe(0);
+  });
+  it("TEX-62 isolates the real timeline suite, turns off raw traces and rejects incomplete reports", () => {
+    const real = readFileSync(resolve(repoRoot, "tests/e2e/playwright.real.config.ts"), "utf8");
+    const timeline = readFileSync(resolve(repoRoot, "tests/e2e/playwright.timeline.config.ts"), "utf8");
+    const runner = readFileSync(resolve(repoRoot, "tests/e2e/real/timeline/run.ts"), "utf8");
+    expect(real).toContain("testIgnore: /timeline\\//");
+    expect(timeline).toContain("retries: 0");
+    expect(timeline).toContain('trace: "off"');
+    expect(timeline).toContain('testDir: "./real/timeline"');
+    expect(runner).toContain("validGateReport");
+    expect(rootPackage.scripts?.["test:e2e:timeline:rc"]).toContain("run.ts rc");
   });
 });

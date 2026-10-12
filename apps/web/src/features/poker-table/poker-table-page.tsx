@@ -170,7 +170,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
     )}
     <section className="table-stage relative mx-auto w-full" aria-label={message("table.title")}>
       <DealerDeck onElement={setDeckElement} />
-      <div ref={setTableElement} data-presentation-mode={presentation.mode} className="rr-table-felt table-presentation relative mx-auto rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:border-[18px]">
+      <div ref={setTableElement} data-hand-id={game.handId ?? undefined} data-presentation-mode={presentation.mode} className="rr-table-felt table-presentation relative mx-auto rounded-[46%] border-[10px] border-[#172029] bg-[#00795d] shadow-[0_22px_45px_rgba(10,45,35,0.22)] sm:border-[18px]">
         <div aria-hidden="true" className="table-stitch absolute inset-[4%] rounded-[46%] border border-emerald-300/25 bg-[radial-gradient(ellipse_at_center,rgba(20,148,111,0.28),transparent_65%)]" />
         <div className="table-center-info absolute left-1/2 top-[31%] z-20 flex -translate-x-1/2 items-center gap-2 text-center sm:top-[34%]">
           <span className="table-phase rounded-full bg-emerald-100/35 px-2.5 py-1 text-[10px] font-semibold text-emerald-50 backdrop-blur sm:px-3 sm:text-xs">{phaseName(game.handPhase)}</span>
@@ -198,7 +198,7 @@ export function PokerTablePage({ roomId }: { readonly roomId: string }) {
         </div>
         {presentation.overlay !== null && <PresentationOverlay overlay={presentation.overlay} boardCards={game.board} game={game} tableElement={tableElement} deckElement={deckElement} key={presentation.overlay.eventKey} />}
       </div>
-      {legal !== null && <div className="table-action-dock">
+      {legal !== null && <div data-action-hand-id={canonicalGame.handId ?? undefined} className="table-action-dock">
         <BettingControls game={canonicalGame} legal={legal} actionsEnabled={submitEnabled} timeBankEnabled={timeBankEnabled} rangeForMode={rangeForMode} amount={amount} showExactInput={showExactInput} exactAmount={exactAmount} allInConfirm={allInConfirmSequence === canonicalGame.sequence} onAction={submit} onSelectMode={(mode) => { setAmountMode(mode); setAmount(range?.kind === mode ? range.min : null); setShowExactInput(false); setAllInConfirmSequence(null); }} onChooseAmount={chooseAmount} onExactChange={(value) => { setExactAmount(value); setAllInConfirmSequence(null); }} onToggleExact={() => setShowExactInput((value) => !value)} onSetAllInConfirm={(value) => setAllInConfirmSequence(value ? canonicalGame.sequence : null)} onUseTimeBank={() => { if (!timeBankEnabled || !hasSubmissionTime(projection.getSnapshot().clock, false)) return; const command = websocket.prepareCommand({ type: "USE_TIME_BANK", payload: { tournamentId: canonicalGame.tournamentId, expectedSequence: canonicalGame.sequence } }); try { websocket.send(command); setPending(command); setFeedback(message("table.actionPending")); } catch { setFeedback(message("table.connectionDisconnected")); } }} />
       </div>}
       <div className="table-post-hand mx-auto w-full max-w-3xl">
@@ -503,7 +503,7 @@ function PresentationOverlay({ overlay, boardCards, game, tableElement, deckElem
   if (geometry === null) return null;
   if (event.type === "DEAL_HOLE_CARD") {
     const target = geometry.holeSlots[`${event.payload.seat}:${event.payload.cardIndex}`] ?? geometry.seatCards[event.payload.seat];
-    return target === undefined || geometry.deck === null ? null : <HoleCardDealFlight from={geometry.deck} to={target} finalHoleCardDeal={overlay.finalHoleCardDeal} variant={event.payload.playerId === game.viewer.playerId ? "hole" : "seat"} />;
+    return target === undefined || geometry.deck === null ? null : <HoleCardDealFlight eventKey={`${game.handId}:${event.payload.playerId}:${event.payload.cardIndex}`} from={geometry.deck} to={target} finalHoleCardDeal={overlay.finalHoleCardDeal} variant={event.payload.playerId === game.viewer.playerId ? "hole" : "seat"} />;
   }
   if (event.type === "BURN_CARD") return geometry.deck === null || geometry.muck === null ? null : <BackCardFlight from={geometry.deck} to={geometry.muck} durationMs={overlay.durationMs} kind="burn" />;
   if (event.type === "PLAYER_FOLDED") {
@@ -589,11 +589,11 @@ function DealerDeck({ onElement }: { readonly onElement: (element: HTMLDivElemen
   </div>;
 }
 
-function HoleCardDealFlight({ from, to, finalHoleCardDeal, variant }: { readonly from: Point; readonly to: Point; readonly finalHoleCardDeal: boolean; readonly variant: "hole" | "seat" }) {
+function HoleCardDealFlight({ eventKey, from, to, finalHoleCardDeal, variant }: { readonly eventKey: string; readonly from: Point; readonly to: Point; readonly finalHoleCardDeal: boolean; readonly variant: "hole" | "seat" }) {
   const { delta } = feedbackFlight(from, to);
   const lift = Math.min(46, Math.max(20, Math.hypot(delta.x, delta.y) * 0.06));
   return <div className="pointer-events-none absolute inset-0 z-40" aria-hidden="true">
-    <span className={`hole-deal-flight absolute block ${cardDimensions(variant)} ${finalHoleCardDeal ? "hole-deal-flight-final" : ""}`} style={{ "--hole-origin-x": `${from.x}px`, "--hole-origin-y": `${from.y}px`, "--hole-delta-x": `${delta.x}px`, "--hole-delta-y": `${delta.y}px`, "--hole-mid-x": `${delta.x * 0.58}px`, "--hole-mid-y": `${delta.y * 0.58 - lift}px`, "--hole-deal-duration": `${animationTimings.deal}ms` } as CSSProperties}>
+    <span data-deal-event-key={eventKey} className={`hole-deal-flight absolute block ${cardDimensions(variant)} ${finalHoleCardDeal ? "hole-deal-flight-final" : ""}`} style={{ "--hole-origin-x": `${from.x}px`, "--hole-origin-y": `${from.y}px`, "--hole-delta-x": `${delta.x}px`, "--hole-delta-y": `${delta.y}px`, "--hole-mid-x": `${delta.x * 0.58}px`, "--hole-mid-y": `${delta.y * 0.58 - lift}px`, "--hole-deal-duration": `${animationTimings.deal}ms` } as CSSProperties}>
       <span className="relative block h-full w-full">
         <CardBack variant={variant} className="!absolute inset-0" />
       </span>
@@ -620,7 +620,7 @@ function ShowdownShowcase({ cards, boardCards, bestFiveCards, playerName, rankNa
 
 function HandOutcomeSummary({ events, game }: { readonly events: readonly OutcomeEvent[]; readonly game: GameSnapshot }) {
   if (events.length === 0) return null;
-  return <section className="mx-auto grid w-full max-w-3xl gap-3 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm" aria-labelledby="hand-outcome-heading">
+  return <section data-outcome-hand-id={game.handId ?? undefined} className="mx-auto grid w-full max-w-3xl gap-3 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm" aria-labelledby="hand-outcome-heading">
     <h2 id="hand-outcome-heading" className="text-sm font-semibold text-emerald-950">{message("table.feedback.handOutcome")}</h2>
     <div className="grid gap-3 sm:grid-cols-2">{events.map((event) => event.type === "PLAYER_REVEALED" ? <div className="rounded-xl bg-slate-50 p-3" key={`reveal:${event.payload.playerId}`}>
       <p className="mb-2 text-xs font-semibold text-slate-800">{publicPlayerName(game, event.payload.playerId)} · {publicHandRankName(event.payload.handRank)}</p>

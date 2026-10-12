@@ -20,6 +20,8 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { safeDiagnostic } from "../../../support/timeline-evidence";
 
 import {
   assertValidSchemaName,
@@ -81,11 +83,28 @@ async function main(): Promise<void> {
   }
 
   // 3) 生产入口启动真实 game-server；退出码透传给 Playwright。
+  const logPath = process.env.TEX_TIMELINE_LOG;
   const child = spawn(
     process.execPath,
-    [resolve(gameServerDir, "node_modules/tsx/dist/cli.mjs"), "src/main.ts"],
-    { cwd: gameServerDir, env: process.env, stdio: ["ignore", "inherit", "inherit"] },
+    logPath === undefined ? [resolve(gameServerDir, "node_modules/tsx/dist/cli.mjs"), "src/main.ts"] : ["--import", "tsx", "src/main.ts"],
+    { cwd: gameServerDir, env: process.env, stdio: ["ignore", process.env.TEX_TIMELINE_LOG === undefined ? "inherit" : "pipe", "inherit"] },
   );
+  if (logPath !== undefined) {
+    mkdirSync(dirname(logPath), { recursive: true });
+    writeFileSync(resolve(dirname(logPath), "server-process.json"), JSON.stringify({ schemaName: config.schema, pid: child.pid }));
+    let pending = "";
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      pending += chunk;
+      let newline: number;
+      while ((newline = pending.indexOf("\n")) >= 0) {
+        const line = pending.slice(0, newline); pending = pending.slice(newline + 1);
+        const safe = safeDiagnostic(line);
+        if (safe !== null) appendFileSync(logPath, `${JSON.stringify(safe)}\n`, "utf8");
+      }
+      if (pending.length > 128 * 1024) pending = "";
+    });
+  }
   const forward = (signal: NodeJS.Signals): void => {
     child.kill(signal);
   };

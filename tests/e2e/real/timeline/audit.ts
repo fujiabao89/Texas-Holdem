@@ -1,0 +1,55 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { resolve, extname } from "node:path";
+import { isSafeEvidence } from "../../../support/timeline-evidence";
+
+// Independent pre-upload check also covers Playwright's own failure files.
+const root = resolve(__dirname, "../../.artifacts-timeline");
+let checked = 0;
+function inspectJson(value: unknown): boolean {
+  if (!isSafeEvidence(value)) return false;
+  if (value === null || typeof value !== "object") return true;
+  const record = value as Record<string, unknown>;
+  if (record.name === "evidence-rejected") return false;
+  if (record.name === "timeline-evidence") {
+    if (typeof record.body !== "string") return false;
+    try {
+      if (!isSafeEvidence(JSON.parse(Buffer.from(record.body, "base64").toString("utf8"))))
+        return false;
+    } catch {
+      return false;
+    }
+  }
+  return Object.values(record).every(
+    (item) => item === null || typeof item !== "object" || inspectJson(item),
+  );
+}
+function scan(directory: string): void {
+  for (const name of readdirSync(directory)) {
+    const path = resolve(directory, name);
+    if (statSync(path).isDirectory()) {
+      scan(path);
+      continue;
+    }
+    checked++;
+    const extension = extname(path);
+    if (extension === ".png" || extension === ".webm") continue; // fixture masks all card faces
+    const content = readFileSync(path, "utf8");
+    let safe = false;
+    if (extension === ".json") safe = inspectJson(JSON.parse(content));
+    else if (extension === ".jsonl")
+      safe = content
+        .split("\n")
+        .filter(Boolean)
+        .every((line) => inspectJson(JSON.parse(line)));
+    else if (extension === ".md") safe = !/Page snapshot|postgres(?:ql)?:\/\//i.test(content);
+    if (!safe) throw new Error("artifact rejected before upload");
+  }
+}
+try {
+  scan(root);
+  if (checked === 0) throw new Error("no artifacts to audit");
+  console.log(`Timeline artifact audit passed (${checked} files)`);
+} catch {
+  console.error("Timeline artifact audit failed; do not upload this directory");
+  process.exitCode = 1;
+}

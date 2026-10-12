@@ -46,4 +46,6 @@ TEX-60：单一 countdown 从 ProjectionStore 接收锚点计算可提交时间�
 
 倒计时每 250ms 仅更新 ClockStatus 子组件；整张牌桌的操作准入为安全窗口和估计截止窗口各安排一次到期任务，不跟随每个 tick 重绘座位/牌/动画。不限时没有 countdown/窗口定时任务。
 
+TEX-62 的只读观测属性：毛毡 `data-hand-id` 表示 presentation 手，操作区 `data-action-hand-id` 表示 canonical 手，结果层 `data-outcome-hand-id` 表示展示结果所属手；发牌飞行 `data-deal-event-key` 使用既有 handId/playerId/cardIndex 标识。真实 E2E 通过 DOM Mutation/animationstart 连续观察跨手与重复发牌，不读取 React 私有状态；这些属性不改变投影、操作准入或队列时序。
+
 Greptile PR #69 R1：Time Bank 使用独立的估计服务器截止窗口，不随普通下注安全余量提前隐藏。操作区在该区间只保留延时按钮，金额编辑器关闭；待提交、非本人行动、余额耗尽或截止后仍禁用。两类窗口各安排一次到期更新，不让整桌跟随 countdown tick 重绘。

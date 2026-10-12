@@ -50,6 +50,8 @@ export interface CreateRoomOptions {
   readonly maxPlayers?: number;
   readonly smallBlind?: number;
   readonly bigBlind?: number;
+  readonly actionTime?: 15 | 20 | 30 | 45 | 60 | "UNLIMITED";
+  readonly timeBank?: 0 | 30 | 60 | 120;
 }
 
 export async function createRoomViaUi(page: Page, options: CreateRoomOptions): Promise<void> {
@@ -68,6 +70,10 @@ export async function createRoomViaUi(page: Page, options: CreateRoomOptions): P
     await page.getByLabel("小盲注").fill(String(options.smallBlind));
   if (options.bigBlind !== undefined)
     await page.getByLabel("大盲注").fill(String(options.bigBlind));
+  if (options.actionTime !== undefined)
+    await page.getByLabel("行动时间").selectOption(String(options.actionTime));
+  if (options.timeBank !== undefined && options.actionTime !== "UNLIMITED")
+    await page.getByLabel("延时储备").selectOption(String(options.timeBank));
   await page.getByRole("button", { name: "创建并进入大厅" }).click();
   await waitForLobbyReady(page);
 }
