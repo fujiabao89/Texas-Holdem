@@ -54,7 +54,7 @@ export function useTablePresentation(
       queue.setForeground(visible);
       frameHealth.resetWindow();
       if (visible) {
-        queue.alignToSnapshot(projection.getSnapshot().game);
+        queue.alignToSnapshot(projection.getSnapshot().game, true);
         websocket.requestAuthoritativeSnapshot("MANUAL");
       }
     };

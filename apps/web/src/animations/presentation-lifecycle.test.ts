@@ -116,7 +116,7 @@ describe("presentation lifecycle", () => {
   });
 
   it("does not restart an old recap window on an immediate background return", () => {
-    const { queue, clock, push } = setup();
+    const { queue, clock, push } = setup({ requireOutcomeVisibility: true });
     queue.setReducedMotion(true);
     push(award);
     queue.setForeground(false);
@@ -124,6 +124,35 @@ describe("presentation lifecycle", () => {
     queue.alignToSnapshot(gameSnapshot({ handId: "hand-2", sequence: "100" }));
     expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2" }, outcomeEvents: [], notice: null });
     expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("does not wait for a paint of awards received while hidden", () => {
+    const { queue, clock, push } = setup({ requireOutcomeVisibility: true });
+    queue.setForeground(false);
+    push(award);
+    expect(queue.getSnapshot().outcomeEvents).toEqual([]);
+    queue.setForeground(true);
+    queue.alignToSnapshot(gameSnapshot({ handId: "hand-2", sequence: "100" }));
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2" }, outcomeEvents: [], mode: "NORMAL" });
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("restores the current hidden hand's public split only after a matching fresh terminal snapshot", () => {
+    const { queue, clock, push } = setup({ requireOutcomeVisibility: true });
+    queue.setForeground(false);
+    const { after } = push(award);
+    queue.setForeground(true);
+    queue.alignToSnapshot(after, true); // The cached canonical value is not a recovery response.
+    expect(queue.getSnapshot().outcomeEvents).toEqual([]);
+    queue.alignToSnapshot({ ...after, handPhase: "SHOWDOWN_DISPLAY", currentActorPlayerId: null, actionDeadline: null });
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-1" }, outcomeEvents: [award], overlay: null });
+    queue.markOutcomeVisible("hand-1", queue.getSnapshot().outcomeEvents);
+    push(started, "hand-2");
+    clock.advance(999);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-1");
+    clock.advance(1);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-2");
+    queue.cancel();
   });
 
   it("hard-forwards an already queued hand boundary after displaying the old result", () => {

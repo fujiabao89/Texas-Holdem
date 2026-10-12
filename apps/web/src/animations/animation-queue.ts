@@ -99,6 +99,7 @@ export class AnimationQueue {
   private outcomeVisibleSince: number | null = null;
   private confirmedOutcomeEvents: readonly OutcomeEvent[] | null = null;
   private pendingReadingTransition: { callback: () => void; minimumMs: number } | null = null;
+  private backgroundOutcome: { game: GameSnapshot; events: readonly OutcomeEvent[] } | null = null;
   private state: PresentationState = { game: null, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: [], outcomeEvents: [], notice: null, reducedMotion: false };
   private holeDealHandId: string | null = null;
   private holeDealActive = false;
@@ -139,7 +140,12 @@ export class AnimationQueue {
   setForeground(foreground: boolean): void {
     if (this.foreground === foreground) return;
     this.foreground = foreground;
-    if (!foreground) { this.cancel(); this.outcomeVisibleSince = null; this.confirmedOutcomeEvents = null; }
+    if (!foreground) {
+      this.cancel(); this.outcomeVisibleSince = null; this.confirmedOutcomeEvents = null;
+      this.backgroundOutcome = this.state.game !== null && this.state.outcomeEvents.length > 0
+        ? { game: this.state.game, events: this.state.outcomeEvents } : null;
+      this.replace({ ...this.state, outcomeEvents: [] });
+    }
   }
 
   /** Recovery replaces decoration; continuous phase updates preserve accepted semantics. */
@@ -156,6 +162,20 @@ export class AnimationQueue {
     this.notifyPresentationReset();
     this.clearTimer();
     this.clearTransitions();
+    const background = this.backgroundOutcome;
+    if (this.foreground) {
+      this.backgroundOutcome = null;
+      // Restore only the latest hand's already authorized result, after a fresh
+      // matching terminal snapshot. A different hand never replays hidden work.
+      if (game !== null && background?.game.tournamentId === game.tournamentId
+        && background.game.handId === game.handId && background.game.viewer.playerId === game.viewer.playerId
+        && (game.handPhase === "SHOWDOWN_DISPLAY" || game.handPhase === "HAND_END")) {
+        this.outcomeVisibleSince = this.clock.now();
+        this.replace({ ...this.state, game, outcomeEvents: background.events });
+      }
+    } else if (background?.game.handId !== game?.handId || background?.game.tournamentId !== game?.tournamentId) {
+      this.backgroundOutcome = null;
+    }
     // A recovery drops decoration, but not an accepted public result before
     // the reader has had its minimum window. Never infer awards from a snapshot.
     this.commitAllFinalFrames(this.foreground);
@@ -204,9 +224,12 @@ export class AnimationQueue {
       return;
     }
     if (!this.foreground) {
+      const outcomes = nextOutcomeEvents(this.backgroundOutcome?.events ?? [], message.payload.event,
+        this.backgroundOutcome?.game.handId !== afterCanonical.handId);
+      this.backgroundOutcome = outcomes.length > 0 ? { game: afterCanonical, events: outcomes } : null;
       this.commitFinalFrame(item);
       this.resetHoleDeal();
-      this.replace({ ...this.state, game: afterCanonical, overlay: null, holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(afterCanonical) });
+      this.replace({ ...this.state, game: afterCanonical, overlay: null, holeDeal: null, outcomeEvents: [], revealedPlayerIds: revealedPlayerIdsFor(afterCanonical) });
       return;
     }
     this.queue.push(item);
