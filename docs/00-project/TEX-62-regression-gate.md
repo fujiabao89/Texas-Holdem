@@ -2,7 +2,7 @@
 
 开始：2026-10-09；续作核验：2026-10-12。任务：[TEX-62](https://linear.app/texas-holdem/issue/TEX-62)。实现分支：`test/TEX-62-game-timeline-network-regression`。
 
-**状态：已实现门禁，正在验证；尚未通过完整验收。** 本卡给出测试编排、实测阻断与验收映射；测试要求的唯一权威来源为 [06 §9.3](../06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求)。不得将本卡或既有 mock 测试的通过记为 TEX-62 验收通过。
+**状态：门禁代码与文档已本地交付；当前基线完整验收阻断，未标记 TEX-62 完成。** 本卡给出测试编排、实测阻断与验收映射；测试要求的唯一权威来源为 [06 §9.3](../06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求)。不得将本卡或既有 mock 测试的通过记为 TEX-62 验收通过。
 
 ## 负责人、依赖与目录边界
 
@@ -58,8 +58,62 @@ pnpm test:e2e:timeline:rc    # RC：20 项；Linux 用 xvfb-run -a
 - R1 真实最小复现：两人、15 秒、seed 280820、合法 check/call 到普通摊牌。两名客户端均收到 sequence 21 的 PLAYER_CHECKED，随后直接收到 sequence 25 的 SHOWDOWN_DISPLAY Snapshot；22–25 的 SHOWDOWN_STARTED、PLAYER_REVEALED、POT_AWARDED 未收到。服务端进入展示窗口但浏览器缺少完整结算事件。定位到 TEX-61 普通 GAME_SNAPSHOT 清空发送队列中的未完成 GAME_EVENT；正常连接也会触发。不得以 Snapshot 命中代替结算分支断言。
 - 10 月 9 日首次 PR 9 项中 2 通过、7 失败；首轮 RC 20 项中 4 通过、16 失败（包含当时测试夹具/后台环境问题，不作为最终缺陷数量）。10 月 12 日已将时序前端改为 production build/start，补齐 xfail/重试/浏览器替换拒绝、被停读玩家定向日志、真实 Token/牌面导出审计和进程→schema 清理顺序；复跑又查出既有 run-identity 夹具在中断后保存旧身份、配置却使用新 schema 的不一致；已改为配置使用返回的实际身份并增加隔离临时文件单测，拒绝不同端口并发。只清理本次日志明确记录的 4 个中断 schema，未清理其他命名空间。最终完整复测在交付前回填。独立原生浏览器探针在本机切换同窗标签、最小化与移除默认焦点模拟后仍返回 visible，后台能力未验证，不得记为通过。TEX-35 尚未完成，时序展示失败保持阻断；没有 skip/xfail，没有重试通过放行，也没有降低背压阈值。
 
+## 2026-10-12 最终冻结复测
+
+候选代码 SHA：`ba4f77cc7c40a50e20b40295ef6401ca6b727936`（包含 `8de6a3bb` 门禁实现）；全部证据 worktreeDirty=false。下面记录冻结版本的完整执行，先前开发诊断不与本轮混记。
+
+| 验证命令 | 实际结果 |
+| --- | --- |
+| `pnpm exec vitest run --project unit tests/support/network-proxy.test.ts tests/support/timeline-evidence.test.ts tests/support/run-identity.test.ts tests/meta/test-entrypoints.test.ts` | 4 文件 / 27 项通过 |
+| `pnpm exec tsc --noEmit -p tsconfig.test.json`、`pnpm typecheck` | 通过 |
+| 定向 ESLint、`pnpm lint` | 通过；仅既有 gateway-protocol.test.ts unused room 警告 |
+| `pnpm test:e2e:timeline` | 完整 9 项，0 通过 / 9 失败；skipped=0、flaky=0、runnerErrors=[]；退出 1 |
+| `pnpm test:e2e:timeline:rc` | 完整 20 项（18+1+1），0 通过 / 20 失败；零 skip/xfail/重试，三个报告 runnerErrors=[]；退出 1 |
+| `pnpm exec tsx tests/e2e/real/timeline/audit.ts` | 227 个文件通过脱敏审计 |
+| 文档链接、`git diff --check` | 15 份 Markdown / 288 个本地链接与锚点通过；diff 通过 |
+
+PR 服务端 ACTION_OPEN 窗口实测 14,999–15,000ms；浏览器 pageerror/未处理 console/HTTP 5xx 列表全部为空。恢复 deadline、同序列快照与弱网注入前置断言已到达；整个用例仍因结算缺失/过早消失失败，不能将局部断言通过记为门禁通过。
+
+| 档位 | 浏览器 | 场景 | 结果 | 实际阻断 |
+| --- | --- | --- | --- | --- |
+| PR | chromium | R1/R4 双人15秒：正常摊牌→连续三手→完整行动时钟 | failed | 缺少普通摊牌事件 |
+| PR | chromium | 弱网 500ms RTT：真实传输抖动不重置倒计时 | failed | 结算摘要不足最低 1 秒 |
+| PR | chromium | R3 行动中断网：正常玩家继续推进，重连Snapshot保留原deadline | failed | 页面缺少已收到的权威派奖结果 |
+| PR | chromium | 六人Reduced Motion全下：公开摊牌、守恒与无人可操作终局 | failed | 全下派奖总额为 0（期望 120） |
+| PR | chromium | R2 六人Reduced Motion跨手：合法弃牌快局后仍可操作 | failed | 结算摘要不足最低 1 秒 |
+| PR | firefox | R1/R4 双人15秒：正常摊牌→连续三手→完整行动时钟 | failed | 缺少普通摊牌事件 |
+| PR | firefox | R3 行动中断网：正常玩家继续推进，重连Snapshot保留原deadline | failed | 页面缺少已收到的权威派奖结果 |
+| PR | webkit | R1/R4 双人15秒：正常摊牌→连续三手→完整行动时钟 | failed | 缺少普通摊牌事件 |
+| PR | webkit | R3 行动中断网：正常玩家继续推进，重连Snapshot保留原deadline | failed | 页面缺少已收到的权威派奖结果 |
+| RC | chromium | R1/R4 双人15秒：正常摊牌→连续三手→完整行动时钟 | failed | 缺少普通摊牌事件 |
+| RC | chromium | 弱网 50ms RTT：真实传输抖动不重置倒计时 | failed | 结算摘要不足最低 1 秒 |
+| RC | chromium | 弱网 100ms RTT：真实传输抖动不重置倒计时 | failed | 页面缺少已收到的权威派奖结果 |
+| RC | chromium | 弱网 300ms RTT：真实传输抖动不重置倒计时 | failed | 结算摘要不足最低 1 秒 |
+| RC | chromium | 弱网 500ms RTT：真实传输抖动不重置倒计时 | failed | 结算摘要不足最低 1 秒 |
+| RC | chromium | R3 行动中断网：正常玩家继续推进，重连Snapshot保留原deadline | failed | 页面缺少已收到的权威派奖结果 |
+| RC | chromium | 六人Reduced Motion全下：公开摊牌、守恒与无人可操作终局 | failed | 全下派奖总额为 0（期望 120） |
+| RC | chromium | R2 六人Reduced Motion跨手：合法弃牌快局后仍可操作 | failed | 结算摘要不足最低 1 秒 |
+| RC | chromium | R3 SHOWDOWN_DISPLAY边界断网恢复：最新Snapshot不补播旧手 | failed | 结算摘要不足最低 1 秒 |
+| RC | chromium | R3 DEALING边界断网恢复：最新Snapshot不补播旧手 | failed | 结算摘要不足最低 1 秒 |
+| RC | chromium | 十人移动视口连续快局：Fold-to-win不虚构摊牌，不混手 | failed | 结算摘要不足最低 1 秒 |
+| RC | chromium | R2 六人真实低帧率：降级后结算/下一手语义终态 | failed | 结算摘要不足最低 1 秒 |
+| RC | chromium | 六人先弃牌再全下：真实主池/边池分配 | failed | 未收到边池分配，目标分支未验收 |
+| RC | chromium | 慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩家 | failed | 结算摘要不足最低 1 秒 |
+| RC | firefox | R1/R4 双人15秒：正常摊牌→连续三手→完整行动时钟 | failed | 缺少普通摊牌事件 |
+| RC | firefox | R3 行动中断网：正常玩家继续推进，重连Snapshot保留原deadline | failed | 页面缺少已收到的权威派奖结果 |
+| RC | webkit | R1/R4 双人15秒：正常摊牌→连续三手→完整行动时钟 | failed | 缺少普通摊牌事件 |
+| RC | webkit | R3 行动中断网：正常玩家继续推进，重连Snapshot保留原deadline | failed | 页面缺少已收到的权威派奖结果 |
+| RC | chromium | 固定seed双人平分：每Pot金额守恒且每手只结算一次 | failed | 未收到平分分配，目标分支未验收 |
+| RC | chromium | R2/R3 真实窗口后台与恢复：不补播旧手，Snapshot回到当前可操作手 | failed | 本机原生 hidden 能力预检失败 |
+
+阻断归属：普通摊牌/全下/边池/平分末尾事件被普通阶段 Snapshot 清空，关联 TEX-61；已收到的派奖摘要缺失或不足 1 秒，关联 TEX-35。边池和平分未收到目标派奖帧，因此不宣称目标分支验收通过。后台原生能力在本机没有产生 hidden，预检明确失败，不造假或 skip；Linux/Xvfb 尚未执行。上述 P1 与环境未验证状态阻断 TEX-30/43/56 发布证据通过。
+
+产物：工作区 `tests/e2e/.artifacts-timeline/gate.json` 与各场景 `results.json`；每项包含脱敏 timeline-evidence、失败截图/录像、真实网络采样与白名单服务端日志。PR 全目录独立归档 `C:/tmp/tex62-pr-ba4f77cc`，35 个附件路径已重定位并验证存在。正式受控 Release 档案仍由发布负责人保存，未上传外部系统。
+
+资源清理：PR 与三个 RC schema 均已 DROP；本轮身份文件已删除，3261/3262 无监听，数据库没有其他 client backend。严格 PID/schema 身份校验成功，未出现额外执行器错误。原始用户工作区的未交接修改保持原样。
+
 ## 本次文档同步判断
 
 - 已同步测试目录 README、support/meta、工作流 README、05 前端只读观测契约、06 测试权威规格与项目/工程/总索引。本任务卡记录用户委派、实际入口及缺陷阻断。
 - 01/02/03/04 权威规格、产品玩法/规划、权限与持久化：已检查，无需更新，测试不改变扑克规则、wire 或数据库结构。安全/运维规范的原始敏感数据禁入与 180 天 Release 保留仍适用；GitHub 90 天 RC 产物需转存受控 Release 档案，已在工作流 README 说明。
-- Linear 写入、提交/推送、PR 创建与发布尚未执行；未改变任务 Todo 状态。尚无 PR 审查意见需要回复，不自动启动 Greptile 或 DeepSeek Harness。
+- 本地提交已完成；Linear 写入、推送、PR 创建与发布尚未执行；未改变任务 Todo 状态。尚无 PR 审查意见需要回复，不自动启动 Greptile 或 DeepSeek Harness。
