@@ -61,6 +61,7 @@ export interface PlayerProbe {
   frames: FrameSummary[];
   events: GameEventMessage[];
   errors: string[];
+  warnings: string[];
   suspendActions?: boolean;
   backgroundHands?: Set<string>;
 }
@@ -244,6 +245,7 @@ function observe(
     frames: [],
     events: [],
     errors: [],
+    warnings: [],
   };
   const recordError = (error: string) => {
     if (!probe.errors.includes(error) && probe.errors.length < 100) probe.errors.push(error);
@@ -271,7 +273,13 @@ function observe(
       } catch {
         /* no URL values are exported */
       }
-      recordError(status === undefined ? "console error" : `console HTTP ${status} (${resource})`);
+      if (status === "404" && resource === "favicon") {
+        if (!probe.warnings.includes("missing auxiliary favicon"))
+          probe.warnings.push("missing auxiliary favicon");
+      } else
+        recordError(
+          status === undefined ? "console error" : `console HTTP ${status} (${resource})`,
+        );
     }
   });
   page.on("response", (response) => {
@@ -635,6 +643,7 @@ export const test = base.extend<{ timeline: TimelineSession }>({
             errors: player.proxy.errors,
           },
           errors: player.errors,
+          warnings: player.warnings,
           backgroundHands: [...(player.backgroundHands ?? [])],
         })),
       };

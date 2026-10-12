@@ -40,3 +40,5 @@ TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返�
 真实后台主玩家使用独立空临时 profile 启动 Chromium，再通过公开 connectOverCDP(noDefaults:true) 连接默认 context，避免 Playwright 的默认焦点模拟覆盖原生 visibility。仅切换真实标签，不改写 document.hidden/visibilityState。主玩家以连续 DOM 与失败遮牌截图提供证据（不启用会干扰后台的自动录屏），其余玩家沿用遮牌录像；关闭后验证绝对 profile 属于本任务临时目录再清理。原生探针已证明 hidden→visible。UI helper 可接收显式 baseURL，避免默认 context 依赖自动配置。
 
 代理按方向在 256KiB 暂停读取、128KiB 以下恢复，并继续遵守 write/drain 和外部停读；2MiB 原生回环突发保持完整字节且不触发代理自身 1MiB 硬上限。生产服务端阈值不变。上传审计仍拒绝不安全产物，仅打印受控相对文件名，便于定位 CI 捕获问题。
+
+原生浏览器会请求当前应用未提供的 favicon.ico；独立无身份 create 页面探针已确认唯一资源错误为该辅助图标 404。夹具将精确 favicon 404 保留为 warnings 证据（已记录为任务外资源建议），脚本/API 失败、5xx、JS 异常和游戏观测错误继续阻断。不忽略其他 404。
