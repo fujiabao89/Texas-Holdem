@@ -178,7 +178,7 @@ type GameEventMessage = ServerMessage<"GAME_EVENT", {
 }>;
 ```
 
-Game Event 的业务产生条件与规则语义以 [01 §14](./01-engine-spec.md#14-game-events区块6-10-v02-612) 为准；协议层负责 envelope、wire Payload、顺序、`PlayerViewPatch` 和逐接收者投影。客户端按 sequence 将 `patch` 应用到当前 PlayerView，得到该事件后的权威视图；`event` 用于动画、历史和语义展示。每个授权订阅者都会观察到连续的 sequence：私有发牌事件对非目标接收者仍保留同一 `type/sequence`，但删除 `card` 等私有字段，且其 patch 不得含私有牌。
+Game Event 的业务产生条件与规则语义以 [01 §14](./01-engine-spec.md#14-game-events区块6-10-v02612) 为准；协议层负责 envelope、wire Payload、顺序、`PlayerViewPatch` 和逐接收者投影。客户端按 sequence 将 `patch` 应用到当前 PlayerView，得到该事件后的权威视图；`event` 用于动画、历史和语义展示。每个授权订阅者都会观察到连续的 sequence：私有发牌事件对非目标接收者仍保留同一 `type/sequence`，但删除 `card` 等私有字段，且其 patch 不得含私有牌。
 
 ### 6.4 Snapshot/Event 原子交接【规范性决定】
 
@@ -188,6 +188,8 @@ Game Event 的业务产生条件与规则语义以 [01 §14](./01-engine-spec.md
 2. 为该连接投影 Snapshot，并在发送期间缓冲该连接的 `S+1` 及之后事件；
 3. 先发送含 `sequence: S` 的 Snapshot，再按序发送缓冲事件；
 4. Snapshot 不得声称覆盖尚未反映到其状态中的事件。
+
+未触发重同步的正常阶段更新必须保留此前已排队的连续事件，再发送阶段 Snapshot；不能以屏障为由删除正常连接尚未写出的摊牌/结算事件。背压恢复丢弃旧事件的条件见 [04 §9.5](./04-game-server-architecture.md#95-事件积压与-fast-forward)。
 
 客户端应用规则：
 
@@ -250,7 +252,7 @@ TEX-60：Time Bank 同样使用 Schema 后固定的 receivedAt。原机会尚未
 
 ## 8. 消息目录（wire catalog）
 
-命名已统一为“字段 lowerCamelCase、枚举 UPPER_SNAKE_CASE”。HTTP 操作名不进入 wire `type`；Engine Event 名称保持 [01 §14](./01-engine-spec.md#14-game-events区块6-10-v02-612) 的 UPPER_SNAKE_CASE。
+命名已统一为“字段 lowerCamelCase、枚举 UPPER_SNAKE_CASE”。HTTP 操作名不进入 wire `type`；Engine Event 名称保持 [01 §14](./01-engine-spec.md#14-game-events区块6-10-v02612) 的 UPPER_SNAKE_CASE。
 
 ### 8.1 Client → Server
 
