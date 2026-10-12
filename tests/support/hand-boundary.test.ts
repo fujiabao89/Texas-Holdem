@@ -41,4 +41,12 @@ describe("timeline driver waits for the whole terminal batch", () => {
     ]).toEqual(["h1"]);
     expect(completedHandIds([frame("1", "HAND_STARTED")]).size).toBe(0);
   });
+  it("recognizes an awarded old hand when recovery resumes directly at a newer hand", () => {
+    expect([
+      ...completedHandIds([
+        frame("1", "POT_AWARDED"),
+        { type: "GAME_SNAPSHOT", handId: "h2", sequence: "42", phase: "PREFLOP" },
+      ]),
+    ]).toEqual(["h1"]);
+  });
 });

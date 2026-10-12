@@ -114,6 +114,14 @@ export function completedHandIds(
   for (const frame of frames) {
     if (frame.handId === null || frame.sequence === null) continue;
     const sequence = BigInt(frame.sequence);
+    if (frame.type === "GAME_SNAPSHOT" || frame.type === "RECONNECT_RESULT") {
+      for (const [handId, lastAward] of awarded) {
+        if (frame.handId !== handId && sequence > lastAward) {
+          completed.add(handId);
+          awarded.delete(handId);
+        }
+      }
+    }
     if (
       (frame.type === "GAME_SNAPSHOT" || frame.type === "RECONNECT_RESULT") &&
       (frame.phase === "SHOWDOWN_DISPLAY" || frame.phase === "HAND_END")

@@ -3,6 +3,42 @@ import { once } from "node:events";
 import { expect, it } from "vitest";
 import { createNetworkProxy } from "./network-proxy";
 
+it("keeps fragmented real TCP bursts ordered under seeded jitter and equal deadlines", async () => {
+  const upstream = createServer((socket) => socket.pipe(socket));
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  if (address === null || typeof address === "string") throw new Error("listen failed");
+  const proxy = await createNetworkProxy(address.port);
+  proxy.setProfile({ rttMs: 300, jitterMs: 149, seed: 62 });
+  const client = createConnection({ host: "127.0.0.1", port: proxy.port });
+  client.setNoDelay();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  const received = new Promise<Buffer>((resolve) =>
+    client.on("data", (bytes: Buffer) => {
+      chunks.push(bytes);
+      total += bytes.length;
+      if (total >= 128) resolve(Buffer.concat(chunks));
+    }),
+  );
+  try {
+    await once(client, "connect");
+    const expected = Buffer.from(Array.from({ length: 128 }, (_, index) => index));
+    for (const byte of expected) {
+      client.write(Buffer.from([byte]));
+      await new Promise((resolve) => setTimeout(resolve, 1)); // Real packet fragmentation injection.
+    }
+    expect(await received).toEqual(expected);
+    expect(proxy.samples.filter((sample) => sample.direction === "up").length).toBeGreaterThan(5);
+    expect(proxy.errors).toEqual([]);
+  } finally {
+    client.destroy();
+    await proxy.close();
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  }
+});
+
 it("TEX-62 forwards real TCP bytes in order, delays both directions and isolates disconnect", async () => {
   const upstream = createServer((socket) => socket.pipe(socket));
   upstream.listen(0, "127.0.0.1");
