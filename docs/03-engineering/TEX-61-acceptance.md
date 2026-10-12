@@ -60,3 +60,11 @@ PR #71 的 Codex、Greptile、CodeRabbit 逐条核验与最小修复见 [Finding
 `pnpm exec vitest run tests/performance`：9 个文件、83 项通过；新增 8 项序列回归在旧实现下有 5 项失败。目标文件 ESLint、`tsc --noEmit -p tsconfig.test.json`、Prettier、文档本地链接和差异空白检查通过。CLI 输出脱敏功能计数；CI 上传隐藏产物目录时显式 include-hidden-files，Git 忽略本地产物。
 
 同步压测 README、Workflow README、06 测试策略及本记录。01–05 业务规格、任务范围/路线图与运维/安全说明已检查，无需更新：本次仅修正测试对既有协议的校验及证据交付，没有改变运行时、授权或日志字段。
+
+## TEX-62 发现的事件投递回归修复（2026-10-12）
+
+普通阶段 Snapshot 曾无条件删除该连接尚未写出的 Game 帧。原生 send callback 仍在途时，正常摊牌批次的 Reveal/Pot 分配会丢失。现在普通 Snapshot 保留 FIFO 顺序；实际背压恢复继续替换旧帧、重投影最新状态和执行既有阈值/1013 策略。
+
+`pnpm exec vitest run --project unit apps/game-server/src/realtime/gateway/connection-outbox.test.ts apps/game-server/src/realtime/gateway/lobby-gateway.test.ts --maxWorkers 1`：40 项通过，新增健康终局批次及跨手/同序列阶段更新回归。Game server typecheck、目标 ESLint、Prettier 和 diff check 通过。完整浏览器验收由 TEX-62 的独立候选记录提供，本记录不将其提前视为通过。
+
+同步 Gateway、服务端 README 及 02/04 权威规格。安全/运维、01/03/05 规格和任务路线图已检查，无需更新：未改变消息结构、投影权限、日志字段、阈值、发布范围或持久化结构。本次修复与 TEX-62 门禁分支分别交付。

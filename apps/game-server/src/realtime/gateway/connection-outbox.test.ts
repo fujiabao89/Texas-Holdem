@@ -88,6 +88,61 @@ function harness(
 }
 
 describe("TEX-61 bounded per-connection egress", () => {
+  it("keeps a healthy terminal event batch before its ordinary phase snapshot", () => {
+    const h = harness();
+    const batch = [event(21), event(22), event(23), event(24), event(25)];
+    // The native socket callback can be pending while one executor drain emits
+    // checks, public reveals, awards, then the same-sequence phase snapshot.
+    for (const message of batch) h.outbox.send(message);
+    const phase: ServerMessage = {
+      type: "GAME_SNAPSHOT",
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: 1,
+      payload: snapshot("25", "h1"),
+    };
+    h.outbox.send(phase);
+    while (h.callbacks.length > 0) h.complete();
+    expect(h.sent).toEqual([...batch, phase]);
+    expect(h.onResync).not.toHaveBeenCalled();
+    expect(h.outbox.isIdle()).toBe(true);
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("retains multiple healthy hand boundaries and same-sequence authority updates in order", () => {
+    const h = harness();
+    h.outbox.send(reply);
+    const messages: ServerMessage[] = [
+      event(1),
+      event(2),
+      {
+        type: "GAME_SNAPSHOT",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: 1,
+        payload: snapshot("2", "h1"),
+      },
+      event(3),
+      {
+        type: "GAME_SNAPSHOT",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: 2,
+        payload: snapshot("3", "h2"),
+      },
+      {
+        type: "GAME_SNAPSHOT",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: 3,
+        payload: { ...snapshot("3", "h2"), currentActorPlayerId: "p1", actionDeadline: 42_000 },
+      },
+      event(4),
+    ];
+    for (const message of messages) h.outbox.send(message);
+    h.outbox.send(event(3)); // A late fanout covered by the snapshot stays suppressed.
+    while (h.callbacks.length > 0) h.complete();
+    expect(h.sent).toEqual([reply, ...messages]);
+    expect(h.onResync).not.toHaveBeenCalled();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
   it.each(["100", "101"])(
     "retains the recovery deadline until a later snapshot at sequence %s completes",
     (sequence) => {

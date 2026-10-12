@@ -189,6 +189,8 @@ Game Event 的业务产生条件与规则语义以 [01 §14](./01-engine-spec.md
 3. 先发送含 `sequence: S` 的 Snapshot，再按序发送缓冲事件；
 4. Snapshot 不得声称覆盖尚未反映到其状态中的事件。
 
+未触发重同步的正常阶段更新必须保留此前已排队的连续事件，再发送阶段 Snapshot；不能以屏障为由删除正常连接尚未写出的摊牌/结算事件。背压恢复丢弃旧事件的条件见 [04 §9.5](./04-game-server-architecture.md#95-事件积压与-fast-forward)。
+
 客户端应用规则：
 
 - 收到 Snapshot 后原子替换本地权威视图，并把 `lastSequence` 设为 Snapshot.sequence；清空旧动画队列。
