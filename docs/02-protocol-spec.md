@@ -178,7 +178,7 @@ type GameEventMessage = ServerMessage<"GAME_EVENT", {
 }>;
 ```
 
-Game Event 的业务产生条件与规则语义以 [01 §14](./01-engine-spec.md#14-game-events区块6-10-v02-612) 为准；协议层负责 envelope、wire Payload、顺序、`PlayerViewPatch` 和逐接收者投影。客户端按 sequence 将 `patch` 应用到当前 PlayerView，得到该事件后的权威视图；`event` 用于动画、历史和语义展示。每个授权订阅者都会观察到连续的 sequence：私有发牌事件对非目标接收者仍保留同一 `type/sequence`，但删除 `card` 等私有字段，且其 patch 不得含私有牌。
+Game Event 的业务产生条件与规则语义以 [01 §14](./01-engine-spec.md#14-game-events区块6-10-v02612) 为准；协议层负责 envelope、wire Payload、顺序、`PlayerViewPatch` 和逐接收者投影。客户端按 sequence 将 `patch` 应用到当前 PlayerView，得到该事件后的权威视图；`event` 用于动画、历史和语义展示。每个授权订阅者都会观察到连续的 sequence：私有发牌事件对非目标接收者仍保留同一 `type/sequence`，但删除 `card` 等私有字段，且其 patch 不得含私有牌。
 
 ### 6.4 Snapshot/Event 原子交接【规范性决定】
 
@@ -252,7 +252,7 @@ TEX-60：Time Bank 同样使用 Schema 后固定的 receivedAt。原机会尚未
 
 ## 8. 消息目录（wire catalog）
 
-命名已统一为“字段 lowerCamelCase、枚举 UPPER_SNAKE_CASE”。HTTP 操作名不进入 wire `type`；Engine Event 名称保持 [01 §14](./01-engine-spec.md#14-game-events区块6-10-v02-612) 的 UPPER_SNAKE_CASE。
+命名已统一为“字段 lowerCamelCase、枚举 UPPER_SNAKE_CASE”。HTTP 操作名不进入 wire `type`；Engine Event 名称保持 [01 §14](./01-engine-spec.md#14-game-events区块6-10-v02612) 的 UPPER_SNAKE_CASE。
 
 ### 8.1 Client → Server
 
