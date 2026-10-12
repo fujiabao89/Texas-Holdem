@@ -24,6 +24,40 @@ function setup(options: ConstructorParameters<typeof AnimationQueue>[0] = {}) {
 }
 
 describe("presentation lifecycle", () => {
+  it("starts the minimum reading window after a delayed visible result, not its transport commit", () => {
+    const { queue, clock, push } = setup({ requireOutcomeVisibility: true });
+    queue.setReducedMotion(true);
+    push(award);
+    const outcome = queue.getSnapshot().outcomeEvents;
+    push(started, "hand-2");
+    clock.advance(5_000); // A stalled render cannot consume the reading window.
+    expect(queue.getSnapshot().game?.handId).toBe("hand-1");
+    queue.markOutcomeVisible("hand-1", outcome);
+    clock.advance(999);
+    expect(queue.getSnapshot().outcomeEvents).toEqual([award]);
+    clock.advance(1);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2" }, outcomeEvents: [] });
+  });
+
+  it("waits for the static recap paint during hard-forward and ignores stale paint notifications", () => {
+    const request = vi.fn();
+    const { queue, clock, push } = setup({ requireOutcomeVisibility: true, onHardForward: request });
+    push(award);
+    for (let i = 0; i < 41; i++) push();
+    const outcome = queue.getSnapshot().outcomeEvents;
+    push(started, "hand-2");
+    clock.advance(5_000);
+    expect(request).not.toHaveBeenCalled();
+    queue.markOutcomeVisible("hand-1", outcome);
+    clock.advance(999);
+    expect(request).not.toHaveBeenCalled();
+    clock.advance(1);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-2");
+    queue.markOutcomeVisible("hand-1", outcome);
+    queue.cancel();
+    expect(clock.pendingTimers()).toBe(0);
+  });
   it("keeps reduced-motion split-pot results for a second before switching hands", () => {
     const cues = vi.fn();
     const { queue, clock, push } = setup({ onEventStarted: cues });

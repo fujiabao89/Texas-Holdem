@@ -13,3 +13,5 @@ TEX-38 将入队时的两轮收件人规划与播放时的每手落牌进度分�
 Hard Forward 保留可见模式、120ms 过渡和 3 秒提示；已有公开结果时先静态停留 1 秒再请求 Snapshot。超过两倍队列事件上限时强制收敛，以免极端连续事件让 Showdown 保护无限延期。取消与卸载清理所有任务及提示 timer；恢复 Snapshot 清理旧装饰任务后，前台已接收的分池摘要保留剩余阅读时间，后台不保留阅读 timer。音频回调异常只影响声音，不缩短牌面展示。
 
 验证：`pnpm exec vitest run --project unit apps/web/src/animations --maxWorkers 1`。`presentation-lifecycle.test.ts` 专测跨手、后台、快进、去重、静态分池、降级音效与清理；浏览器回归见 [animation-audio](../../../../tests/e2e/animation-audio/README.md)。权威体验契约见 [前端规格 §9.7](../../../../docs/05-frontend-spec.md#97-tex-38-体验优化契约2026-09-05)。
+
+TEX-35：React 适配器在结果经过实际绘制后，以本地 `markOutcomeVisible` 开始 1,000ms 阅读窗口；跨手与恢复等待该窗口，过期 handId/事件引用不会重新计时。该通知不发送到服务端，canonical、sequence 和 deadline 不等待展示。后台与卸载取消绘制回调和阅读任务。
