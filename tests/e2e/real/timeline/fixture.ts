@@ -255,8 +255,24 @@ function observe(
       !/WebSocket.*(closed before|connection|interrupted)|can['’]t establish a connection|was interrupted while the page was loading|Failed to load resource: net::ERR_(CONNECTION|INTERNET)/i.test(
         message.text(),
       )
-    )
-      recordError("console error");
+    ) {
+      const status = message.text().match(/status of (\d{3})/i)?.[1];
+      let resource = "resource";
+      try {
+        const path = new URL(message.location().url).pathname;
+        resource =
+          path === "/favicon.ico"
+            ? "favicon"
+            : path.startsWith("/_next/")
+              ? "next-asset"
+              : path.startsWith("/api/")
+                ? "api"
+                : "resource";
+      } catch {
+        /* no URL values are exported */
+      }
+      recordError(status === undefined ? "console error" : `console HTTP ${status} (${resource})`);
+    }
   });
   page.on("response", (response) => {
     if (response.status() >= 500) recordError(`HTTP ${response.status()}`);
@@ -360,7 +376,7 @@ export const test = base.extend<{ timeline: TimelineSession }>({
     const players: PlayerProbe[] = [];
     let stopDriving: (() => boolean) | null = null;
     let roomId: string | null = null;
-    const videoFiles: string[] = [];
+    const videoFiles: { index: number; path: string }[] = [];
     const owned = {
       native: null as Awaited<ReturnType<typeof openNativeBackgroundBrowser>> | null,
     };
@@ -669,11 +685,11 @@ export const test = base.extend<{ timeline: TimelineSession }>({
           await player.proxy.close();
         }
         const file = await video?.path();
-        if (file !== undefined) videoFiles.push(file);
+        if (file !== undefined) videoFiles.push({ index, path: file });
         if (!gateFailed && info.status === "passed") await video?.delete();
       }
       if (gateFailed || info.status !== "passed")
-        for (const [index, path] of videoFiles.entries())
+        for (const { index, path } of videoFiles)
           await info.attach(`masked-player-${index}`, { path, contentType: "video/webm" });
       if (!safe) throw new Error("sensitive evidence refused export");
       if (owned.native !== null) {

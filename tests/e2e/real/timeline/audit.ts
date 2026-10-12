@@ -6,8 +6,30 @@ import { isSafeEvidence } from "../../../support/timeline-evidence";
 const root = resolve(__dirname, "../../.artifacts-timeline");
 let checked = 0;
 let inspecting: string | null = null;
+let reason = "unsafe evidence";
+function problemPath(value: unknown, path = "root"): string | null {
+  if (typeof value === "string")
+    return /postgres(?:ql)?:\/\//i.test(value) ? `${path}: database URI` : null;
+  if (value === null || typeof value !== "object") return null;
+  for (const [key, child] of Object.entries(value)) {
+    const part = /^[a-zA-Z0-9_-]{1,64}$/.test(key) ? key : "[key]";
+    const next = `${path}.${part}`;
+    if (
+      /^(payload|playerToken|authorization|headers|cookies|deck|holeCards|privateHoleCards|burnCards|rank|suit)$/i.test(
+        key,
+      )
+    )
+      return `${next}: forbidden field`;
+    const problem = problemPath(child, next);
+    if (problem !== null) return problem;
+  }
+  return null;
+}
 function inspectJson(value: unknown): boolean {
-  if (!isSafeEvidence(value)) return false;
+  if (!isSafeEvidence(value)) {
+    reason = problemPath(value) ?? "unsafe evidence";
+    return false;
+  }
   if (value === null || typeof value !== "object") return true;
   const record = value as Record<string, unknown>;
   if (record.name === "evidence-rejected") return false;
@@ -54,7 +76,7 @@ try {
 } catch {
   // Only the controlled relative filename is diagnostic. Never print rejected contents.
   console.error(
-    `Timeline artifact audit failed; do not upload this directory (${JSON.stringify(inspecting)?.slice(0, 256)})`,
+    `Timeline artifact audit failed; do not upload this directory (${JSON.stringify(inspecting)?.slice(0, 256)}; ${reason.slice(0, 256)})`,
   );
   process.exitCode = 1;
 }
