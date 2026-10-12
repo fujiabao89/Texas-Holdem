@@ -7,3 +7,4 @@
 timeline 模式用 Node --import tsx 直接启动应用并保存匹配 schema 的 PID；timeline teardown 先停止本次应用，再调用既有 schema 清理。其他 real 套件维持原启动/teardown 路径。由 Playwright 配置管理进程；不要手动同时启动两个 real 配置或复用生产数据库。夹具遵守 [06 §9.3](../../../../docs/06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求) 的真实链路与隔离要求，完整说明见 [E2E README](../../README.md)。
 
 配置必须使用 writeRunIdentity 返回的实际身份，不能在旧文件仍存在时另用新 schema。不同端口的并发运行明确拒绝；身份一致性与中断续用由 tests/support/run-identity.test.ts 使用独立临时文件验证。
+createRoomViaUi 的可选 baseURL 仅用于真实原生默认 context 的绝对导航，不改变应用请求或房间配置。

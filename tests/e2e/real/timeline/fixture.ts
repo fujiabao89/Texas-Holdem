@@ -30,6 +30,7 @@ import {
 } from "../../../support/timeline-evidence";
 import { readRunIdentity } from "../support/run-identity";
 import { observedWebSocketText } from "../../../support/websocket-text";
+import { openNativeBackgroundBrowser } from "./native-browser";
 import {
   createRoomViaUi,
   readInviteCode,
@@ -64,6 +65,7 @@ export interface PlayerProbe {
   backgroundHands?: Set<string>;
 }
 export interface TimelineSession {
+  backgroundPage(): Promise<Page>;
   players: PlayerProbe[];
   create(
     count: number,
@@ -359,25 +361,37 @@ export const test = base.extend<{ timeline: TimelineSession }>({
     let stopDriving: (() => boolean) | null = null;
     let roomId: string | null = null;
     const videoFiles: string[] = [];
+    const owned = {
+      native: null as Awaited<ReturnType<typeof openNativeBackgroundBrowser>> | null,
+    };
     const session: TimelineSession = {
       players,
+      async backgroundPage() {
+        owned.native ??= await openNativeBackgroundBrowser();
+        return owned.native.page;
+      },
       async create(count, options = {}) {
         for (let index = 0; index < count; index++) {
           const proxy = await createNetworkProxy(identity.serverPort);
           const videoDir = info.outputPath(`player-${index}-video`);
           mkdirSync(videoDir, { recursive: true });
-          const context = await browser.newContext({
-            baseURL,
-            reducedMotion: options.reduced ? "reduce" : "no-preference",
-            viewport: options.viewport,
-            recordVideo: { dir: videoDir },
-          });
+          const context =
+            index === 0 && owned.native !== null
+              ? owned.native.context
+              : await browser.newContext({
+                  baseURL,
+                  reducedMotion: options.reduced ? "reduce" : "no-preference",
+                  viewport: options.viewport,
+                  recordVideo: { dir: videoDir },
+                });
           await installObservation(context, proxy.port, identity.serverPort);
-          const page = await context.newPage();
+          const page =
+            index === 0 && owned.native !== null ? owned.native.page : await context.newPage();
           players.push(observe(page, context, proxy, browser.browserType().name()));
         }
         const host = players[0]!.page;
         await createRoomViaUi(host, {
+          baseURL,
           displayName: "时序玩家0",
           maxPlayers: count,
           startingStack: options.stack ?? 1000,
@@ -442,7 +456,8 @@ export const test = base.extend<{ timeline: TimelineSession }>({
         const sequence = actor.game!.sequence;
         const allInButton = policy === "all-in" && actor.game!.viewer.legalActions!.canAllIn;
         const button = buttonFor(actor);
-        if (process.env.TEX_TIMELINE_SCENARIO === "background") await actor.page.bringToFront();
+        if (process.env.TEX_TIMELINE_SCENARIO === "background" && actor === players[0])
+          await actor.page.bringToFront();
         await expect(button).toBeEnabled();
         await button.click();
         if (allInButton)
@@ -646,7 +661,10 @@ export const test = base.extend<{ timeline: TimelineSession }>({
             .catch(() => undefined);
         const video = player.page.video();
         try {
-          await player.context.close();
+          if (owned.native !== null && player.context === owned.native.context) {
+            await owned.native.close();
+            owned.native = null;
+          } else await player.context.close();
         } finally {
           await player.proxy.close();
         }
@@ -658,6 +676,10 @@ export const test = base.extend<{ timeline: TimelineSession }>({
         for (const [index, path] of videoFiles.entries())
           await info.attach(`masked-player-${index}`, { path, contentType: "video/webm" });
       if (!safe) throw new Error("sensitive evidence refused export");
+      if (owned.native !== null) {
+        await owned.native.close();
+        owned.native = null;
+      }
     }
   },
 });

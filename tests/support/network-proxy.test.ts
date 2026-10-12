@@ -3,6 +3,37 @@ import { once } from "node:events";
 import { expect, it } from "vitest";
 import { createNetworkProxy } from "./network-proxy";
 
+it("backpressures a real burst before the proxy's own delay queue reaches its hard bound", async () => {
+  const upstream = createServer((socket) => socket.pipe(socket));
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  if (address === null || typeof address === "string") throw new Error("listen failed");
+  const proxy = await createNetworkProxy(address.port);
+  proxy.setProfile({ rttMs: 100, jitterMs: 10, seed: 62 });
+  const client = createConnection({ host: "127.0.0.1", port: proxy.port });
+  const expected = Buffer.alloc(2 * 1024 * 1024, 0xa5);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  const received = new Promise<Buffer>((resolve) =>
+    client.on("data", (bytes: Buffer) => {
+      chunks.push(bytes);
+      total += bytes.length;
+      if (total === expected.length) resolve(Buffer.concat(chunks));
+    }),
+  );
+  try {
+    await once(client, "connect");
+    client.write(expected);
+    expect((await received).equals(expected)).toBe(true);
+    expect(proxy.errors).toEqual([]);
+  } finally {
+    client.destroy();
+    await proxy.close();
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  }
+});
+
 it("keeps fragmented real TCP bursts ordered under seeded jitter and equal deadlines", async () => {
   const upstream = createServer((socket) => socket.pipe(socket));
   upstream.listen(0, "127.0.0.1");

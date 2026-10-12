@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: timeline-rc-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   timeline-rc:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'timeline-rc')

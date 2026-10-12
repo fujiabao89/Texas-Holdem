@@ -1,10 +1,11 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { resolve, extname } from "node:path";
+import { resolve, extname, relative } from "node:path";
 import { isSafeEvidence } from "../../../support/timeline-evidence";
 
 // Independent pre-upload check also covers Playwright's own failure files.
 const root = resolve(__dirname, "../../.artifacts-timeline");
 let checked = 0;
+let inspecting: string | null = null;
 function inspectJson(value: unknown): boolean {
   if (!isSafeEvidence(value)) return false;
   if (value === null || typeof value !== "object") return true;
@@ -31,6 +32,7 @@ function scan(directory: string): void {
       continue;
     }
     checked++;
+    inspecting = relative(root, path);
     const extension = extname(path);
     if (extension === ".png" || extension === ".webm") continue; // fixture masks all card faces
     const content = readFileSync(path, "utf8");
@@ -50,6 +52,9 @@ try {
   if (checked === 0) throw new Error("no artifacts to audit");
   console.log(`Timeline artifact audit passed (${checked} files)`);
 } catch {
-  console.error("Timeline artifact audit failed; do not upload this directory");
+  // Only the controlled relative filename is diagnostic. Never print rejected contents.
+  console.error(
+    `Timeline artifact audit failed; do not upload this directory (${JSON.stringify(inspecting)?.slice(0, 256)})`,
+  );
   process.exitCode = 1;
 }

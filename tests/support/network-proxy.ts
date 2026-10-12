@@ -63,9 +63,12 @@ export async function createNetworkProxy(upstreamPort: number) {
       let tail = 0;
       let timer: ReturnType<typeof setTimeout> | null = null;
       let blocked = false;
+      let queuePaused = false;
+      let pendingBytes = 0;
       const pending: { bytes: Buffer; arrived: number; due: number; scheduledMs: number }[] = [];
       const resume = () => {
-        if (!stopped && !blocked && !(paused && source === upstream)) source.resume();
+        if (!stopped && !blocked && !queuePaused && !(paused && source === upstream))
+          source.resume();
       };
       if (source === upstream) pair.resumeUpstream = resume;
       const pump = () => {
@@ -84,6 +87,11 @@ export async function createNetworkProxy(upstreamPort: number) {
             ) {
               const item = pending.shift()!;
               buffered -= item.bytes.length;
+              pendingBytes -= item.bytes.length;
+              if (queuePaused && pendingBytes < 128 * 1024) {
+                queuePaused = false;
+                resume();
+              }
               if (target.destroyed) {
                 pair.cancel();
                 return;
@@ -128,6 +136,11 @@ export async function createNetworkProxy(upstreamPort: number) {
           return;
         }
         pending.push({ bytes, arrived, due: tail, scheduledMs });
+        pendingBytes += bytes.length;
+        if (pendingBytes >= 256 * 1024) {
+          queuePaused = true;
+          source.pause();
+        }
         pump();
       });
       source.on("error", () => pair.cancel());

@@ -24,13 +24,13 @@ async function coverWithNativeTab(page: Page) {
 
 test("R2/R3 真实窗口后台与恢复：不补播旧手，Snapshot回到当前可操作手 @timeline-rc", async ({
   timeline,
-  page,
 }) => {
   expect(process.env.TEX_TIMELINE_HEADED, "run headed (Linux: xvfb-run); no visibility mock").toBe(
     "1",
   );
   // Fail a missing native capability before starting a real room; never skip or
   // spoof visibility. Both this preflight and the actual table must become hidden.
+  const page = await timeline.backgroundPage();
   const preflight = await coverWithNativeTab(page);
   await page.bringToFront();
   await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("visible");

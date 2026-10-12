@@ -40,11 +40,14 @@ async function waitForReactHydration(locator: Locator): Promise<void> {
 }
 
 async function waitForLobbyReady(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: LOBBY_READY_TIMEOUT });
+  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({
+    timeout: LOBBY_READY_TIMEOUT,
+  });
   await expect(page.getByText("已连接").first()).toBeVisible({ timeout: LOBBY_READY_TIMEOUT });
 }
 
 export interface CreateRoomOptions {
+  readonly baseURL?: string;
   readonly displayName: string;
   readonly startingStack?: number;
   readonly maxPlayers?: number;
@@ -55,7 +58,9 @@ export interface CreateRoomOptions {
 }
 
 export async function createRoomViaUi(page: Page, options: CreateRoomOptions): Promise<void> {
-  await page.goto("/create");
+  await page.goto(
+    options.baseURL === undefined ? "/create" : new URL("/create", options.baseURL).href,
+  );
   await expect(page.getByRole("heading", { name: "创建私人房间" })).toBeVisible();
   const displayName = page.getByLabel("昵称");
   await waitForReactHydration(displayName);
@@ -102,7 +107,9 @@ export async function joinViaUi(
 
 /** 入座第一个空位并点击准备。 */
 export async function takeSeatAndReady(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({ timeout: LOBBY_READY_TIMEOUT });
+  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible({
+    timeout: LOBBY_READY_TIMEOUT,
+  });
   await page.getByRole("button", { name: "选择此座位" }).first().click();
   // 入座后「准备」按钮才渲染；点击后切换为「取消准备」（lobby-page.tsx）。
   const ready = page.getByRole("button", { name: "准备", exact: true });

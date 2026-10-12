@@ -36,3 +36,7 @@ TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返�
 终局驾驶按完整批次边界计数：普通摊牌等待 GAME_SNAPSHOT/RECONNECT_RESULT 的终局状态；Fold-to-win 等待下一手 HAND_STARTED，最终手等待 TOURNAMENT_FINISHED。SHOWDOWN_STARTED Patch 的 HAND_END 和第一条 POT_AWARDED 都不能提前完成目标，确保多 Pot 分配已收齐。hand-boundary 单测覆盖该竞争；真实目标分支仍显式校验权威分配，恢复 Snapshot 不可掩盖缺失事件。
 
 代理回归修正：每方向只由一个定时 FIFO 泵写出 TCP 块，计时到期后只从队头排空；遵守真实 write/drain 背压，resumeReads 不覆盖未解除的写压力。128 个真实分块、RTT 300ms/抖动 149ms/seed 62 的旧实现出现字节乱序，新实现完整保序。恢复到下一手 Snapshot 也可确认已收到派奖的上一手结束，分配分支仍独立校验。
+
+真实后台主玩家使用独立空临时 profile 启动 Chromium，再通过公开 connectOverCDP(noDefaults:true) 连接默认 context，避免 Playwright 的默认焦点模拟覆盖原生 visibility。仅切换真实标签，不改写 document.hidden/visibilityState。主玩家以连续 DOM 与失败遮牌截图提供证据（不启用会干扰后台的自动录屏），其余玩家沿用遮牌录像；关闭后验证绝对 profile 属于本任务临时目录再清理。原生探针已证明 hidden→visible。UI helper 可接收显式 baseURL，避免默认 context 依赖自动配置。
+
+代理按方向在 256KiB 暂停读取、128KiB 以下恢复，并继续遵守 write/drain 和外部停读；2MiB 原生回环突发保持完整字节且不触发代理自身 1MiB 硬上限。生产服务端阈值不变。上传审计仍拒绝不安全产物，仅打印受控相对文件名，便于定位 CI 捕获问题。
