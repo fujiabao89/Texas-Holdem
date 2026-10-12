@@ -22,7 +22,16 @@ test("R1/R4 双人15秒：正常摊牌→连续三手→完整行动时钟 @time
   const open = snapshots.find((frame) => frame.deadline !== null && frame.deadline !== undefined);
   expect(open).toBeDefined();
   expect(
-    snapshots.some((frame) => frame.sequence === open!.sequence && frame.deadline === null),
+    timeline.players[0]!.frames.some(
+      (frame) =>
+        (frame.type === "GAME_SNAPSHOT" || frame.type === "RECONNECT_RESULT") &&
+        frame.handId === open!.handId &&
+        frame.sequence === open!.sequence &&
+        frame.at < open!.at &&
+        frame.actor === null &&
+        frame.deadline === null &&
+        frame.hasLegalActions === false,
+    ),
   ).toBe(true);
   await timeline.assert();
 });

@@ -505,6 +505,35 @@ export const test = base.extend<{ timeline: TimelineSession }>({
               ),
             "showdown has no action opportunity",
           ).toBe(true);
+          const expectedAwards = player.events.flatMap((frame) => {
+            if (
+              frame.payload.event.type !== "POT_AWARDED" ||
+              (frame.payload.handId !== null && player.backgroundHands?.has(frame.payload.handId))
+            )
+              return [];
+            return frame.payload.event.payload.awards.map((award) => ({
+              handId: frame.payload.handId,
+              line: `${player.game?.players.find((candidate) => candidate.playerId === award.playerId)?.displayName} 获得 ${award.amount}`,
+            }));
+          });
+          // The observer records transport acceptance before semantic playback
+          // completes. Await actual DOM allocation, including a paced showdown,
+          // rather than inspecting immediately after the final action's frame.
+          await expect
+            .poll(
+              async () => {
+                const dom = await domEvidence(player.page);
+                return expectedAwards.every((award) =>
+                  dom.samples.some(
+                    (sample) =>
+                      sample.outcomeHandId === award.handId &&
+                      sample.awardLines?.includes(award.line),
+                  ),
+                );
+              },
+              { timeout: 45_000, message: "all received allocations became visible" },
+            )
+            .toBe(true);
           const dom = await domEvidence(player.page);
           expect(dom.overflow).toBe(false);
           expect(dom.samples.some((sample) => sample.handId !== null)).toBe(true);

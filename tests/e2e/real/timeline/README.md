@@ -26,3 +26,5 @@ Node 22+、仓库固定 pnpm、PostgreSQL 16；时序配置每次先执行 Next 
 证据位于 `tests/e2e/.artifacts-timeline/`（gitignore）：`gate.json` 总结果、各场景 `results.json`、每名玩家的事件元数据/DOM/帧间隔/网络采样、白名单服务端日志。失败保留遮盖所有牌面的截图/录像，成功删除录像。每条证据在导出前核验本次真实 playerToken、连接串与牌面/原始 Payload 结构；独立 audit.ts 再审查整个产物目录，审计失败禁止 GitHub 上传。timeline global-teardown 校验 runId 派生 schema 与 application PID，仅停止本次测试子进程，再删除隔离 schema，避免先强制断 DB 导致日志展开连接对象。关闭原始 trace 与 Playwright 自动页面可访问性快照（`PLAYWRIGHT_NO_COPY_PROMPT`），不导出原始事件 Payload、认证 URL、牌面或连接串。报告记录 HEAD 与工作区是否有未提交修改，未提交验证不能冒充已提交候选 SHA 的发布证明。
 
 真实旧 Timer 回调的确定性拒绝由 TEX-59 runtime 单测补充；E2E 断言实际 AUTO_ACTION 不早于当前 deadline，不能因未出现 TIMER_IGNORED 就宣称已触发旧回调。桌面移动视口、代理网络与 Xvfb 后台不替代 TEX-56 移动实机/公网/人工多人复玩。GitHub 产物保留及受控 Release 档案要求见 [工作流 README](../../../../.github/workflows/README.md)。
+
+TEX-62 复验修正：终局事件接收先于语义展示完成，因此验收等待 DOM 中每项权威分配实际出现（最多 45 秒），随后仍执行最低停留/混手/重复发牌校验。首手闭合行动状态可能由重连 Snapshot 提供，R1 对照同 handId/sequence 的先前 GAME_SNAPSHOT 或 RECONNECT_RESULT 与行动开放 Snapshot，不要求额外广播同内容帧。
