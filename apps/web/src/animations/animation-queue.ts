@@ -142,7 +142,7 @@ export class AnimationQueue {
     if (!foreground) { this.cancel(); this.outcomeVisibleSince = null; this.confirmedOutcomeEvents = null; }
   }
 
-  /** Snapshot and reconnect are barriers: discard old work and never replay it. */
+  /** Recovery replaces decoration; continuous phase updates preserve accepted semantics. */
   alignToSnapshot(game: GameSnapshot | null, continuous = false): void {
     if (continuous && game !== null && this.tailTarget?.tournamentId === game.tournamentId
       && this.tailTarget.handId === game.handId && this.tailTarget.sequence === game.sequence) {
