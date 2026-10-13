@@ -68,3 +68,9 @@ PR #71 的 Codex、Greptile、CodeRabbit 逐条核验与最小修复见 [Finding
 `pnpm exec vitest run --project unit apps/game-server/src/realtime/gateway/connection-outbox.test.ts apps/game-server/src/realtime/gateway/lobby-gateway.test.ts --maxWorkers 1`：40 项通过，新增健康终局批次及跨手/同序列阶段更新回归。Game server typecheck、目标 ESLint、Prettier 和 diff check 通过。完整浏览器验收由 TEX-62 的独立候选记录提供，本记录不将其提前视为通过。
 
 同步 Gateway、服务端 README 及 02/04 权威规格。安全/运维、01/03/05 规格和任务路线图已检查，无需更新：未改变消息结构、投影权限、日志字段、阈值、发布范围或持久化结构。本次修复与 TEX-62 门禁分支分别交付。
+
+## 持续控制积压恢复循环（2026-10-13）
+
+TEX-62 固定候选 `4a2eef1d` 的 Linux RC 已触发真实背压，但恢复快照写出后控制队列仍超软限，Outbox 不断插入优先 RESYNC_REQUIRED/Snapshot，未能排空回执。保持一次持续字节压力的一次恢复意图，快照后继续 FIFO 排空控制回复；回落软限后可开始新的独立恢复。事件数/年龄、硬上限及原始超时未变。
+
+新增确定性控制积压回归在旧代码中失败（预期 TIME_SYNC_RESULT，实际再次 RESYNC_REQUIRED）；修复后上述 Gateway 两文件共 41 项通过，覆盖完整排空和第二次独立压力。同步 04 §9.5 与两个 README；02/01/03/05、安全及运维已检查，无需更新：没有改变 wire、权限、日志字段、配置、规则、持久化或发布范围。真实门禁最终结果仍由 TEX-62 固定 SHA 证据提供。

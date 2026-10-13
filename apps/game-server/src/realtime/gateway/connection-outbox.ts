@@ -48,6 +48,10 @@ export function createConnectionOutbox(options: OutboxOptions) {
   // Retain at most one unsent authoritative recovery; generate it only once transport can drain.
   let recovering = false;
   let recoverySnapshotInFlight = false;
+  // One byte recovery per sustained soft-limit episode. Re-inserting priority
+  // snapshots while retained control replies still exceed the limit starves
+  // those replies and creates an unbounded resync loop on a draining socket.
+  let byteResyncActive = false;
 
   const buffered = () => options.socket.bufferedAmount ?? 0;
   function dispose(): void {
@@ -81,7 +85,13 @@ export function createConnectionOutbox(options: OutboxOptions) {
     queueBytes = queue.reduce((sum, item) => sum + item.bytes, 0);
   }
   function beginResync(tournamentId: string, trigger: ResyncTrigger): void {
-    if (resyncTournament === tournamentId || recovering) return;
+    if (
+      resyncTournament === tournamentId ||
+      recovering ||
+      (trigger === "bytes" && byteResyncActive)
+    )
+      return;
+    if (trigger === "bytes") byteResyncActive = true;
     removeGameFrames(tournamentId);
     resyncTournament = tournamentId;
     recoveryStartedAt ??= options.now();
@@ -90,6 +100,8 @@ export function createConnectionOutbox(options: OutboxOptions) {
   function check(): void {
     if (stopped) return;
     const total = queueBytes + buffered();
+    if (total < SEND_LIMITS.softBytes && resyncTournament === null && !recovering)
+      byteResyncActive = false;
     if (total >= SEND_LIMITS.hardBytes) {
       close("hard_bytes");
       return;
@@ -278,6 +290,7 @@ export function createConnectionOutbox(options: OutboxOptions) {
     resyncTournament = null;
     recovering = false;
     recoverySnapshotInFlight = false;
+    byteResyncActive = false;
     barrier = null;
   }
   return {

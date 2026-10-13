@@ -24,3 +24,5 @@ wire v6 握手版本由共享协议包决定；`lobby-gateway.test.ts` 验证旧
 TEX-53 的 gateway 单元覆盖 INITIAL、GAP→RESYNC 和重连的新快照 D/SB/BB 一致；真实 HTTP/WS 链路与开手事件对照见 `tests/clients/server-harness.test.ts`。
 
 TEX-60：Schema 后立即固定接收时间/Action 入口序号，后续成员检查耗时不改变 receivedAt。TIME_SYNC 仅允许已认证当前 epoch，直接回复 serverReceivedAt/serverSentAt，不续发 deadline。gateway 单元覆盖校时无状态副作用、未认证/伪造字段拒绝与慢访问检查。当前 wire 为 v6。
+
+TEX-62 的真实慢接收回归发现控制积压会重复优先插入恢复帧。Outbox 现对一次持续字节压力只重同步一次，随后排空控制回执；回落软限后可开始新的压力恢复。事件数/年龄、1MiB 硬限与原始 30 秒期限保持生效。单元回归在旧实现中失败，修复后验证完整排空及后续独立压力。
