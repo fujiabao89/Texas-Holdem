@@ -285,34 +285,53 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
           (row.event === "RESYNC_REQUIRED" || row.event === "SLOW_CONNECTION_CLOSED"),
       );
   slow.proxy.pauseReads();
-  // A fixed 4MiB burst can fit entirely inside Linux's kernel socket buffers.
-  // Send bounded batches until this player's real outbox reports pressure.
+  // Small replies alone can fit inside kernel buffers while upstream writes
+  // are still pending. Mix valid snapshot requests (one in four probes) to
+  // fill egress with real recipient projections, never synthetic game frames.
   const pressure = (async () => {
     let sent = 0;
+    let snapshotRequests = 0;
     for (let batch = 0; batch < 256 && !hasBackpressure(); batch++) {
-      const count = await slow.page.evaluate(async () => {
+      const counts = await slow.page.evaluate(async (tournamentId) => {
         const socket = [...(window as unknown as { __texSockets: WebSocket[] }).__texSockets]
           .reverse()
           .find((item) => item.readyState === WebSocket.OPEN);
-        if (socket === undefined) return 0;
+        if (socket === undefined) return { sent: 0, snapshotRequests: 0 };
         let count = 0;
+        let snapshotRequests = 0;
         while (count < 256 && socket.bufferedAmount < 256 * 1024) {
-          socket.send(
-            JSON.stringify({
-              type: "TIME_SYNC",
-              requestId: crypto.randomUUID(),
-              payload: { clientSentAt: performance.now() },
-            }),
-          );
+          if (count % 4 === 0) {
+            socket.send(
+              JSON.stringify({
+                type: "REQUEST_SNAPSHOT",
+                requestId: crypto.randomUUID(),
+                payload: { tournamentId, reason: "MANUAL" },
+              }),
+            );
+            snapshotRequests++;
+          } else
+            socket.send(
+              JSON.stringify({
+                type: "TIME_SYNC",
+                requestId: crypto.randomUUID(),
+                payload: { clientSentAt: performance.now() },
+              }),
+            );
           count++;
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 10));
-        return count;
-      });
-      sent += count;
+        return { sent: count, snapshotRequests };
+      }, slow.game!.tournamentId);
+      sent += counts.sent;
+      snapshotRequests += counts.snapshotRequests;
     }
     await info.attach("pressure-probe-count", {
-      body: JSON.stringify({ sent, maxProbes: 65_536, observed: hasBackpressure() }),
+      body: JSON.stringify({
+        sent,
+        snapshotRequests,
+        maxProbes: 65_536,
+        observed: hasBackpressure(),
+      }),
       contentType: "application/json",
     });
   })();
