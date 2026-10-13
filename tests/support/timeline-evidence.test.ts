@@ -10,6 +10,21 @@ import {
 } from "./timeline-evidence";
 
 describe("TEX-62 evidence gate", () => {
+  it("checks automatic action time rather than the earlier timer callback ingress", () => {
+    const action = {
+      event: "AUTO_ACTION",
+      tournamentId: "t",
+      handId: "h",
+      deadline: 15_000,
+      firedAt: 14_999,
+      timestamp: 15_000,
+    };
+    expect(authoritativeViolations([action])).toEqual([]);
+    expect(authoritativeViolations([{ ...action, timestamp: 14_999 }])).toHaveLength(1);
+    expect(
+      authoritativeViolations([{ ...action, firedAt: 15_000, timestamp: 14_999 }]),
+    ).toHaveLength(1);
+  });
   it("rejects expected failures, diagnostic retries and missing required browsers even with green counts", () => {
     const test = {
       projectName: "chromium",

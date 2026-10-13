@@ -44,3 +44,5 @@ TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返�
 原生浏览器会请求当前应用未提供的 favicon.ico；独立无身份 create 页面探针已确认唯一资源错误为该辅助图标 404。夹具将精确 favicon 404 保留为 warnings 证据（已记录为任务外资源建议），脚本/API 失败、5xx、JS 异常和游戏观测错误继续阻断。不忽略其他 404。
 
 CI 关闭 Playwright 的自动 Git 元数据和 source diff 捕获：Git diff 可能含环境连接串，候选 SHA/dirty 状态由门禁自行记录，独立上传审计保持 fail-closed。Firefox 在移除 context 前等待页面关闭，避免容器移除与 SessionStore 窗口清理竞态；关闭错误仍使测试失败。慢接收用例以最多 65,536 个合法探针分批填充真实内核缓冲，四分之一使用 REQUEST_SNAPSHOT，其余 TIME_SYNC，客户端发送缓冲上限 256KiB；只在目标玩家的生产背压日志出现后停止，未触发则失败。小校时回复在 Linux 大内核缓冲下可能无法及时形成背压，因此真实接收者 Snapshot 请求提供有界响应放大，不伪造游戏帧或降低生产阈值；记录实际两类请求数量。校时回复逐条通过协议验证，只汇总数量与有界 RTT 样本，不占用牌局序列记录。
+
+AUTO_ACTION 使用权威动作日志 timestamp 与 deadline 严格比较；firedAt 只表示 Timer 回调入队，仍原样保留诊断。回调在 D-1、执行日志在 D 可合法通过；动作 timestamp 在 D-1 仍失败，新增 unit 负例覆盖。原生后台关闭先发送自有 Browser.close，再等待进程管道关闭；异步、有界重试清理经过绝对所有权校验的 profile，避免最后写盘与同步 rmdir 竞争。测试用例仍零重试，清理失败仍阻断。

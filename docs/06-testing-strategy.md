@@ -299,6 +299,8 @@ PR 子集纳入现有真实链路 job 或独立必跑 job；RC 显式运行完�
 
 慢接收模拟必须停止代理对上游的读取，观察实际队列/bytes/年龄或契约日志；仅缓存下游消息或延迟 JS onmessage 不会可靠触发服务端背压。复用现有阈值，不能为通过门禁修改生产阈值或通过伪造大 Payload 填满队列。无法在合法有界场景中稳定触发时，报告阻断及补充层证据，协调实现可测试性后再验收，不将不触发改为成功。每次测试销毁代理、连接/进程/定时器和本次 schema。
 
+AUTO_ACTION 以权威动作日志的 `timestamp` 与 `deadline` 严格比较；`firedAt` 是 Timer 回调入队时刻，仍保留诊断，不能将执行队列前的回调时刻直接当作动作生效时刻。动作日志早于 deadline 仍须失败；旧 Timer 的确定性拒绝由运行时单测补充。
+
 **证据与脱敏**：失败保留候选 SHA、runId、seed/动作脚本、场景矩阵 ID、网络脚本/实测、每个玩家的事件元数据时间线、展示变化、截图/录像及服务端白名单 JSON 日志。时间线只导出类型、tournamentId/handId、sequence、阶段、公开 deadline、到达/展示时间、有限原因/错误码；不导出原始 Payload、认证帧、Token、cookie/header、连接串、底牌或 Burn 牌面。服务端字段复用 TEX-61 的诊断白名单，不以正则删除原始日志后假定安全。
 
 Playwright 原始 trace 可能包含认证 WS/HTTP 和 DOM 私有牌面，因此不能因为自制摘要已脱敏便上传整个产物目录。TEX-62 配置在可靠清理敏感内容的导出流程实现前关闭原始 trace 与自动页面可访问性快照持久化，保留脱敏摘要与经遮盖的截图/录像；不能沿用现有 retain-on-failure 就声称完成脱敏。以已知测试 Token/连接串/未公开牌面验证证据导出，泄露即失败且不上传。按 [安全](./04-security/README.md) 与 [运行手册](./05-operations/realtime-diagnostics.md) 的保留/访问规则保存 Release 证据。

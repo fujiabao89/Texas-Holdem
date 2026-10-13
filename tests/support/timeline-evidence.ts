@@ -276,9 +276,12 @@ export function authoritativeViolations(
     if (
       row.event === "AUTO_ACTION" &&
       typeof row.deadline === "number" &&
-      typeof row.firedAt === "number"
+      typeof row.timestamp === "number"
     ) {
-      if (row.firedAt < row.deadline) issues.push(`early AUTO_ACTION ${key}`);
+      // firedAt is callback ingress, before executor queue processing. The
+      // AUTO_ACTION timestamp records the authoritative transition; an early
+      // native callback is not proof that the action itself happened early.
+      if (row.timestamp < row.deadline) issues.push(`early AUTO_ACTION ${key}`);
       if (typeof opened.get(key) === "number" && row.deadline < opened.get(key)!)
         issues.push(`old deadline acted on new hand ${key}`);
     }

@@ -45,3 +45,5 @@ TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返�
 
 代理回归修正：每方向只由一个定时 FIFO 泵写出 TCP 块，计时到期后只从队头排空；遵守真实 write/drain 背压，resumeReads 不覆盖未解除的写压力。128 个真实分块、RTT 300ms/抖动 149ms/seed 62 的旧实现出现字节乱序，新实现完整保序。恢复到下一手 Snapshot 也可确认已收到派奖的上一手结束，分配分支仍独立校验。
 代理在队列软水位暂停原生读取并在低水位恢复；2MiB 原生突发回归验证夹具自身保持有界而不成为压力测试的故障源。
+
+AUTO_ACTION 的实际时序门禁使用权威动作日志 timestamp；Timer firedAt 属于回调入队时刻并保留为诊断。单元负例区分回调 D-1/动作 D 与动作 D-1，后者继续失败；旧 deadline 和重复开手断言保持生效。
