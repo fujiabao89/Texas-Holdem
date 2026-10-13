@@ -18,6 +18,9 @@ export default defineConfig({
   testIgnore: [],
   outputDir: `.artifacts-timeline/${scenario}`,
   retries: 0,
+  // CI defaults also capture source diffs, which can contain environment URLs.
+  // Immutable HEAD/dirty provenance is already recorded by our evidence gate.
+  captureGitInfo: { commit: false, diff: false },
   workers: 1,
   globalTeardown: "./real/timeline/global-teardown",
   timeout: 240_000,

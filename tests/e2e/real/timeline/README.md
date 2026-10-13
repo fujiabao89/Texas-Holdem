@@ -10,7 +10,7 @@ pnpm test:e2e:timeline       # PR：9 项
 pnpm test:e2e:timeline:rc    # RC：20 项，含有窗口的真实后台恢复
 ```
 
-Node 22+、仓库固定 pnpm、PostgreSQL 16；时序配置每次先执行 Next production build（Webpack）再 start，排除 HMR 与运行中按需编译对 15 秒窗口的干扰。端口默认 3201/3202，可用 `TEX_E2E_REAL_SERVER_PORT`/`TEX_E2E_REAL_WEB_PORT` 修改。Linux RC 用 `xvfb-run -a`，本地 RC 要可用桌面。不得并发运行不同 real 配置。缺数据库/浏览器、故障未生效、报告缺失、少跑、skip、xfail、失败、重试与浏览器矩阵替换均失败；重试为零。后台先以原生标签激活核验真实 hidden→visible，移除 Playwright 默认焦点模拟；缺少该原生能力时明确失败，不伪造 visibility 或改成 skip。Windows 本次环境未能产生 hidden，完整 RC 保持阻断，Linux/Xvfb 需独立验证。
+Node 22+、仓库固定 pnpm、PostgreSQL 16；时序配置每次先执行 Next production build（Webpack）再 start，排除 HMR 与运行中按需编译对 15 秒窗口的干扰。端口默认 3201/3202，可用 `TEX_E2E_REAL_SERVER_PORT`/`TEX_E2E_REAL_WEB_PORT` 修改。Linux RC 用 `xvfb-run -a`，本地 RC 要可用桌面。不得并发运行不同 real 配置。缺数据库/浏览器、故障未生效、报告缺失、少跑、skip、xfail、失败、重试与浏览器矩阵替换均失败；重试为零。后台先以原生标签激活核验真实 hidden→visible，移除 Playwright 默认焦点模拟；缺少该原生能力时明确失败，不伪造 visibility 或改成 skip。原生默认 context 已在 Windows 与 Linux/Xvfb 产生真实 hidden→visible；每轮仍必须重新通过能力预检。
 
 | 场景 | 内容 | 执行 |
 | --- | --- | --- |
@@ -42,3 +42,5 @@ TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返�
 代理按方向在 256KiB 暂停读取、128KiB 以下恢复，并继续遵守 write/drain 和外部停读；2MiB 原生回环突发保持完整字节且不触发代理自身 1MiB 硬上限。生产服务端阈值不变。上传审计仍拒绝不安全产物，仅打印受控相对文件名，便于定位 CI 捕获问题。
 
 原生浏览器会请求当前应用未提供的 favicon.ico；独立无身份 create 页面探针已确认唯一资源错误为该辅助图标 404。夹具将精确 favicon 404 保留为 warnings 证据（已记录为任务外资源建议），脚本/API 失败、5xx、JS 异常和游戏观测错误继续阻断。不忽略其他 404。
+
+CI 关闭 Playwright 的自动 Git 元数据和 source diff 捕获：Git diff 可能含环境连接串，候选 SHA/dirty 状态由门禁自行记录，独立上传审计保持 fail-closed。Firefox 在移除 context 前等待页面关闭，避免容器移除与 SessionStore 窗口清理竞态；关闭错误仍使测试失败。慢接收用例以最多 65,536 个合法 TIME_SYNC 分批填充真实内核缓冲，客户端发送缓冲上限 256KiB；只在目标玩家的生产背压日志出现后停止，未触发则失败。校时回复逐条通过协议验证，只汇总数量与有界 RTT 样本，不占用牌局序列记录。

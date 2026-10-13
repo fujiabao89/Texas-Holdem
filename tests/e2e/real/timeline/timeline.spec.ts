@@ -87,7 +87,7 @@ for (const rttMs of [50, 100, 300, 500]) {
             sample.elapsedMs >= sample.scheduledMs - 2,
         ),
       ).toBe(true);
-    expect(slow.frames.some((frame) => frame.type === "TIME_SYNC_RESULT")).toBe(true);
+    expect(slow.timeSyncReplies).toBeGreaterThan(0);
     await timeline.assert();
   });
 }
@@ -264,7 +264,9 @@ test("六人先弃牌再全下：真实主池/边池分配 @timeline-rc", async 
   await timeline.assert();
 });
 
-test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩家 @timeline-rc", async ({ timeline }) => {
+test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩家 @timeline-rc", async ({
+  timeline,
+}, info) => {
   await timeline.create(6, { reduced: true });
   await expect
     .poll(() => timeline.players.every((player) => player.game?.actionDeadline != null))
@@ -273,39 +275,50 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
     (player) => player.game!.viewer.playerId !== player.game!.currentActorPlayerId,
   )!;
   const beforePressure = slow.frames.length;
+  const playerId = slow.game!.viewer.playerId;
+  const hasBackpressure = () =>
+    timeline
+      .logs()
+      .some(
+        (row) =>
+          row.playerId === playerId &&
+          (row.event === "RESYNC_REQUIRED" || row.event === "SLOW_CONNECTION_CLOSED"),
+      );
   slow.proxy.pauseReads();
-  const pressure = slow.page.evaluate(async () => {
-    const socket = [...(window as unknown as { __texSockets: WebSocket[] }).__texSockets]
-      .reverse()
-      .find((item) => item.readyState === WebSocket.OPEN)!;
-    // Bounded valid control-plane probes; no fake game frame, large payload or lowered threshold.
-    for (let batch = 0; batch < 64 && socket.readyState === WebSocket.OPEN; batch++) {
-      for (let index = 0; index < 256; index++)
-        socket.send(
-          JSON.stringify({
-            type: "TIME_SYNC",
-            requestId: crypto.randomUUID(),
-            payload: { clientSentAt: performance.now() },
-          }),
-        );
-      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  // A fixed 4MiB burst can fit entirely inside Linux's kernel socket buffers.
+  // Send bounded batches until this player's real outbox reports pressure.
+  const pressure = (async () => {
+    let sent = 0;
+    for (let batch = 0; batch < 256 && !hasBackpressure(); batch++) {
+      const count = await slow.page.evaluate(async () => {
+        const socket = [...(window as unknown as { __texSockets: WebSocket[] }).__texSockets]
+          .reverse()
+          .find((item) => item.readyState === WebSocket.OPEN);
+        if (socket === undefined) return 0;
+        let count = 0;
+        while (count < 256 && socket.bufferedAmount < 256 * 1024) {
+          socket.send(
+            JSON.stringify({
+              type: "TIME_SYNC",
+              requestId: crypto.randomUUID(),
+              payload: { clientSentAt: performance.now() },
+            }),
+          );
+          count++;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+        return count;
+      });
+      sent += count;
     }
-  });
+    await info.attach("pressure-probe-count", {
+      body: JSON.stringify({ sent, maxProbes: 65_536, observed: hasBackpressure() }),
+      contentType: "application/json",
+    });
+  })();
   await timeline.action("fold");
   await pressure;
-  await expect
-    .poll(
-      () =>
-        timeline
-          .logs()
-          .some(
-            (row) =>
-              row.playerId === slow.game!.viewer.playerId &&
-              (row.event === "RESYNC_REQUIRED" || row.event === "SLOW_CONNECTION_CLOSED"),
-          ),
-      { timeout: 35_000 },
-    )
-    .toBe(true);
+  await expect.poll(hasBackpressure, { timeout: 35_000 }).toBe(true);
   slow.proxy.resumeReads();
   await expect
     .poll(

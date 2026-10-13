@@ -62,6 +62,7 @@ export interface PlayerProbe {
   events: GameEventMessage[];
   errors: string[];
   warnings: string[];
+  timeSyncReplies: number;
   suspendActions?: boolean;
   backgroundHands?: Set<string>;
 }
@@ -246,6 +247,7 @@ function observe(
     events: [],
     errors: [],
     warnings: [],
+    timeSyncReplies: 0,
   };
   const recordError = (error: string) => {
     if (!probe.errors.includes(error) && probe.errors.length < 100) probe.errors.push(error);
@@ -300,6 +302,12 @@ function observe(
           .join("/");
         stage = `message validation ${kind}`;
         const message = ServerMessageSchema.parse(decoded);
+        if (message.type === "TIME_SYNC_RESULT") {
+          // Pressure probes carry no game sequence. Validate every reply but
+          // keep only a count; the page separately retains bounded RTT samples.
+          probe.timeSyncReplies++;
+          return;
+        }
         const payload = message.payload;
         const summary: FrameSummary = {
           at: nodePerformance.now(),
@@ -644,6 +652,7 @@ export const test = base.extend<{ timeline: TimelineSession }>({
           },
           errors: player.errors,
           warnings: player.warnings,
+          timeSyncReplies: player.timeSyncReplies,
           backgroundHands: [...(player.backgroundHands ?? [])],
         })),
       };
@@ -689,7 +698,12 @@ export const test = base.extend<{ timeline: TimelineSession }>({
           if (owned.native !== null && player.context === owned.native.context) {
             await owned.native.close();
             owned.native = null;
-          } else await player.context.close();
+          } else {
+            // Firefox's container removal can race SessionStore window teardown.
+            // Await its page close while the container still exists first.
+            if (browser.browserType().name() === "firefox") await player.page.close();
+            await player.context.close();
+          }
         } finally {
           await player.proxy.close();
         }
