@@ -284,6 +284,64 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
           row.playerId === playerId &&
           (row.event === "RESYNC_REQUIRED" || row.event === "SLOW_CONNECTION_CLOSED"),
       );
+  // OPEN alone does not prove that a socket owns the authenticated epoch.
+  // A correlated native reply proves the selected connection before reads stop.
+  const readiness = await slow.page.evaluate(async () => {
+    const scope = window as unknown as {
+      __texSockets: WebSocket[];
+      __texPressureSocket?: WebSocket;
+    };
+    const candidates = scope.__texSockets
+      .map((socket, index) => ({ socket, index }))
+      .filter(({ socket }) => socket.readyState === WebSocket.OPEN)
+      .reverse();
+    let attempted = 0;
+    for (const { socket, index } of candidates) {
+      attempted++;
+      const requestId = crypto.randomUUID();
+      const started = performance.now();
+      const answered = await new Promise<boolean>((resolve) => {
+        const finish = (value: boolean) => {
+          clearTimeout(timer);
+          socket.removeEventListener("message", onMessage);
+          socket.removeEventListener("close", onClose);
+          resolve(value);
+        };
+        const onMessage = (event: MessageEvent) => {
+          try {
+            const message = JSON.parse(String(event.data));
+            if (message.type === "TIME_SYNC_RESULT" && message.payload?.requestId === requestId)
+              finish(true);
+          } catch {
+            // The passive wire observer validates every real response separately.
+          }
+        };
+        const onClose = () => finish(false);
+        const timer = setTimeout(() => finish(false), 1_500);
+        socket.addEventListener("message", onMessage);
+        socket.addEventListener("close", onClose);
+        socket.send(
+          JSON.stringify({
+            type: "TIME_SYNC",
+            requestId,
+            payload: { clientSentAt: started },
+          }),
+        );
+      });
+      if (answered) {
+        scope.__texPressureSocket = socket;
+        return { authenticated: true, attempted, index, rttMs: performance.now() - started };
+      }
+    }
+    return { authenticated: false, attempted, index: null, rttMs: null };
+  });
+  await info.attach("pressure-connection-readiness", {
+    body: JSON.stringify(readiness),
+    contentType: "application/json",
+  });
+  expect(readiness.authenticated, "pressure socket must answer on its authenticated epoch").toBe(
+    true,
+  );
   slow.proxy.pauseReads();
   // Small replies alone can fit inside kernel buffers while upstream writes
   // are still pending. Mix valid snapshot requests (one in four probes) to
@@ -293,10 +351,9 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
     let snapshotRequests = 0;
     for (let batch = 0; batch < 256 && !hasBackpressure(); batch++) {
       const counts = await slow.page.evaluate(async (tournamentId) => {
-        const socket = [...(window as unknown as { __texSockets: WebSocket[] }).__texSockets]
-          .reverse()
-          .find((item) => item.readyState === WebSocket.OPEN);
-        if (socket === undefined) return { sent: 0, snapshotRequests: 0 };
+        const socket = (window as unknown as { __texPressureSocket?: WebSocket })
+          .__texPressureSocket;
+        if (socket?.readyState !== WebSocket.OPEN) return { sent: 0, snapshotRequests: 0 };
         let count = 0;
         let snapshotRequests = 0;
         while (count < 256 && socket.bufferedAmount < 256 * 1024) {
