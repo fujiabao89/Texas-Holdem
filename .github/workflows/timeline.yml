@@ -67,7 +67,7 @@ jobs:
         if: always() && steps.timeline_audit.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: timeline-rc-${{ inputs.sha }}
+          name: timeline-rc-${{ inputs.sha || github.event.pull_request.head.sha }}
           path: tests/e2e/.artifacts-timeline
           include-hidden-files: true
           retention-days: 90

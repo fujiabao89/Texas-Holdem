@@ -14,3 +14,5 @@ TEX-62：`ci.yml` 的 `e2e-timeline` 运行真实 PostgreSQL 时序 PR 子集（
 
 首次接入的 RC Workflow 尚未出现在 main 时，可以给 TEX-62 PR 添加 `timeline-rc` 标签，在该 PR 的完整 head SHA 上启动同一 20 项门禁（Linux/Xvfb，零重试）；不依赖先合并 Workflow。此入口只用 contents:read 与隔离测试数据库，无生产秘密。PR head 更新会重新运行；日常 9 项 PR 门禁仍由 CI 的 main 目标 PR 执行，依赖分支合并后应依次调整 PR base。
 RC 按 PR 编号/手工 ref 串行并取消重复事件启动的同一候选作业，测试本身仍为零重试。
+
+RC 产物名称包含实际完整候选 SHA（手动输入或 PR head）。时序配置显式关闭 Playwright 自动 Git 元数据/source diff 捕获，避免 CI diff 将环境连接串带入报告；SHA/dirty 来源由 gate.json 与各场景证据独立记录。上传前审计继续拒绝敏感产物，不通过删除失败或跳过审计放行。

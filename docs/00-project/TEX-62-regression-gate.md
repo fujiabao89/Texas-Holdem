@@ -1,8 +1,8 @@
 # TEX-62：牌局时序与弱网回归门禁实施卡
 
-开始：2026-10-09；续作核验：2026-10-12。任务：[TEX-62](https://linear.app/texas-holdem/issue/TEX-62)。实现分支：`test/TEX-62-game-timeline-network-regression`。
+开始：2026-10-09；完成组合候选验收：2026-10-13。任务：[TEX-62](https://linear.app/texas-holdem/issue/TEX-62)。实现分支：`test/TEX-62-game-timeline-network-regression`。
 
-**状态：用户已授权分别修复 TEX-61/TEX-35；产品修复与门禁保持独立分支，最终冻结候选正在复验，未提前标记 TEX-62 完成。** 本卡给出测试编排、实测阻断与验收映射；测试要求的唯一权威来源为 [06 §9.3](../06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求)。不得将本卡或既有 mock 测试的通过记为 TEX-62 验收通过。
+**状态：门禁实现与组合候选验收已完成；固定 SHA 的本地 PR 9/9、Linux RC 20/20 及脱敏上传审计通过，见本卡末尾的最终验收记录。** 用户已授权分别修复 TEX-61/TEX-35，产品修复与门禁保持独立 PR。本卡给出真实链路证据与历史失败映射；测试要求的唯一权威来源为 [06 §9.3](../06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求)。后续合并/发布候选须按自己的完整 SHA 冻结复验。
 
 ## 负责人、依赖与目录边界
 
@@ -58,7 +58,7 @@ pnpm test:e2e:timeline:rc    # RC：20 项；Linux 用 xvfb-run -a
 - R1 真实最小复现：两人、15 秒、seed 280820、合法 check/call 到普通摊牌。两名客户端均收到 sequence 21 的 PLAYER_CHECKED，随后直接收到 sequence 25 的 SHOWDOWN_DISPLAY Snapshot；22–25 的 SHOWDOWN_STARTED、PLAYER_REVEALED、POT_AWARDED 未收到。服务端进入展示窗口但浏览器缺少完整结算事件。定位到 TEX-61 普通 GAME_SNAPSHOT 清空发送队列中的未完成 GAME_EVENT；正常连接也会触发。不得以 Snapshot 命中代替结算分支断言。
 - 10 月 9 日首次 PR 9 项中 2 通过、7 失败；首轮 RC 20 项中 4 通过、16 失败（包含当时测试夹具/后台环境问题，不作为最终缺陷数量）。10 月 12 日已将时序前端改为 production build/start，补齐 xfail/重试/浏览器替换拒绝、被停读玩家定向日志、真实 Token/牌面导出审计和进程→schema 清理顺序；复跑又查出既有 run-identity 夹具在中断后保存旧身份、配置却使用新 schema 的不一致；已改为配置使用返回的实际身份并增加隔离临时文件单测，拒绝不同端口并发。只清理本次日志明确记录的 4 个中断 schema，未清理其他命名空间。最终完整复测在交付前回填。独立原生浏览器探针在本机切换同窗标签、最小化与移除默认焦点模拟后仍返回 visible，后台能力未验证，不得记为通过。TEX-35 尚未完成，时序展示失败保持阻断；没有 skip/xfail，没有重试通过放行，也没有降低背压阈值。
 
-## 2026-10-12 最终冻结复测
+## 2026-10-12 初始基线冻结复测（历史失败）
 
 候选代码 SHA：`ba4f77cc7c40a50e20b40295ef6401ca6b727936`（包含 `8de6a3bb` 门禁实现）；全部证据 worktreeDirty=false。下面记录冻结版本的完整执行，先前开发诊断不与本轮混记。
 
@@ -112,7 +112,7 @@ PR 服务端 ACTION_OPEN 窗口实测 14,999–15,000ms；浏览器 pageerror/�
 
 资源清理：PR 与三个 RC schema 均已 DROP；本轮身份文件已删除，3261/3262 无监听，数据库没有其他 client backend。严格 PID/schema 身份校验成功，未出现额外执行器错误。原始用户工作区的未交接修改保持原样。
 
-## 本次文档同步判断
+## 初始基线文档同步判断（历史记录）
 
 - 已同步测试目录 README、support/meta、工作流 README、05 前端只读观测契约、06 测试权威规格与项目/工程/总索引。本任务卡记录用户委派、实际入口及缺陷阻断。
 - 01/02/03/04 权威规格、产品玩法/规划、权限与持久化：已检查，无需更新，测试不改变扑克规则、wire 或数据库结构。安全/运维规范的原始敏感数据禁入与 180 天 Release 保留仍适用；GitHub 90 天 RC 产物需转存受控 Release 档案，已在工作流 README 说明。
@@ -122,8 +122,35 @@ PR 服务端 ACTION_OPEN 窗口实测 14,999–15,000ms；浏览器 pageerror/�
 
 - TEX-61 独立分支 `fix/TEX-61-preserve-phase-event-order`：普通阶段快照保留完整事件批次，40 项网关单测通过。
 - TEX-35 独立分支 `fix/TEX-35-stabilize-cross-hand-animation`：阶段快照保留连续语义展示，跨手结果从实际绘制开始至少显示一秒，旧手展示隐藏新手操作/时钟；恢复只静态呈现同手已授权结果。50 项动画/投影单测通过。
-- 门禁分支基于上述依赖交付，PR diff 只包含测试/CI、对应文档与只读 DOM 属性。用户保留合并、发布及外部系统最终决策；任务交付所需草稿 PR 和测试 CI 不触发部署。
+- 门禁分支基于上述依赖交付，PR diff 只包含测试/CI、对应文档与只读 DOM 属性。用户保留合并和生产发布决定；仓库既有 Preview 检查按其配置运行。
 - 冻结诊断候选 `40264efa` 的 RC：时序 17/18、平分 1/1 通过，后台 0/1（本机原生 hidden 预检失败）；零跳过、零重试、无 runner error、worktreeDirty=false。300ms 失败实际来自网络夹具对分块独立设定定时器导致乱序，128 块真实 TCP/seed 62 已复现旧实现失败；单一 FIFO 泵修复后完整保序。
 - 最终代码候选 `d61d477f` 已修复代理、UTF-8 观察及完整终局批次驾驶，并补齐后台同手静态恢复。此前完整 unit 95 文件/987 项通过，lint/typecheck 通过；新增回归与最终完整门禁结果以交付时的 gate.json/CI 固定 SHA 证据为准。
 - 首次接入 RC Workflow 尚未进入 main 时，使用 TEX-62 草稿 PR 的 `timeline-rc` 标签入口，在 PR head 的完整 SHA 上执行同一 20 项 Linux/Xvfb 门禁；不依赖先合并 Workflow，不使用生产秘密。
 - 旧失败矩阵保留为历史缺陷证据；最终结果另行追加，不以删除失败、降低阈值或重试掩盖阻断。
+
+## 2026-10-13 最终组合候选验收
+
+不可变代码候选：`afb0d1ae64a2c42c1893a2c5d55bb66574171e62`，所有报告 worktreeDirty=false。依赖修复为 TEX-61 `259ccc0ed49ed9a797d366629417dbb88aa5165a` 与 TEX-35 `4163e30e`（含展示修复 `c054d5c7`）。交付顺序：[TEX-61 PR #78](https://github.com/fujiabao89/Texas-Holdem/pull/78) → [TEX-35 PR #79](https://github.com/fujiabao89/Texas-Holdem/pull/79) → [TEX-62 PR #80](https://github.com/fujiabao89/Texas-Holdem/pull/80)；合并依赖后依次调整 base，合并提交仍需适用 CI。
+
+| 命令/检查 | 固定候选实际结果 |
+| --- | --- |
+| `pnpm test:unit` | 95 文件 / 994 项通过 |
+| `pnpm typecheck`、`pnpm lint` | 通过；lint 仅既有 gateway-protocol.test.ts unused room 警告 |
+| `pnpm test:e2e:timeline`（Windows） | 完整 9/9；Chromium 5、Firefox 2、WebKit 2；零 skip/xfail/retry/flaky，runnerErrors=[]；退出 0 |
+| `pnpm test:e2e:timeline:rc`（Linux/Xvfb） | 完整 20/20：timeline 18（14+2+2）、split 1、真实 background 1；每项只运行一次，零 skip/xfail/retry/flaky、三个报告 runnerErrors=[]，gate.validReport 均 true；退出 0 |
+| `pnpm exec tsx tests/e2e/real/timeline/audit.ts` | 本地 PR 5 文件、RC 9 文件通过；CI 上传成功 |
+| 文档与差异 | 23 份 Markdown / 457 个本地链接与锚点通过；`git diff --check` 通过；最终文档提交再次核验 |
+
+[完整 RC CI run 38337382032](https://github.com/fujiabao89/Texas-Holdem/actions/runs/38337382032) 的 artifact ID 为 `11785701131`，ZIP SHA256 为 `54905f501e58ceebadbcf7ed07a4627b6c80aa103b52f1abe6292f8fde7f4d00`。产物含 gate.json、三个 results.json、白名单日志及内嵌每玩家证据；均已下载复核。GitHub 90 天保留，后续正式 Release 仍按 06 转存受控档案。
+
+四类回归已命中：R1/R4 正常摊牌和连续三手完整行动窗口；R2 Reduced Motion/低帧率/跨手展示与混手隔离；R3 行动、摊牌、发牌边界断网恢复及同序列快照；R4 延迟、抖动、真实慢接收隔离。全下、无人可操作、主池/边池、平分、Fold-to-win 及十人移动视口分支均执行真实合法 UI 动作，并以服务端公开分配对照 DOM。后台原生 host DOM 记录 visible/hidden，恢复取得 fresh Snapshot，无旧手补播。陈旧 Timer 拒绝的确定性证明仍引用 TEX-59 unit，不冒充真实调度复现。
+
+`4a2eef1d` 的完整 Linux RC 为 19/20，独立审计已通过；更强慢接收在 13,312 个合法 TIME_SYNC 探针后触发了持续控制积压恢复循环，观察器维持原 20,000 帧上限并正确阻断。TEX-61 补修先在旧码确定性失败，再完成 41 项网关验证。最终 RC 使用同样 13,312 个探针，只记录一次 RESYNC_REQUIRED，各玩家 63–77 个游戏/恢复帧、观测错误为零；硬限、年龄/事件数和恢复期限未调整。此前失败与诊断重跑保留，不与最终完整执行混记。
+
+CI 报告曾自动捕获 config.metadata.gitDiff 并带入环境地址，上传审计正确拒绝；现显式关闭自动 Git 元数据和 diff，保留独立 SHA/dirty 来源。Firefox 关闭 context 前先等待页面关闭，真实 PR 两项通过。唯一 favicon.ico 404 作为辅助资源 warning 保留，其他资源/JS/游戏错误仍失败；favicon 缺失为任务外后续建议。
+
+文档同步：已更新测试/支持/Workflow/只读 DOM 所在目录 README、05/06 规格、项目和工程索引及本卡；TEX-61/TEX-35 的模块 README 与 02/04/05 规格由各自 PR 同步。01/03、产品范围、安全和运维说明已检查，无需更新：本次未改变扑克规则、wire/数据库结构、权限、生产配置、日志字段或保留政策。上传审计仍 fail-closed；不启动 DeepSeek Harness 或 Greptile。截至本轮复核，三个 PR 无待处理原始审查评论线程。
+
+资源：本地 PR schema 与 RC 三个 schema 均完成清理，身份文件删除；本地测试端口与数据库客户端无残留，原工作区的未交接修改保持原样。一次 about:blank 探针的空临时 profile `tex62-native-probe-kUmm0O` 因工具 policy 拒绝删除而保留，未复用用户浏览器会话；实际后台测试的独立 profile 已按所有权校验清理。
+
+边界：自动门禁提供 TEX-30/TEX-43/TEX-56 的代码回归证据；真实移动实机、真人多人、公网、目标部署、容量/Soak、告警和回滚仍由对应发布任务验收。最终 PR 文档/产物名称提交的固定 SHA 门禁以 PR #80 当前 CI 产物为准；本记录保留上述完整代码候选的首次通过证据。
