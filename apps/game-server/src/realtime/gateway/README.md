@@ -1,5 +1,7 @@
 # Gateway
 
+TEX-61 回归修复：普通阶段 Snapshot 保留此前已入队的 Game Event，按 FIFO 写出完整事件批次后再更新阶段；仅背压恢复替换旧帧。`connection-outbox.test.ts` 用未完成的 send callback 验证终局批次、跨手快照和同序列行动开放不会丢帧，既有阈值/恢复/关闭测试继续适用。
+
 TEX-61：`connection-outbox.ts` 对每连接串行发送并监控未交给 Socket 的事件数/年龄及总字节。触发背压后只保留一个恢复意图，在传输可继续时重新投影当前 Snapshot，按顺序写出 RESYNC_REQUIRED / GAME_SNAPSHOT，过滤快照 sequence 已覆盖的迟到扇出。所有控制回复也受硬字节限约束。成员撤销丢弃旧牌局帧，最终 Lobby 回执传输完成后关闭。阈值唯一权威为 [04 §9.5](../../../../../docs/04-game-server-architecture.md#95-事件积压与-fast-forward)；传输完成只表示 send callback 成功，不表示客户端读到或播放完成。
 
 `connection-outbox.test.ts` 验证阈值边界、控制积压及事件数/年龄压力均不重置恢复期限、在途恢复快照后的同序列更新、后续快照传输完成前保留恢复期限及正常排空后取消期限、回拨时指标异常隔离、字节上限和延迟回调清理；`lobby-gateway.test.ts` 验证玩家隔离、换手最新快照、序列屏障、1013 与重新认证，以及成员撤销后回执排空/超时两条关闭路径。最终回执等待上限以 04 §9.5 为准，到期释放 outbox 并按成员结束关闭，不延长身份权限。既有真实 WS 测试同时覆盖 Node send callback 的行为。
@@ -22,3 +24,5 @@ wire v6 握手版本由共享协议包决定；`lobby-gateway.test.ts` 验证旧
 TEX-53 的 gateway 单元覆盖 INITIAL、GAP→RESYNC 和重连的新快照 D/SB/BB 一致；真实 HTTP/WS 链路与开手事件对照见 `tests/clients/server-harness.test.ts`。
 
 TEX-60：Schema 后立即固定接收时间/Action 入口序号，后续成员检查耗时不改变 receivedAt。TIME_SYNC 仅允许已认证当前 epoch，直接回复 serverReceivedAt/serverSentAt，不续发 deadline。gateway 单元覆盖校时无状态副作用、未认证/伪造字段拒绝与慢访问检查。当前 wire 为 v6。
+
+TEX-62 的真实慢接收回归发现控制积压会重复优先插入恢复帧。Outbox 现对一次持续字节压力只重同步一次，随后排空控制回执；回落软限后可开始新的压力恢复。事件数/年龄、1MiB 硬限与原始 30 秒期限保持生效。单元回归在旧实现中失败，修复后验证完整排空及后续独立压力。

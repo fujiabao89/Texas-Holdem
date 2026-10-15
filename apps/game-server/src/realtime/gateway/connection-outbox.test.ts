@@ -88,6 +88,110 @@ function harness(
 }
 
 describe("TEX-61 bounded per-connection egress", () => {
+  it("drains a sustained control backlog after one byte recovery instead of starving it with snapshots", () => {
+    const h = harness();
+    h.outbox.send({
+      type: "GAME_SNAPSHOT",
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: 0,
+      payload: snapshot("0"),
+    });
+    h.complete();
+    h.outbox.send(reply); // One native write is still pending.
+    const control: ServerMessage = {
+      type: "TIME_SYNC_RESULT",
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: 0,
+      payload: {
+        requestId: "00000000-0000-4000-8000-000000000010",
+        clientSentAt: 0,
+        serverReceivedAt: 0,
+        serverSentAt: 0,
+      },
+    };
+    const count = Math.ceil(
+      (SEND_LIMITS.softBytes * 2) / Buffer.byteLength(JSON.stringify(control)),
+    );
+    for (let index = 0; index < count; index++) h.outbox.send(control);
+    h.complete(); // Held write -> RESYNC_REQUIRED.
+    h.complete(); // Notice -> recovery snapshot.
+    h.complete(); // Snapshot -> oldest retained control, even above the soft byte limit.
+    expect(h.sent.at(-1)?.type).toBe("TIME_SYNC_RESULT");
+    for (let index = 0; index <= count; index++) h.complete();
+    expect(h.onResync).toHaveBeenCalledExactlyOnceWith("bytes");
+    expect(h.sent.filter((message) => message.type === "TIME_SYNC_RESULT")).toHaveLength(count);
+    expect(h.sent.filter((message) => message.type === "GAME_SNAPSHOT")).toHaveLength(2);
+    expect(h.outbox.isIdle()).toBe(true);
+    expect(h.close).not.toHaveBeenCalled();
+    expect(h.clock.pendingTimers()).toBe(0);
+
+    // Once drained below the soft limit, a later independent pressure episode
+    // must still recover; suppression is neither permanent nor a new threshold.
+    h.socket.bufferedAmount = SEND_LIMITS.softBytes;
+    h.outbox.send(control);
+    expect(h.onResync).toHaveBeenCalledTimes(2);
+    h.socket.bufferedAmount = 0;
+    h.clock.advance(SEND_LIMITS.pollMs);
+    for (let index = 0; index < 3; index++) h.complete();
+    expect(h.outbox.isIdle()).toBe(true);
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("keeps a healthy terminal event batch before its ordinary phase snapshot", () => {
+    const h = harness();
+    const batch = [event(21), event(22), event(23), event(24), event(25)];
+    // The native socket callback can be pending while one executor drain emits
+    // checks, public reveals, awards, then the same-sequence phase snapshot.
+    for (const message of batch) h.outbox.send(message);
+    const phase: ServerMessage = {
+      type: "GAME_SNAPSHOT",
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: 1,
+      payload: snapshot("25", "h1"),
+    };
+    h.outbox.send(phase);
+    while (h.callbacks.length > 0) h.complete();
+    expect(h.sent).toEqual([...batch, phase]);
+    expect(h.onResync).not.toHaveBeenCalled();
+    expect(h.outbox.isIdle()).toBe(true);
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
+  it("retains multiple healthy hand boundaries and same-sequence authority updates in order", () => {
+    const h = harness();
+    h.outbox.send(reply);
+    const messages: ServerMessage[] = [
+      event(1),
+      event(2),
+      {
+        type: "GAME_SNAPSHOT",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: 1,
+        payload: snapshot("2", "h1"),
+      },
+      event(3),
+      {
+        type: "GAME_SNAPSHOT",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: 2,
+        payload: snapshot("3", "h2"),
+      },
+      {
+        type: "GAME_SNAPSHOT",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: 3,
+        payload: { ...snapshot("3", "h2"), currentActorPlayerId: "p1", actionDeadline: 42_000 },
+      },
+      event(4),
+    ];
+    for (const message of messages) h.outbox.send(message);
+    h.outbox.send(event(3)); // A late fanout covered by the snapshot stays suppressed.
+    while (h.callbacks.length > 0) h.complete();
+    expect(h.sent).toEqual([reply, ...messages]);
+    expect(h.onResync).not.toHaveBeenCalled();
+    expect(h.clock.pendingTimers()).toBe(0);
+  });
+
   it.each(["100", "101"])(
     "retains the recovery deadline until a later snapshot at sequence %s completes",
     (sequence) => {
