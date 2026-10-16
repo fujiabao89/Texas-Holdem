@@ -119,6 +119,8 @@ Sandbox Contract Test 是使用第三方服务的**真实非生产账号/项目*
 
 ### 3.3 前端（权威：[05](./05-frontend-spec.md) §16）
 
+> TEX-35 审查回归覆盖无结果的 Hard Forward 请求在途接收主池/边池、双手结果积压后由后一手 Snapshot 恢复、各手独立绘制确认与 1,000ms 阅读、陈旧通知、赛事/接收者/序列/手牌不匹配排除及 Timer 清理。`animation-audio` 的 1366/390px DOM 回归核对先后摘要和第三手操作准入；该受控协议投影场景不替代真实服务端门禁，见 [Findings Ledger](./03-engineering/TEX-35-findings-ledger.md)。
+
 > TEX-57 的 [牌面专项回归](../tests/e2e/cards/README.md) 在 360×800、390×844、1366×768、1920×1080 检查公共牌与本人手牌的安全区/角标/点阵几何、中性色人头牌边框和红黑花色隔离，并验证 TEX-46 简化座位小牌的牌值与花色不相交、不裁切。节点数量断言防止缺失内容造成空断言通过；使用合法 WS 投影，不替代真实服务端或实机验收。
 
 > TEX-23/TEX-24 已补充前端基础与 Lobby Unit/E2E 测试：HTTP 成功/错误 Schema、Fake Clock 驱动 timeout、取消、Token 的同 Tab 恢复/安全清除与 storage 降级、WS 认证/幂等/`appliedSequence` pending 回收、Snapshot 覆盖、连续 Patch、乱序重同步、邀请链接预填和 Home 双入口的 a11y 回归。完整多浏览器多人联调继续由 TEX-28 落地。

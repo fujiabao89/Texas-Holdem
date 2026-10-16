@@ -180,8 +180,12 @@ export class AnimationQueue {
     }
     // A recovery drops decoration, but not an accepted public result before
     // the reader has had its minimum window. Never infer awards from a snapshot.
+    let snapshotOutcomes = this.outcomesForSnapshot(game);
     this.commitAllFinalFrames(this.foreground);
     const recap = this.state;
+    // Keep the existing paint confirmation when recovery contains the same recap.
+    if (snapshotOutcomes.length === recap.outcomeEvents.length
+      && snapshotOutcomes.every((event, index) => event === recap.outcomeEvents[index])) snapshotOutcomes = recap.outcomeEvents;
     const holdMs = this.foreground && game?.tournamentId === recap.game?.tournamentId
       ? this.remainingOutcomeHold() : 0;
     this.active = null;
@@ -190,10 +194,14 @@ export class AnimationQueue {
     this.resetHoleDeal();
     this.resetDealPlan();
     if (holdMs > 0) {
-      this.forwardOutcomeEvents = game?.handId === recap.game?.handId ? recap.outcomeEvents : [];
+      this.forwardOutcomeEvents = snapshotOutcomes;
       this.replace({ ...recap, overlay: null, holeDeal: null, mode: "HARD_FORWARD", notice: "SYNCED", reducedMotion: this.reducedMotion });
       this.scheduleReadingTransition(() => {
         this.transitionTimer = null;
+        if (this.forwardOutcomeEvents !== this.state.outcomeEvents) {
+          this.outcomeVisibleSince = this.forwardOutcomeEvents.some((event) => event.type === "POT_AWARDED") ? this.clock.now() : null;
+          this.confirmedOutcomeEvents = null;
+        }
         this.replace({ ...this.state, game: this.tailTarget, overlay: null, mode: "NORMAL", holeDeal: null,
           revealedPlayerIds: revealedPlayerIdsFor(this.tailTarget), outcomeEvents: this.forwardOutcomeEvents, notice: "SYNCED" });
         this.expireNotice();
@@ -201,8 +209,11 @@ export class AnimationQueue {
       }, Number.isFinite(holdMs) ? holdMs : animationTimings.handEnd);
       return;
     }
-    this.outcomeVisibleSince = null;
-    this.replace({ game, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(game), outcomeEvents: [], notice: synced ? "SYNCED" : null, reducedMotion: this.reducedMotion });
+    if (snapshotOutcomes !== recap.outcomeEvents) {
+      this.outcomeVisibleSince = snapshotOutcomes.some((event) => event.type === "POT_AWARDED") ? this.clock.now() : null;
+      this.confirmedOutcomeEvents = null;
+    }
+    this.replace({ game, overlay: null, mode: "NORMAL", holeDeal: null, revealedPlayerIds: revealedPlayerIdsFor(game), outcomeEvents: snapshotOutcomes, notice: synced ? "SYNCED" : null, reducedMotion: this.reducedMotion });
     if (synced) this.expireNotice();
   }
 
@@ -371,6 +382,21 @@ export class AnimationQueue {
     return event.payload.cardIndex === 1
       && this.firstRoundRecipients.size > 0
       && this.secondRoundRecipients.size === this.firstRoundRecipients.size;
+  }
+
+  private outcomesForSnapshot(game: GameSnapshot | null): readonly OutcomeEvent[] {
+    if (!this.foreground || game === null) return [];
+    const matches = (candidate: GameSnapshot | null): boolean => candidate !== null
+      && candidate.tournamentId === game.tournamentId && candidate.handId === game.handId
+      && candidate.viewer.playerId === game.viewer.playerId && BigInt(candidate.sequence) <= BigInt(game.sequence);
+    let outcomes = matches(this.state.game) ? this.state.outcomeEvents : [];
+    for (const item of [...(this.active === null ? [] : [this.active]), ...this.queue]) {
+      if (matches(item.afterCanonical)) outcomes = nextOutcomeEvents(outcomes, item.message.payload.event, false);
+    }
+    if (this.state.mode === "HARD_FORWARD" && matches(this.tailTarget)) {
+      for (const event of this.forwardOutcomeEvents) outcomes = nextOutcomeEvents(outcomes, event, false);
+    }
+    return outcomes;
   }
 
   private remainingOutcomeHold(): number {
