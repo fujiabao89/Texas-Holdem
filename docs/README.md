@@ -24,6 +24,8 @@
 
 ## 文档地图
 
+TEX-62 的真实链路时序/弱网门禁已实现，组合候选 PR 9 项与 Linux RC 20 项已通过；范围、依赖、固定 SHA 证据及实机/发布边界见 [实施卡](./00-project/TEX-62-regression-gate.md)，测试要求以 [06 §9.3](./06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求) 为准。后续发布候选须在自身完整 SHA 重新执行门禁。
+
 TEX-64 的 PR 风险观察器配置、授权与 TEX-61 试用步骤见 [接入说明](./03-engineering/ai-pr-router-observer.md)。观察结果不替代本项目的 CI、业务验收、用户手动深审与人工合并。
 
 TEX-51 / TEX-52 的真实 PostgreSQL 重启、原身份继续游戏、终局卸载与历史权限证据见 [验收记录](./03-engineering/TEX-51-52-acceptance.md)，其中明确列出部署迁移、保守隔离与正式长时 soak 的边界。

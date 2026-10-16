@@ -50,6 +50,7 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 tests/e2e/.artifacts-real/
+tests/e2e/.artifacts-timeline/
 tests/e2e/real/.run-identity.json
 
 # ===== 本地验收证据（保留在本地，不纳入 Git）=====

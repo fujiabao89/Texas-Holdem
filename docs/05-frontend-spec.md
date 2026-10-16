@@ -415,6 +415,8 @@ Event 到达 → 数据副本立即应用（§5.2）→ 同一事件进入 Anima
 
 ### 9.7 TEX-38 体验优化契约（2026-09-05）
 
+TEX-62 只读浏览器观测：毛毡 `data-hand-id` 标识展示手，操作区 `data-action-hand-id` 标识 canonical 手，结果层 `data-outcome-hand-id` 标识摘要所属手，发牌飞行 `data-deal-event-key` 标识既有 handId/playerId/cardIndex 实例。属性不改变业务准入或动画时序；测试在真实 DOM/animation 生命周期检查跨手一致性，不读取 React 私有状态。
+
 - 保留 §9.6 已确认的发牌/翻牌/Showdown 节奏。每个展示任务以 `tournamentId + handId + sequence` 标识实例，组件消费队列提供的实际时长，普通动作的 CSS 与 Soft Catch-up 同步。
 - 下注、跟注、加注、盲注与 All-in 在对应 Seat 展示动作/金额并向 Pot 移筹；Check 为短双击反馈，Fold 只移出牌背；Burn 从可见 Deck 移入弃牌区域且永不制造牌面。未跟注退回和每个 `POT_AWARDED.awards` 的金额、方向及赢家均只使用服务端字段。
 - Reveal 展示服务端牌型与最佳五张牌；静态本手结果按已接收的公开 Reveal 与每 Pot 分配累积，减少动态效果时直接提交该摘要。摘要不重算牌型，切换下一手前完整分池摘要在实际绘制后至少显示 1,000ms（本地展示计时，不发送动画 ACK）；展示仍属于旧 handId 时隐藏下一手操作、行动提示与倒计时，权威状态和 deadline 持续正常更新。

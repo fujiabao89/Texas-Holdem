@@ -19,6 +19,8 @@
     "test:ws": "vitest run --project ws",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
     "test:e2e:real": "playwright test -c tests/e2e/playwright.real.config.ts",
+    "test:e2e:timeline": "tsx tests/e2e/real/timeline/run.ts pr",
+    "test:e2e:timeline:rc": "tsx tests/e2e/real/timeline/run.ts rc",
     "test:sim": "tsx tests/simulator/run.ts",
     "test:perf": "tsx tests/performance/run.ts",
     "dev": "turbo run dev",
