@@ -1,0 +1,17 @@
+# TEX-35 跨手展示验收记录
+
+2026-10-12，用户委派 Codex 修复 TEX-62 门禁发现的跨手结果丢失。范围为 AnimationQueue、展示订阅和牌桌 handId 准入；不改变扑克裁决、wire Schema 或行动 deadline。
+
+普通同 Tournament/handId/sequence 的阶段 Snapshot 更新 canonical 并保留连续语义展示。Reduced Motion、降级、Hard Forward 与恢复屏障保留已接收的公开分池摘要，至少显示 1,000ms 后再切换手；旧手展示期间隐藏下一手动作与倒计时。隐藏页面不保留旧手阅读窗口或声音，恢复仍请求最新 Snapshot。缺失分池结果不由客户端推导。
+
+针对性命令 `pnpm exec vitest run --project unit apps/web/src/animations apps/web/src/state/projection-store.test.ts --maxWorkers 1`：51 项通过。覆盖正常阶段快照、降级队列已经跨手、快进跨手、恢复静态摘要、Reduced Motion 一秒窗口、后台无 timer、重复事件及公开牌过滤；Web typecheck 与目标 ESLint 通过。真实浏览器验收由 TEX-62 的候选记录提供，尚未提前认定通过。
+
+同步动画、状态、牌桌与 Web README，以及 02/05 权威规格。06 测试策略沿用 TEX-62 的正常/降级/恢复矩阵。01/03/04、安全与运维说明已检查，无需更新：没有改变服务端规则、持久化、消息结构、授权、日志、配置或发布流程。任务范围保持既有 TEX-35 边界。
+
+RC 连续 DOM 观测进一步发现提交到 DOM 绘制的间隔会侵蚀一秒窗口。阅读计时现由 React 绘制回调开启，新增延迟绘制、跨手快进和陈旧通知回归；不改变权威行动时钟。
+
+后台不启动阅读窗口；只保留最新手的一份公开结果缓存。恢复后仅在 fresh Snapshot 的 tournamentId/handId/接收者身份匹配且属于手末阶段时恢复静态摘要；下一手或非终局快照丢弃缓存，不重播旧手。新增隐藏接收与同手 fresh Snapshot 回归。
+
+Linux WebKit 回归检出在 Showdown 中切换 Reduced Motion 的静态终态缺少提示，现同步显示三秒提示，已补定向回归。
+
+2026-10-16，PR #79 的两条恢复结果丢失意见均在当前 `95d51342` 复现后确认为 P1：快进请求在途新增分池、两手积压后的后一手结果分别丢失。最小修复保留匹配恢复目标的已接收结果并独立计时；动画/投影 57 项通过，新增桌面/移动视口 DOM 回归。逐条定级、重复/风格建议、验证与原始线程闭环见 [Findings Ledger](./TEX-35-findings-ledger.md)。旧组合候选的集成结果属于历史记录，不能替代本轮修复或 #80 更新后的固定 SHA 验证。

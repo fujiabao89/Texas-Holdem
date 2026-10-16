@@ -193,7 +193,7 @@ Game Event 的业务产生条件与规则语义以 [01 §14](./01-engine-spec.md
 
 客户端应用规则：
 
-- 收到 Snapshot 后原子替换本地权威视图，并把 `lastSequence` 设为 Snapshot.sequence；清空旧动画队列。
+- 收到 Snapshot 后原子替换本地权威视图，并把 `lastSequence` 设为 Snapshot.sequence。恢复屏障清空旧装饰队列；正常同 Tournament/handId/sequence 的阶段更新保留已连续接收的语义展示，结算阅读窗口见 [05 §9.7](./05-frontend-spec.md#97-tex-38-体验优化契约2026-09-05)。展示不能阻塞权威状态更新。
 - 收到 `sequence == lastSequence + 1` 的事件才应用；`sequence <= lastSequence` 视为重复并忽略。
 - 收到 `sequence > lastSequence + 1`、事件无法按 Schema 解析，或 Tournament ID 不一致时，立即暂停事件应用并发送 `REQUEST_SNAPSHOT`；不得跳号或猜测状态。
 - 重同步期间可以继续渲染最后一份合法视图，但必须禁用提交扑克 Action；收到新 Snapshot 后恢复。
