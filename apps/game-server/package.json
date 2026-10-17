@@ -13,13 +13,13 @@
     "db:migrate": "tsx src/infrastructure/persistence/migrations/migrate.ts"
   },
   "dependencies": {
-    "@fastify/rate-limit": "^11.2.0",
-    "@fastify/websocket": "^11.3.1",
+    "@fastify/rate-limit": "^11.2.1",
+    "@fastify/websocket": "^11.3.3",
     "@texas-holdem/poker-engine": "workspace:*",
     "@texas-holdem/protocol": "workspace:*",
-    "drizzle-orm": "^0.45.3",
+    "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.5",
-    "pg": "^8.23.0",
+    "pg": "^8.23.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
