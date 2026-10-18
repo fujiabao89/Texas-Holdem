@@ -174,31 +174,35 @@ for (const viewport of [{ width: 1366, height: 768 }, { width: 360, height: 800 
 }
 
 for (const viewport of [{ width: 1366, height: 768 }, { width: 390, height: 844 }]) {
-  test(`TEX-35 恢复后逐手保留已接收分池摘要 ${viewport.width}px`, async ({ page }) => {
-    await page.setViewportSize(viewport);
-    await freezeClock(page);
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await installAudioProbe(page);
-    const table = await installTable(page);
-    await table.open();
-    const outcome = page.getByRole("region", { name: message("table.feedback.handOutcome") });
-    table.event({ type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 111, awards: [{ playerId: "player-1", amount: 111 }], winningHandRank: null } });
-    table.event({ type: "HAND_STARTED", payload: { handNumber: 2, dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0, blindLevel: 0 } }, { handId: "hand-39" });
-    table.event({ type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 222, awards: [{ playerId: "player-2", amount: 222 }], winningHandRank: null } }, { handPhase: "HAND_END", currentActorPlayerId: null, viewer: { legalActions: null } });
-    table.resync();
-    await expect.poll(() => table.commands.filter(({ type }) => type === "REQUEST_SNAPSHOT").length).toBe(1);
-    await expect(outcome).toContainText("111");
-    await page.clock.runFor(1_100);
-    await expect(outcome).toContainText("222");
-    await expect(outcome).not.toContainText("111");
-    table.event({ type: "HAND_STARTED", payload: { handNumber: 3, dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1, blindLevel: 0 } }, { handId: "hand-40", handPhase: "PREFLOP", currentActorPlayerId: "player-1", viewer: { legalActions: tableSnapshot().viewer.legalActions } });
-    await page.clock.runFor(500);
-    await expect(outcome).toContainText("222");
-    await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
-    await page.clock.runFor(600);
-    await expect(outcome).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "跟注 5" })).toBeEnabled();
-  });
+  for (const earlyThird of [false, true]) {
+    test(`TEX-35 恢复后逐手保留已接收分池摘要 ${viewport.width}px（第三手${earlyThird ? "提前" : "随后"}到达）`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await freezeClock(page);
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await installAudioProbe(page);
+      const table = await installTable(page);
+      await table.open();
+      const outcome = page.getByRole("region", { name: message("table.feedback.handOutcome") });
+      table.event({ type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 111, awards: [{ playerId: "player-1", amount: 111 }], winningHandRank: null } });
+      table.event({ type: "HAND_STARTED", payload: { handNumber: 2, dealerSeat: 1, smallBlindSeat: 1, bigBlindSeat: 0, blindLevel: 0 } }, { handId: "hand-39" });
+      table.event({ type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 222, awards: [{ playerId: "player-2", amount: 222 }], winningHandRank: null } }, { handPhase: "HAND_END", currentActorPlayerId: null, viewer: { legalActions: null } });
+      table.resync();
+      await expect.poll(() => table.commands.filter(({ type }) => type === "REQUEST_SNAPSHOT").length).toBe(1);
+      await expect(outcome).toContainText("111");
+      const startThird = () => table.event({ type: "HAND_STARTED", payload: { handNumber: 3, dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1, blindLevel: 0 } }, { handId: "hand-40", handPhase: "PREFLOP", currentActorPlayerId: "player-1", viewer: { legalActions: tableSnapshot().viewer.legalActions } });
+      if (earlyThird) startThird();
+      await page.clock.runFor(1_100);
+      await expect(outcome).toContainText("222");
+      await expect(outcome).not.toContainText("111");
+      if (!earlyThird) startThird();
+      await page.clock.runFor(500);
+      await expect(outcome).toContainText("222");
+      await expect(page.getByRole("button", { name: "跟注 5" })).toHaveCount(0);
+      await page.clock.runFor(600);
+      await expect(outcome).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "跟注 5" })).toBeEnabled();
+    });
+  }
 }
 
 test("TEX-38 减少动态效果仍保留公开牌型、最佳五张和逐池分配", async ({ page }, testInfo) => {

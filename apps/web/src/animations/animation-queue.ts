@@ -96,6 +96,7 @@ export class AnimationQueue {
   private noticeTimer: unknown | null = null;
   private plannedHandId: string | null = null;
   private forwardOutcomeEvents: readonly OutcomeEvent[] = [];
+  private pendingRecoveryRecap: { game: GameSnapshot; events: readonly OutcomeEvent[] } | null = null;
   private outcomeVisibleSince: number | null = null;
   private confirmedOutcomeEvents: readonly OutcomeEvent[] | null = null;
   private pendingReadingTransition: { callback: () => void; minimumMs: number } | null = null;
@@ -181,10 +182,12 @@ export class AnimationQueue {
     // A recovery drops decoration, but not an accepted public result before
     // the reader has had its minimum window. Never infer awards from a snapshot.
     let snapshotOutcomes = this.outcomesForSnapshot(game);
+    const pendingRecovery = this.pendingRecoveryRecap;
+    this.pendingRecoveryRecap = null;
     this.commitAllFinalFrames(this.foreground);
     const recap = this.state;
     // Keep the existing paint confirmation when recovery contains the same recap.
-    if (snapshotOutcomes.length === recap.outcomeEvents.length
+    if (game?.handId === recap.game?.handId && snapshotOutcomes.length === recap.outcomeEvents.length
       && snapshotOutcomes.every((event, index) => event === recap.outcomeEvents[index])) snapshotOutcomes = recap.outcomeEvents;
     const holdMs = this.foreground && game?.tournamentId === recap.game?.tournamentId
       ? this.remainingOutcomeHold() : 0;
@@ -193,20 +196,37 @@ export class AnimationQueue {
     this.tailTarget = game;
     this.resetHoleDeal();
     this.resetDealPlan();
-    if (holdMs > 0) {
+    // Pin the unread recovery target independently of subsequent live hands,
+    // including when a late timer has not handed it off before another snapshot.
+    const retainedRecovery = pendingRecovery !== null && game !== null
+      && pendingRecovery.game.tournamentId === game.tournamentId
+      && pendingRecovery.game.viewer.playerId === game.viewer.playerId
+      && BigInt(pendingRecovery.game.sequence) <= BigInt(game.sequence) ? pendingRecovery : null;
+    if (holdMs > 0 || retainedRecovery !== null) {
       this.forwardOutcomeEvents = snapshotOutcomes;
+      this.pendingRecoveryRecap = retainedRecovery !== null && retainedRecovery.game.handId !== game?.handId
+        ? retainedRecovery : game !== null && snapshotOutcomes.some((event) => event.type === "POT_AWARDED")
+          && (game.handId !== recap.game?.handId || snapshotOutcomes !== recap.outcomeEvents)
+          ? { game, events: snapshotOutcomes } : null;
       this.replace({ ...recap, overlay: null, holeDeal: null, mode: "HARD_FORWARD", notice: "SYNCED", reducedMotion: this.reducedMotion });
-      this.scheduleReadingTransition(() => {
+      const complete = () => {
         this.transitionTimer = null;
-        if (this.forwardOutcomeEvents !== this.state.outcomeEvents) {
-          this.outcomeVisibleSince = this.forwardOutcomeEvents.some((event) => event.type === "POT_AWARDED") ? this.clock.now() : null;
+        const pending = this.pendingRecoveryRecap;
+        this.pendingRecoveryRecap = null;
+        const target = pending !== null && pending.game.handId !== this.tailTarget?.handId ? pending.game : this.tailTarget;
+        const outcomes = pending?.events ?? this.forwardOutcomeEvents;
+        const needsForward = pending !== null && target !== this.tailTarget;
+        if (outcomes !== this.state.outcomeEvents) {
+          this.outcomeVisibleSince = outcomes.some((event) => event.type === "POT_AWARDED") ? this.clock.now() : null;
           this.confirmedOutcomeEvents = null;
         }
-        this.replace({ ...this.state, game: this.tailTarget, overlay: null, mode: "NORMAL", holeDeal: null,
-          revealedPlayerIds: revealedPlayerIdsFor(this.tailTarget), outcomeEvents: this.forwardOutcomeEvents, notice: "SYNCED" });
+        this.replace({ ...this.state, game: target, overlay: null, mode: needsForward ? "HARD_FORWARD" : "NORMAL", holeDeal: null,
+          revealedPlayerIds: revealedPlayerIdsFor(target), outcomeEvents: outcomes, notice: "SYNCED" });
+        if (needsForward) { this.scheduleReadingTransition(complete, animationTimings.handEnd); return; }
         this.expireNotice();
         this.pump();
-      }, Number.isFinite(holdMs) ? holdMs : animationTimings.handEnd);
+      };
+      this.scheduleReadingTransition(complete, Number.isFinite(holdMs) ? holdMs : animationTimings.handEnd);
       return;
     }
     if (snapshotOutcomes !== recap.outcomeEvents) {
@@ -234,6 +254,12 @@ export class AnimationQueue {
       // Freeze the public recap during its reading window, while retaining
       // only the latest canonical target and per-player/per-pot records.
       this.forwardOutcomeEvents = nextOutcomeEvents(this.forwardOutcomeEvents, message.payload.event, item.beforePresentation?.handId !== afterCanonical.handId);
+      if (this.pendingRecoveryRecap?.game.handId === afterCanonical.handId
+        && this.pendingRecoveryRecap.game.tournamentId === afterCanonical.tournamentId
+        && this.pendingRecoveryRecap.game.viewer.playerId === afterCanonical.viewer.playerId) {
+        this.pendingRecoveryRecap = { game: afterCanonical,
+          events: nextOutcomeEvents(this.pendingRecoveryRecap.events, message.payload.event, false) };
+      }
       return;
     }
     if (!this.foreground) {
@@ -253,7 +279,7 @@ export class AnimationQueue {
   }
 
   /** Cancellation is also a final-frame path, never a stale partial frame. */
-  cancel(): void { this.notifyPresentationReset(); this.clearTransitions(); this.commitAllFinalFrames(false); this.resetDealPlan(); this.replace({ ...this.state, notice: null }); }
+  cancel(): void { this.notifyPresentationReset(); this.clearTransitions(); this.pendingRecoveryRecap = null; this.commitAllFinalFrames(false); this.resetDealPlan(); this.replace({ ...this.state, notice: null }); }
 
   private pump(): void {
     if (this.active !== null || this.timer !== null || this.state.mode === "HARD_FORWARD") return;
@@ -390,6 +416,9 @@ export class AnimationQueue {
       && candidate.tournamentId === game.tournamentId && candidate.handId === game.handId
       && candidate.viewer.playerId === game.viewer.playerId && BigInt(candidate.sequence) <= BigInt(game.sequence);
     let outcomes = matches(this.state.game) ? this.state.outcomeEvents : [];
+    if (this.pendingRecoveryRecap !== null && matches(this.pendingRecoveryRecap.game)) {
+      for (const event of this.pendingRecoveryRecap.events) outcomes = nextOutcomeEvents(outcomes, event, false);
+    }
     for (const item of [...(this.active === null ? [] : [this.active]), ...this.queue]) {
       if (matches(item.afterCanonical)) outcomes = nextOutcomeEvents(outcomes, item.message.payload.event, false);
     }

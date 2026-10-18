@@ -97,6 +97,84 @@ describe("presentation lifecycle", () => {
     expect(clock.pendingTimers()).toBe(0);
   });
 
+  it.each([false, true])("keeps the recovered second-hand recap when hand three arrives before the first reading window (fresh snapshot: %s)", (freshSnapshot) => {
+    const { queue, clock, push } = setup({ requireOutcomeVisibility: true });
+    const laterAward: GameEvent = { type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 222, awards: [{ playerId: "player-2", amount: 222 }], winningHandRank: null } };
+    push(award);
+    push(started, "hand-2");
+    const { after } = push(laterAward, "hand-2");
+    queue.alignToSnapshot({ ...after, reason: "RECONNECT", handPhase: "HAND_END", currentActorPlayerId: null, actionDeadline: null });
+    const firstOutcomes = queue.getSnapshot().outcomeEvents;
+    const third = push({ ...started, payload: { ...started.payload, handNumber: 3 } }, "hand-3");
+    if (freshSnapshot) queue.alignToSnapshot({ ...third.after, reason: "RESYNC" });
+    queue.markOutcomeVisible("hand-1", firstOutcomes);
+    clock.advance(999);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-1");
+    clock.advance(1);
+    const secondOutcomes = queue.getSnapshot().outcomeEvents;
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2" }, outcomeEvents: [laterAward], overlay: null });
+    clock.advance(5_000);
+    queue.markOutcomeVisible("hand-1", firstOutcomes);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-2");
+    queue.markOutcomeVisible("hand-2", secondOutcomes);
+    clock.advance(999);
+    expect(queue.getSnapshot().outcomeEvents).toEqual([laterAward]);
+    clock.advance(1);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-3", sequence: third.after.sequence }, outcomeEvents: [], mode: "NORMAL" });
+    queue.cancel();
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it.each(["cancel", "background", "recipient"] as const)("clears an unread recovery recap on %s", (reset) => {
+    const { queue, clock, push } = setup();
+    push(award);
+    push(started, "hand-2");
+    const second = push(award, "hand-2");
+    queue.alignToSnapshot({ ...second.after, reason: "RECONNECT" });
+    const third = push({ ...started, payload: { ...started.payload, handNumber: 3 } }, "hand-3");
+    if (reset === "cancel") {
+      clock.advance(1_000);
+      expect(queue.getSnapshot().game?.handId).toBe("hand-2");
+      queue.cancel();
+    } else if (reset === "background") {
+      queue.setForeground(false);
+      queue.setForeground(true);
+      queue.alignToSnapshot({ ...third.after, reason: "RECONNECT" });
+    } else {
+      queue.alignToSnapshot({ ...third.after, reason: "RECONNECT", viewer: { ...third.after.viewer, playerId: "player-2" } });
+    }
+    clock.advance(5_000);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-3" }, outcomeEvents: [] });
+    queue.cancel();
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("preserves an unread recovery recap when a newer snapshot overtakes the old reading timer", () => {
+    const { queue, clock, push } = setup({ requireOutcomeVisibility: true });
+    push(award);
+    push(started, "hand-2");
+    const second = push(award, "hand-2");
+    queue.alignToSnapshot({ ...second.after, reason: "RECONNECT" });
+    queue.markOutcomeVisible("hand-1", queue.getSnapshot().outcomeEvents);
+    const third = push({ ...started, payload: { ...started.payload, handNumber: 3 } }, "hand-3");
+    const realNow = clock.now;
+    const lateNow = vi.spyOn(clock, "now").mockImplementation(() => realNow() + 1_000);
+    queue.alignToSnapshot({ ...third.after, reason: "RESYNC" });
+    clock.advance(0);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-2" }, outcomeEvents: [award] });
+    const outcomes = queue.getSnapshot().outcomeEvents;
+    clock.advance(5_000);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-2");
+    queue.markOutcomeVisible("hand-2", outcomes);
+    clock.advance(999);
+    expect(queue.getSnapshot().game?.handId).toBe("hand-2");
+    clock.advance(1);
+    expect(queue.getSnapshot()).toMatchObject({ game: { handId: "hand-3" }, outcomeEvents: [] });
+    queue.cancel();
+    expect(clock.pendingTimers()).toBe(0);
+    lateNow.mockRestore();
+  });
+
   it("explains an interrupted showdown when frame degradation commits its static result", () => {
     const { queue, clock, push } = setup();
     push({ type: "SHOWDOWN_STARTED", payload: { contenderPlayerIds: ["player-1", "player-2"] } });
