@@ -23,11 +23,22 @@ export function useTablePresentation(
   const eventStarted = useEffectEvent((event: GameEvent, options?: { readonly immediate: boolean }) => onEventStarted?.(event, options));
   const reset = useEffectEvent(() => onPresentationReset?.());
   const [queue] = useState(() => new AnimationQueue({
+    requireOutcomeVisibility: true,
     onHardForward: () => { websocket.requestAuthoritativeSnapshot("MANUAL"); },
   }));
   const [frameHealth] = useState(() => new FrameHealth());
   const presentation = useSyncExternalStore(queue.subscribe, queue.getSnapshot, () => emptyPresentation);
   const hasOverlay = presentation.overlay !== null;
+
+  useEffect(() => {
+    if (!presentation.outcomeEvents.some((event) => event.type === "POT_AWARDED")) return;
+    let frame = requestAnimationFrame(() => {
+      // Allow one real paint before starting the minimum reading window. This
+      // is local presentation bookkeeping; canonical clocks never wait for it.
+      frame = requestAnimationFrame(() => queue.markOutcomeVisible(presentation.game?.handId ?? null, presentation.outcomeEvents));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [queue, presentation.game?.handId, presentation.outcomeEvents]);
 
   useEffect(() => {
     queue.setCallbacks({
@@ -43,13 +54,13 @@ export function useTablePresentation(
       queue.setForeground(visible);
       frameHealth.resetWindow();
       if (visible) {
-        queue.alignToSnapshot(projection.getSnapshot().game);
+        queue.alignToSnapshot(projection.getSnapshot().game, true);
         websocket.requestAuthoritativeSnapshot("MANUAL");
       }
     };
     queue.setForeground(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", onVisibility);
-    const unsubscribeBarrier = projection.subscribeBarriers((barrier) => queue.alignToSnapshot(barrier.game));
+    const unsubscribeBarrier = projection.subscribeBarriers((barrier) => queue.alignToSnapshot(barrier.game, barrier.continuous));
     const unsubscribeEvents = projection.subscribeAcceptedGameEvents((event) => queue.enqueue(event.message, event.afterCanonical));
     return () => { document.removeEventListener("visibilitychange", onVisibility); unsubscribeEvents(); unsubscribeBarrier(); queue.cancel(); };
   }, [projection, queue, websocket, frameHealth]);

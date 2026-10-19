@@ -1,5 +1,8 @@
 # Engineering documents
 
+- [TEX-35-acceptance.md](./TEX-35-acceptance.md)：跨手展示、普通阶段快照与恢复阅读窗口的修复和验证边界。
+- [TEX-35-findings-ledger.md](./TEX-35-findings-ledger.md)：PR #79 的逐条审查核验、恢复期间与后一手已接收结果的最小修复及重复/非阻塞建议处置。
+
 - [TEX-61-acceptance.md](./TEX-61-acceptance.md)：慢客户端队列阈值、序列屏障、权威时序诊断和本地验证边界。
 - [TEX-61-findings-ledger.md](./TEX-61-findings-ledger.md)：PR #71 的 Codex、Greptile、CodeRabbit 意见逐条复核、最小修复、重复/风格建议处置与验证证据。
 

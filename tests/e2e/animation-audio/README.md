@@ -32,3 +32,7 @@ CPU 用例先用 MutationObserver 记录飞牌或自动降级，避免跨进程�
 TEX-53 的 wire v4 夹具补齐 smallBlindSeat/bigBlindSeat，沿用既有动画与音效断言。
 
 TEX-60：table-fixture.ts 显式回复共享 v6 TIME_SYNC，保持校时路径可用；动画仍不决定行动截止或阻塞整桌。
+
+TEX-35 审查回归在 1366/390px 使用连续合法投影接收两手不同的分配；夹具 `resync()` 发送 RESYNC_REQUIRED，经应用现有 REQUEST_SNAPSHOT 路径返回后一手 Snapshot，避免同序列正常阶段更新被误当作恢复。DOM 须依次显示 111、222，后一手摘要独立停留后才开放第三手操作。使用真实 React 与 Playwright Clock，不修改产品 store；`--grep 'TEX-35'` 可定向执行，结果与其他受控 UI 测试一样不替代真实服务端/数据库或实机门禁。
+
+F-07 补齐第三手提前到达的顺序：第三手在第一手仍阅读、第二手尚未绘制时到达，也必须先显示第二手 222 摘要并独立停留。与第三手在第二手呈现后才到达的旧顺序一起构成两视口 × 两顺序的四项 DOM 回归。

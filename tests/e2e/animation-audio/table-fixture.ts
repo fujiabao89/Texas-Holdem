@@ -93,6 +93,10 @@ export async function installTable(page: Page, initialGame = tableSnapshot()) {
       if (sendMessage === undefined) throw new Error("Open the table before sending a Snapshot");
       sendMessage({ type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: Number(latest.sequence), payload: { ...latest, reason: "RESYNC" } });
     },
+    resync() {
+      if (sendMessage === undefined) throw new Error("Open the table before requesting recovery");
+      sendMessage({ type: "RESYNC_REQUIRED", protocolVersion: PROTOCOL_VERSION, serverTime: Number(latest.sequence), payload: { tournamentId: latest.tournamentId, reason: "GAP" } });
+    },
   };
 }
 

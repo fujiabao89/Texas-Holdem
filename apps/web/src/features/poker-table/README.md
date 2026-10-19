@@ -1,5 +1,7 @@
 # Poker table feature
 
+TEX-35：展示旧手公开结算时隐藏下一手操作、行动高亮/提示与倒计时；完整分池摘要至少显示 1,000ms，再切换 presentation handId。普通阶段 Snapshot 保留已接收的语义展示；恢复和降级只跳过装饰帧，权威状态、sequence 与 deadline 持续正常更新。
+
 TEX-38 的 `event-feedback.ts` 只映射公开事件为中文动作/金额/牌型及 DOM 坐标；筹码从对应座位飞向实测 Pot，退回/派奖反向飞向服务端指定玩家。Burn 与 Fold 仅移动牌背；每 Pot 的分配逐条显示赢家与金额。静态本手结果保留已展示的公开牌型、最佳五张与分池金额，减少动态效果时同样可读。Reveal 和各动作以队列 `eventKey` 重建动画实例；最新行动者、下注按钮和时钟使用 canonical。页面视觉关键帧仅 transform/opacity，几何在 layoutEffect 中每任务测量并缓存，公共牌先到位再翻面。
 
 回归：`pnpm exec vitest run --project unit apps/web/src/features/poker-table --maxWorkers 1`；浏览器见 [animation-audio](../../../../../tests/e2e/animation-audio/README.md)。
