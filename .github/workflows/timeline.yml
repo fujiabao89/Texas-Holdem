@@ -3,10 +3,6 @@ name: Timeline release gate
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-    paths:
-      - '.github/workflows/timeline.yml'
-      - 'tests/e2e/real/timeline/**'
-      - 'tests/e2e/playwright.timeline.config.ts'
   workflow_dispatch:
     inputs:
       sha:
@@ -17,13 +13,15 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: timeline-rc-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   timeline-rc:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'timeline-rc')
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'timeline-rc') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'timeline-rc'))
+    concurrency:
+      group: timeline-rc-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
