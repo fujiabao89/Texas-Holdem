@@ -1,4 +1,5 @@
 import { test, expect } from "./fixture";
+import { sendPressureBatch } from "../../../support/pressure-probe";
 
 test("R1/R4 双人15秒：正常摊牌→连续三手→完整行动时钟 @timeline-pr @key", async ({ timeline }) => {
   await timeline.create(2);
@@ -276,6 +277,10 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
   )!;
   const beforePressure = slow.frames.length;
   const playerId = slow.game!.viewer.playerId;
+  const snapshotRequestCount = () => timeline.logs().filter(
+    (row) => row.playerId === playerId && row.event === "SNAPSHOT_REQUESTED",
+  ).length;
+  const beforeSnapshotRequests = snapshotRequestCount();
   const hasBackpressure = () =>
     timeline
       .logs()
@@ -350,35 +355,10 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
     let sent = 0;
     let snapshotRequests = 0;
     for (let batch = 0; batch < 256 && !hasBackpressure(); batch++) {
-      const counts = await slow.page.evaluate(async (tournamentId) => {
-        const socket = (window as unknown as { __texPressureSocket?: WebSocket })
-          .__texPressureSocket;
-        if (socket?.readyState !== WebSocket.OPEN) return { sent: 0, snapshotRequests: 0 };
-        let count = 0;
-        let snapshotRequests = 0;
-        while (count < 256 && socket.bufferedAmount < 256 * 1024) {
-          if (count % 4 === 0) {
-            socket.send(
-              JSON.stringify({
-                type: "REQUEST_SNAPSHOT",
-                requestId: crypto.randomUUID(),
-                payload: { tournamentId, reason: "MANUAL" },
-              }),
-            );
-            snapshotRequests++;
-          } else
-            socket.send(
-              JSON.stringify({
-                type: "TIME_SYNC",
-                requestId: crypto.randomUUID(),
-                payload: { clientSentAt: performance.now() },
-              }),
-            );
-          count++;
-        }
-        await new Promise<void>((resolve) => setTimeout(resolve, 10));
-        return { sent: count, snapshotRequests };
-      }, slow.game!.tournamentId);
+      const counts = await slow.page.evaluate(sendPressureBatch, {
+        tournamentId: slow.game!.tournamentId,
+        lastSequence: slow.game!.sequence,
+      });
       sent += counts.sent;
       snapshotRequests += counts.snapshotRequests;
     }
@@ -386,6 +366,7 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
       body: JSON.stringify({
         sent,
         snapshotRequests,
+        acceptedSnapshotRequests: snapshotRequestCount() - beforeSnapshotRequests,
         maxProbes: 65_536,
         observed: hasBackpressure(),
       }),
@@ -394,6 +375,8 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
   })();
   await timeline.action("fold");
   await pressure;
+  await expect.poll(snapshotRequestCount, { message: "pressure snapshot commands reached the server" })
+    .toBeGreaterThan(beforeSnapshotRequests);
   await expect.poll(hasBackpressure, { timeout: 35_000 }).toBe(true);
   slow.proxy.resumeReads();
   await expect

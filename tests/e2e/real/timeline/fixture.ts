@@ -252,7 +252,10 @@ function observe(
   const recordError = (error: string) => {
     if (!probe.errors.includes(error) && probe.errors.length < 100) probe.errors.push(error);
   };
-  page.on("pageerror", () => recordError("pageerror"));
+  page.on("pageerror", (error) => {
+    const reactCode = error.message.match(/Minified React error #(\d{1,4})\b/)?.[1];
+    recordError(reactCode === undefined ? "pageerror" : `pageerror React ${reactCode}`);
+  });
   page.on("console", (message) => {
     if (
       message.type() === "error" &&

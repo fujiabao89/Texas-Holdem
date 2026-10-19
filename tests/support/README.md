@@ -13,6 +13,7 @@
 | [fixtures.ts](./fixtures.ts) | `defineFixture`：不可变 Builder（`with()` 返回新实例）、运行时校验聚合报错（含字段路径）。**约定：`packages/protocol` 落地后，validate 应升级为协议 Schema 校验** |
 | [test-db.ts](./test-db.ts) | 测试数据库隔离：唯一 `runId`、schema 命名 `tex_test_<runId>`（≤63 字节）、缺配置时受控跳过；连接串永不进入输出 |
 | [network-proxy.ts](./network-proxy.ts) | 双向真实 TCP 字节代理：每方向 RTT/2、固定 seed 抖动、保持字节顺序、断连/恢复及停止上游读取；转发样本仅记录字节数和时间。`close()` 清理连接及定时器 |
+| [pressure-probe.ts](./pressure-probe.ts) | 可由 Playwright 序列化的原生压力批次，使用共享 ClientCommand 类型并携带已观察的 lastSequence；单测以 ClientCommandSchema 验证实际发送命令，遵守原生缓冲上限 |
 | [timeline-evidence.ts](./timeline-evidence.ts) | 服务端诊断白名单投影、跨手 DOM/动画与时钟断言、门禁执行数量校验；不导出牌面或原始消息 |
 
 ## 用法示例

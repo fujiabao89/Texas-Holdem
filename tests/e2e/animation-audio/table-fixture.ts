@@ -60,7 +60,7 @@ export async function installTable(page: Page, initialGame = tableSnapshot()) {
   let latest = initialGame;
   let sendMessage: ((message: ServerMessage) => void) | undefined;
   const commands: Array<{ type: string; payload?: Record<string, unknown> }> = [];
-  await page.routeWebSocket("/api/v1/ws", (socket) => {
+  await page.routeWebSocket(/\/api\/v1\/ws$/, (socket) => {
     sendMessage = (message) => socket.send(JSON.stringify(ServerMessageSchema.parse(message)));
     socket.onMessage((raw) => {
       if (replyTimeSync(socket, raw)) return;

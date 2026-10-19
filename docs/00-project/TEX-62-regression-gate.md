@@ -175,3 +175,15 @@ a66d0aed 的完整 RC 为 19/20：后台和平分通过、审计通过，慢接�
 历史固定候选 `b1d35070a173909fd05362fba4fd075284bdce22` 的 [RC 20/20 与独立审计](https://github.com/fujiabao89/Texas-Holdem/actions/runs/38352638255) 保留；本次同步后的 PR 9/RC 20 与常规 CI 以新提交的检查结果为准，不能复用历史通过。本次不改变测试矩阵、阈值、重试次数或产品语义。目录 README、05/06 规格与工程索引已合并同步；01–04 规格、产品范围、安全及运维文档已检查，无需更新，因为仅同步已交付修复与测试门禁，不新增接口、配置或发布行为。
 
 同步工作树本地验证：`pnpm test:unit` 95 文件 / 1007 项通过；`pnpm typecheck`、`pnpm lint` 通过（仅既有 gateway-protocol.test.ts unused room 警告）；actionlint 1.7.12 全工作流语法检查通过；15 份变更 Markdown / 291 个本地链接通过；`git diff --check` 通过，无残留冲突标记。固定提交的集成矩阵另由推送后的 CI 验证。
+
+## 2026-10-19：修复 RC 慢接收注入的无效快照请求
+
+同步候选 `63f4cbdd4323c85d1376bc542d214970a7698137` 的常规 CI、PR 9 项均通过；[完整 RC](https://github.com/fujiabao89/Texas-Holdem/actions/runs/39199775112/job/117890144672) 为 19/20，独立审计通过。唯一失败是慢接收未触发生产背压：认证往返成功，47,771 探针中 11,943 个声明为快照请求，但服务端 SNAPSHOT_REQUESTED 为零。代码核验确认这些请求遗漏协议必填 `lastSequence`，在验证层被拒绝，实际没有产生预期的 Snapshot 响应压力；此前偶发通过不能证明请求合法。逐条核验与日志排除项见 [Findings Ledger](../03-engineering/TEX-62-findings-ledger.md)。
+
+最小修复给原生请求附上已观察的 sequence，把原批次发送函数与协议回归共用，以共享 ClientCommand 类型与 ClientCommandSchema 校验实际结构；增加服务端接受 Snapshot 请求的明确断言。原发送逻辑在新回归中因缺少 lastSequence 确定失败。浏览器时间戳、真实 TCP 停读、生产阈值、65,536 探针/256KiB 缓冲上限、正常玩家推进、恢复及零重试均保持不变。新候选的完整 RC 仍独立验收。
+
+有效压力恢复另检出 React 185：倒计时和行动窗口在每份新 clock 后立即用 effect 写入派生状态，连续快照造成同步更新链。独立浏览器投影回归的 256 个同序列快照在旧 production 实现确定失败。最小修复直接用当前 canonical clock 渲染，保留原有 250ms 刷新、截止和可见性任务；不改 deadline、校时、安全余量、Snapshot 消费或服务器裁决。此项为完成有效压力场景所需的产品修复，随本 PR 明确交付；没有扩展为计时器/动画重构。
+
+文档同步：牌桌及测试目录 README、工程索引、Ledger 与本卡已同步；01–06 权威规格、架构、产品范围、安全及运维说明已检查，无需更新，因为修复遵守既有命令与时钟契约，不改变 wire、业务或部署语义。
+
+本地验证：96 文件 / 1009 项 unit、lint/typecheck 通过（lint 仅既有 unused room 警告）；定向 Schema/代理/证据 12 项通过；256 Snapshot 突发与 RTT/Time Bank/截止/恢复共 12 项浏览器回归通过；最终 production build 的真实 PostgreSQL 慢接收场景 1/1 通过、6 名玩家错误为零，独立产物审计 4 文件通过；17 份 Markdown / 298 个本地链接和差异检查通过。两个缺陷的失败复现与诊断报告单独保留，不计入完整门禁；本地未提交验证标记 dirty=true。推送后的完整 PR/RC 按新 SHA 验收。

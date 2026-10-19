@@ -14,6 +14,7 @@
 ## 索引
 
 - [TEX-62 门禁实施卡](../00-project/TEX-62-regression-gate.md)：实施顺序、运行环境与验收证据；测试要求以 [06 §9.3](../06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求) 为准，实际运行结果见实施卡。
+- [TEX-62-findings-ledger.md](./TEX-62-findings-ledger.md)：PR #80 的 Actions 失败核验、无效压力命令修复及排除项。
 
 - [ai-pr-router-observer.md](./ai-pr-router-observer.md)：TEX-64 的 PR 风险观察器接入、固定工具版本、路径风险、模型授权、状态恢复与 TEX-61 PR 试用步骤。
 

@@ -430,39 +430,37 @@ const pipLayouts: Readonly<Partial<Record<Card["rank"], readonly PipPosition[]>>
 };
 
 function useSubmissionCountdown(clock: ClockProjection | null): number | null {
-  const [countdown, setCountdown] = useState<{ readonly clock: ClockProjection; readonly remaining: number | null } | null>(null);
+  const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     if (clock === null || clock.actionDeadline === null) return;
-    const update = () => {
-      setCountdown({ clock, remaining: submissionTimeRemaining(clock.actionDeadline, clock, performance.now()) });
-    };
-    update();
+    const update = () => setNow(performance.now());
     const interval = window.setInterval(update, 250);
     const onVisibilityChange = () => { if (document.visibilityState === "visible") update(); };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisibilityChange); };
   }, [clock]);
-  return countdown?.clock === clock ? countdown?.remaining ?? null : null;
+  return clock === null ? null : submissionTimeRemaining(clock.actionDeadline, clock, Math.max(now, clock.performanceNowAtReceipt));
 }
 
 /** The full table only rerenders when the window closes, not on every clock tick. */
 function useSubmissionWindow(clock: ClockProjection | null, applySafetyMargin = true): boolean {
-  const [availability, setAvailability] = useState<{ readonly clock: ClockProjection; readonly available: boolean } | null>(null);
+  const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     if (clock === null || clock.actionDeadline === null) return;
-    const update = () => setAvailability({ clock, available: hasSubmissionTime(clock, applySafetyMargin) });
-    update();
+    const update = () => setNow(performance.now());
     const remaining = submissionTimeRemaining(clock.actionDeadline, applySafetyMargin ? clock : { ...clock, safetyMarginMs: 0 }, performance.now())!;
     const timer = clock.roundTripMs !== null && remaining > 0 ? window.setTimeout(update, Math.ceil(remaining)) : null;
     const onVisibilityChange = () => { if (document.visibilityState === "visible") update(); };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => { if (timer !== null) window.clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibilityChange); };
   }, [clock, applySafetyMargin]);
-  return clock?.actionDeadline === null || (availability?.clock === clock && availability?.available === true);
+  // Derive from the current authority; copying every incoming clock into state
+  // creates synchronous effect update chains during a snapshot burst.
+  return hasSubmissionTime(clock, applySafetyMargin, Math.max(now, clock?.performanceNowAtReceipt ?? now));
 }
 
-function hasSubmissionTime(clock: ClockProjection | null, applySafetyMargin = true): boolean {
-  return clock !== null && (clock.actionDeadline === null || (clock.roundTripMs !== null && clock.actionDeadline - estimatedServerNow(clock, performance.now()) - (applySafetyMargin ? clock.safetyMarginMs : 0) > 0));
+function hasSubmissionTime(clock: ClockProjection | null, applySafetyMargin = true, now = performance.now()): boolean {
+  return clock !== null && (clock.actionDeadline === null || (clock.roundTripMs !== null && clock.actionDeadline - estimatedServerNow(clock, now) - (applySafetyMargin ? clock.safetyMarginMs : 0) > 0));
 }
 
 function ClockStatus({ hasActor, clock }: { readonly hasActor: boolean; readonly clock: ClockProjection | null }) {
