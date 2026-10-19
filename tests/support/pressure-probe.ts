@@ -13,24 +13,14 @@ export async function sendPressureBatch({
   let sent = 0;
   let snapshotRequests = 0;
   while (sent < 256 && socket.bufferedAmount < 256 * 1024) {
-    if (sent % 4 === 0) {
-      socket.send(
-        JSON.stringify({
-          type: "REQUEST_SNAPSHOT",
-          requestId: crypto.randomUUID(),
-          payload: { tournamentId, lastSequence, reason: "MANUAL" },
-        } satisfies ClientCommand),
-      );
-      snapshotRequests++;
-    } else {
-      socket.send(
-        JSON.stringify({
-          type: "TIME_SYNC",
-          requestId: crypto.randomUUID(),
-          payload: { clientSentAt: performance.now() },
-        } satisfies ClientCommand),
-      );
-    }
+    socket.send(
+      JSON.stringify({
+        type: "REQUEST_SNAPSHOT",
+        requestId: crypto.randomUUID(),
+        payload: { tournamentId, lastSequence, reason: "MANUAL" },
+      } satisfies ClientCommand),
+    );
+    snapshotRequests++;
     sent++;
   }
   await new Promise<void>((resolve) => setTimeout(resolve, 10));

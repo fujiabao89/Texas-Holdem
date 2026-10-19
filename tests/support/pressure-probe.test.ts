@@ -15,16 +15,15 @@ it("sends only protocol-valid pressure commands with the observed snapshot seque
     },
   });
   const result = await sendPressureBatch({ tournamentId: "tournament-1", lastSequence: "42" });
-  expect(result).toEqual({ sent: 256, snapshotRequests: 64 });
+  expect(result).toEqual({ sent: 256, snapshotRequests: 256 });
   const commands = messages.map((message) => ClientCommandSchema.parse(message));
   for (const command of commands) {
-    if (command.type === "REQUEST_SNAPSHOT")
-      expect(command.payload).toEqual({
-        tournamentId: "tournament-1",
-        lastSequence: "42",
-        reason: "MANUAL",
-      });
-    else expect(command.type).toBe("TIME_SYNC");
+    expect(command.type).toBe("REQUEST_SNAPSHOT");
+    expect(command.payload).toEqual({
+      tournamentId: "tournament-1",
+      lastSequence: "42",
+      reason: "MANUAL",
+    });
   }
   expect(new Set(commands.map((command) => command.requestId)).size).toBe(commands.length);
 });

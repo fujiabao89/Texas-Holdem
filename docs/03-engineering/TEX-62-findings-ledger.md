@@ -35,3 +35,18 @@
 - 本轮只改变 Workflow 调度及文档，未在本地重跑需要 PostgreSQL/浏览器/Xvfb 的完整 PR 9 项/RC 20 项；新提交的远端门禁状态以 GitHub Checks 为准，历史 b533bf9 的通过不能替代新候选结果。
 - 文档同步：更新工作流 README 与本 Ledger；测试/前端 README、01～06 权威规格、实施卡、安全和运维要求已检查，无需改变既有接口、测试矩阵或运行命令。只调整 RC 事件准入和并发位置，无业务、协议、计时或测试断言修改。
 - 提交并推送后，在七条原始线程分别回复实际处置；未修复项说明非阻塞依据，不使用“已修正”。不自行触发 Greptile/DeepSeek Harness，不合并 PR。
+
+## 最新候选复核（8be79816）
+
+重新读取 PR 全部 8 条原始审查线程、13 份 review 和 10 条 Conversation 评论（分页均已取完），并复核 Greptile 在 PR 描述中的摘要。F-05/F-08 在当前代码仍已修复，原七条线程已有对应处置回复。再次执行当前源码的五项隔离探针，F-06/F-07/F-09～F-11 的缺口与上表一致，继续保留为非阻塞 P2；探针的 stub/观测限制也保持不变，不称其已修复。
+
+| ID / 来源 | 有效性、失败场景及既有代码/验证 | 等级 | 处置 |
+| --- | --- | --- | --- |
+| F-12 / [Codex](https://github.com/fujiabao89/Texas-Holdem/pull/80#discussion_r4311589393) | 不成立。声称 pull_request Workflow 必须先存在于默认分支，否则本 PR 的标签入口不会运行。当前 main 确实没有 timeline.yml，但 [8be79816 的 pull_request RC](https://github.com/fujiabao89/Texas-Holdem/actions/runs/39218470193) 已实际执行完整 20 项，前一候选 b533bf9 的同入口也已运行并通过。[GitHub 官方 pull_request 说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request) 使用 PR merge ref，没有该默认分支前置条件；不能套用其他事件的限制。 | P3（原报 P1，未成立） | 跳过：无所称调度失败场景，不为此新增 dispatcher、提升权限或先合并 main。在原始线程说明官方规则和实际运行证据，不回复“已修正”。 |
+| F-13 / CodeRabbit Conversation | Docstring coverage 35% 低于机器人 80% 建议。当前 .coderabbit.yaml 明确关闭 finishing_touches.docstrings；仓库 CI 没有该比例门禁，未指出接口误用或运行失败。 | P3 | 跳过：样式建议，不为补比例添加注释或改写本 PR。 |
+| F-14 / 三方摘要及工具状态 | Greptile 描述摘要重复 F-09～F-11；CodeRabbit review 摘要重复 F-08；Codex receipt/Conversation 指向原线程。AI Router 的风险/PARTIAL 提示没有独立代码缺陷，Copilot/Qodo 配额与 CodeRabbit 限流消息也未产生代码发现。 | P3 | 去重或无可核验发现；不执行摘要内自动生成的审查触发链接，不把工具未运行当成已通过审查。 |
+| F-15 / 当前 Actions 阻塞 | [8be79816 RC](https://github.com/fujiabao89/Texas-Holdem/actions/runs/39218470193/job/117947863328) 为 19/20，仅慢接收未形成生产背压。合法性断言通过，但 45,181 个混合探针中，服务端仅接受 338 个快照请求，全部完成写出，目标无 RESYNC_REQUIRED/SLOW_CONNECTION_CLOSED；代理及六名玩家错误均为零。三份小 TIME_SYNC 请求夹一份快照的压力密度未可靠填满该环境的发送缓冲。 | P1 | 最小调整测试注入：每个探针都请求真实接收者 Snapshot，将批次数由 256 降为 64，保持原 16,384 个快照请求总上限及 256KiB 原生发送缓冲上限。减少上行小探针竞争，不改生产阈值、时钟、恢复/隔离断言或零重试。旧 Windows 场景可通过，不能替代 Linux 新候选验证；338 后停止接受请求的更底层机制尚未证实，不据此改动产品网络实现。 |
+
+验证：当前源码五项缺口探针和入口八种事件复核通过；压力命令 Schema、发送缓冲、真实 TCP FIFO/有界代理及证据校验共 12 项通过。pnpm test:unit 为 96 文件/1009 项通过，pnpm typecheck、pnpm lint 通过（仅既有 unused room 警告），actionlint 1.7.12、17 份 Markdown/299 个本地链接及 git diff --check 通过。本地 production build 的真实 PostgreSQL 六人慢接收 1/1 通过：256 个请求全部被服务端接受，目标产生一次重同步，六名玩家错误为零，独立审计 4 文件通过；报告标记 dirty=true，不冒充已提交候选。新固定候选 CI 结果在交付时报告；原 8be79816 的失败保持可追溯，不能以历史绿色或原 SHA 重跑代替修复证明。
+
+文档同步：本 Ledger、实施卡及两个测试目录 README 同步压力输入与审查处置。01～06 权威规格、前端/服务端 README、产品、安全及运维要求已检查，无需更新：本轮没有业务、协议、数据库、生产时钟或部署行为变更。

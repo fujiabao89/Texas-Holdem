@@ -21,7 +21,7 @@ Node 22+、仓库固定 pnpm、PostgreSQL 16；时序配置每次先执行 Next 
 
 `run.ts` 顺序启动三个独立进程/schema，失败仍执行其他场景并使总门禁失败。`split` 首场 seed 默认 280835，其余 280820；不要为 RC 覆盖 seed，否则平分分支可能未命中而正确失败。服务端在同一进程按 tournament 序号派生 seed，固定串行建房顺序。诊断筛选可直接使用 `pnpm exec playwright test -c tests/e2e/playwright.timeline.config.ts --project chromium --grep 'R1/R4'`；筛选执行不算完整门禁。
 
-`fixture.ts` 为每名玩家创建独立 BrowserContext/TCP 代理并观察原生 WS、DOM Mutation、animationstart 和 rAF；观察数据仅写入测试页面自己的命名空间，不改产品 store。代理每方向 RTT/2，保持字节顺序，记录实际转发耗时；停读作用于上游 TCP，而非拦截 JS onmessage。压力用例发送有界合法 TIME_SYNC/REQUEST_SNAPSHOT，不修改生产背压阈值；只接受被停读玩家本人的背压日志和注入后恢复帧。后台玩家停止 UI 出牌，使用真实服务器超时，其他玩家继续合法 UI 操作；后台旧手不补播，恢复后核验最新 Snapshot。
+`fixture.ts` 为每名玩家创建独立 BrowserContext/TCP 代理并观察原生 WS、DOM Mutation、animationstart 和 rAF；观察数据仅写入测试页面自己的命名空间，不改产品 store。代理每方向 RTT/2，保持字节顺序，记录实际转发耗时；停读作用于上游 TCP，而非拦截 JS onmessage。压力用例先用 TIME_SYNC 预检认证，再发送有界合法 REQUEST_SNAPSHOT，不修改生产背压阈值；只接受被停读玩家本人的背压日志和注入后恢复帧。后台玩家停止 UI 出牌，使用真实服务器超时，其他玩家继续合法 UI 操作；后台旧手不补播，恢复后核验最新 Snapshot。
 
 证据位于 `tests/e2e/.artifacts-timeline/`（gitignore）：`gate.json` 总结果、各场景 `results.json`、每名玩家的事件元数据/DOM/帧间隔/网络采样、白名单服务端日志。失败保留遮盖所有牌面的截图/录像，成功删除录像。每条证据在导出前核验本次真实 playerToken、连接串与牌面/原始 Payload 结构；独立 audit.ts 再审查整个产物目录，审计失败禁止 GitHub 上传。timeline global-teardown 校验 runId 派生 schema 与 application PID，仅停止本次测试子进程，再删除隔离 schema，避免先强制断 DB 导致日志展开连接对象。关闭原始 trace 与 Playwright 自动页面可访问性快照（`PLAYWRIGHT_NO_COPY_PROMPT`），不导出原始事件 Payload、认证 URL、牌面或连接串。报告记录 HEAD 与工作区是否有未提交修改，未提交验证不能冒充已提交候选 SHA 的发布证明。
 
@@ -43,12 +43,12 @@ TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返�
 
 原生浏览器会请求当前应用未提供的 favicon.ico；独立无身份 create 页面探针已确认唯一资源错误为该辅助图标 404。夹具将精确 favicon 404 保留为 warnings 证据（已记录为任务外资源建议），脚本/API 失败、5xx、JS 异常和游戏观测错误继续阻断。不忽略其他 404。
 
-CI 关闭 Playwright 的自动 Git 元数据和 source diff 捕获：Git diff 可能含环境连接串，候选 SHA/dirty 状态由门禁自行记录，独立上传审计保持 fail-closed。Firefox 在移除 context 前等待页面关闭，避免容器移除与 SessionStore 窗口清理竞态；关闭错误仍使测试失败。慢接收用例以最多 65,536 个合法探针分批填充真实内核缓冲，四分之一使用 REQUEST_SNAPSHOT，其余 TIME_SYNC，客户端发送缓冲上限 256KiB；只在目标玩家的生产背压日志出现后停止，未触发则失败。小校时回复在 Linux 大内核缓冲下可能无法及时形成背压，因此真实接收者 Snapshot 请求提供有界响应放大，不伪造游戏帧或降低生产阈值；记录实际两类请求数量。校时回复逐条通过协议验证，只汇总数量与有界 RTT 样本，不占用牌局序列记录。
+CI 关闭 Playwright 的自动 Git 元数据和 source diff 捕获：Git diff 可能含环境连接串，候选 SHA/dirty 状态由门禁自行记录，独立上传审计保持 fail-closed。Firefox 在移除 context 前等待页面关闭，避免容器移除与 SessionStore 窗口清理竞态；关闭错误仍使测试失败。慢接收用例以最多 16,384 个合法 Snapshot 探针分批填充真实内核缓冲，客户端发送缓冲上限 256KiB；目标玩家生产背压日志出现后停止注入，达到上限仍未触发则失败。真实接收者 Snapshot 请求提供有界响应放大，不伪造游戏帧或降低生产阈值；记录实际发送及服务端接受数量。校时回复逐条通过协议验证，只汇总数量与有界 RTT 样本，不占用牌局序列记录。
 
 AUTO_ACTION 使用权威动作日志 timestamp 与 deadline 严格比较；firedAt 只表示 Timer 回调入队，仍原样保留诊断。回调在 D-1、执行日志在 D 可合法通过；动作 timestamp 在 D-1 仍失败，新增 unit 负例覆盖。原生后台关闭先发送自有 Browser.close，再等待进程管道关闭；异步、有界重试清理经过绝对所有权校验的 profile，避免最后写盘与同步 rmdir 竞争。测试用例仍零重试，清理失败仍阻断。
 
 慢接收在停读前，以带 requestId 的原生 TIME_SYNC 往返验证当前已认证 epoch；OPEN 状态不能替代服务端确认。压力探针固定使用这个已确认的原生连接，不随新连接切换。预检只导出是否成功、候选索引、尝试数和 RTT；缺少匹配回复直接失败。服务端必须实际记录本玩家背压，恢复后仍验证 fresh Snapshot 和其他玩家推进。
 
-压力批次由 [pressure-probe.ts](../../../support/pressure-probe.ts) 发送；REQUEST_SNAPSHOT 必须携带当前已观察的 `lastSequence`。共享 ClientCommand 类型约束发送结构，单测以 ClientCommandSchema 校验实际命令，防止缺字段退化成 INVALID_MESSAGE 小回复而使注入失效。仍使用浏览器原生单调时间、已认证连接与原有请求/缓冲上限；不调整生产阈值或重试次数。
+压力批次由 [pressure-probe.ts](../../../support/pressure-probe.ts) 发送；REQUEST_SNAPSHOT 必须携带当前已观察的 `lastSequence`。共享 ClientCommand 类型约束发送结构，单测以 ClientCommandSchema 校验实际命令，防止缺字段退化成 INVALID_MESSAGE 小回复而使注入失效。当前每个压力探针都请求真实 Snapshot，最多 64 批 × 256 个，即 16,384 个请求；保留历史混合模式的快照请求总上限及 256KiB 原生发送缓冲上限。此前四分之三 TIME_SYNC 的混合流在 Linux 候选仅产生 338 个快照，未可靠触发背压；移除小探针的上行竞争，仍要求目标服务端背压、实际恢复和正常玩家推进。不调整生产阈值或重试次数；停读前的 TIME_SYNC 认证预检保留。
 
 pageerror 保持阻断；对生产 React 异常仅附加最多四位公开错误码，不输出异常文本、参数或堆栈。用于区分注入失败与恢复后的渲染失败，仍遵守原有证据隐私边界。

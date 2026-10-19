@@ -348,13 +348,13 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
     true,
   );
   slow.proxy.pauseReads();
-  // Small replies alone can fit inside kernel buffers while upstream writes
-  // are still pending. Mix valid snapshot requests (one in four probes) to
-  // fill egress with real recipient projections, never synthetic game frames.
+  // Fill egress with real recipient projections. Small TIME_SYNC probes consume
+  // native send capacity without reliably filling the upstream kernel buffer.
   const pressure = (async () => {
     let sent = 0;
     let snapshotRequests = 0;
-    for (let batch = 0; batch < 256 && !hasBackpressure(); batch++) {
+    // Preserve the previous maximum of 16,384 snapshot requests.
+    for (let batch = 0; batch < 64 && !hasBackpressure(); batch++) {
       const counts = await slow.page.evaluate(sendPressureBatch, {
         tournamentId: slow.game!.tournamentId,
         lastSequence: slow.game!.sequence,
@@ -367,7 +367,7 @@ test("慢接收真实背压：停读原生TCP，超限恢复不阻塞正常玩�
         sent,
         snapshotRequests,
         acceptedSnapshotRequests: snapshotRequestCount() - beforeSnapshotRequests,
-        maxProbes: 65_536,
+        maxProbes: 16_384,
         observed: hasBackpressure(),
       }),
       contentType: "application/json",
