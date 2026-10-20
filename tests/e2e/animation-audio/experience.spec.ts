@@ -7,6 +7,23 @@ import { scanAxeViolations } from "../fixtures/a11y";
 import { expect, test } from "../fixtures/observability";
 import { audioProbe, board, captureTableEvidence, freezeClock, installAudioProbe, installTable, reveal, setVisibility, tableSnapshot } from "./table-fixture";
 
+test("TEX-62 快照突发后计时与下注仍可用", async ({ page }) => {
+  const initial = tableSnapshot(6, { actionDeadline: 15_000 });
+  const legal = initial.viewer.legalActions!;
+  const table = await installTable(page, { ...initial, viewer: { ...initial.viewer,
+    legalActions: { ...legal, canCheck: true, canCall: false, callAmount: 0 } } });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await table.open();
+  await expect(page.getByRole("button", { name: "过牌", exact: true })).toBeEnabled();
+  for (let index = 0; index < 256; index++) table.snapshot();
+  table.event({ type: "PLAYER_BET", payload: { playerId: "player-2", seat: 1, source: "HUMAN_SOCKET", amount: 5, betTo: 15 } },
+    { viewer: { legalActions: legal } });
+  await page.getByRole("button", { name: "跟注 5", exact: true }).click();
+  await expect.poll(() => table.commands.filter(({ type }) => type === "SUBMIT_ACTION")).toEqual([
+    expect.objectContaining({ payload: expect.objectContaining({ expectedSequence: "2", action: { type: "CALL" } }) }),
+  ]);
+});
+
 test("TEX-38 键盘调整音量和动态效果，刷新与牌桌音效开关共用持久偏好", async ({ page }, testInfo) => {
   const table = await installTable(page);
   await installAudioProbe(page);

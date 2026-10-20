@@ -25,9 +25,18 @@ import {
 
 const serverPort = Number(process.env.TEX_E2E_REAL_SERVER_PORT ?? 3201);
 const webPort = Number(process.env.TEX_E2E_REAL_WEB_PORT ?? 3202);
-const seed = process.env.TEX_E2E_REAL_SEED ?? "280820";
-const runId = createRealRunId();
-const schemaName = schemaNameForRunId(runId);
+const seed =
+  process.env.TEX_E2E_REAL_SEED ??
+  (process.env.TEX_TIMELINE_SCENARIO === "split" ? "280835" : "280820");
+const proposedRunId = createRealRunId();
+// Adopt an interrupted run consistently. Never use a newly proposed schema while
+// workers/teardown still read the older idempotent identity file.
+const { runId, schemaName } = writeRunIdentity({
+  runId: proposedRunId,
+  schemaName: schemaNameForRunId(proposedRunId),
+  serverPort,
+  webPort,
+});
 const serverBaseUrl = `http://127.0.0.1:${serverPort}`;
 const webBaseUrl = `http://127.0.0.1:${webPort}`;
 const databaseUrl = withApplicationName(
@@ -35,11 +44,9 @@ const databaseUrl = withApplicationName(
   `tex_e2e_real_${runId}`,
 );
 
-// 主进程写入运行身份；测试 worker 与 global teardown 读取（跨进程共享）。
-writeRunIdentity({ runId, schemaName, serverPort, webPort });
-
 export default defineConfig({
   testDir: "./real",
+  testIgnore: /timeline\//,
   outputDir: ".artifacts-real",
   fullyParallel: false,
   workers: 1,

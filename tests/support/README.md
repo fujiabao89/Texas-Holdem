@@ -1,6 +1,6 @@
 # Test support utilities
 
-跨层复用的测试基础设施（TEX-12）。全部为纯 TypeScript 工厂函数：不读写系统时间、不注册全局定时器、不连接任何真实数据库，可在并行测试间安全共用（每个测试自建实例，不共享可变状态）。
+跨层复用的测试基础设施。随机源、Fake Clock 和 Fixture 使用纯 TypeScript 工厂；TEX-62 的网络代理使用真实 TCP、单调时间和定时器，每次测试自建并关闭实例，不共享可变状态。
 
 ## 模块
 
@@ -12,6 +12,9 @@
 | [fake-clock.ts](./fake-clock.ts) | 受控时钟：手动 `advance`、按到期顺序执行、`dispose()` 清空全部 timer 并可断言无遗留 |
 | [fixtures.ts](./fixtures.ts) | `defineFixture`：不可变 Builder（`with()` 返回新实例）、运行时校验聚合报错（含字段路径）。**约定：`packages/protocol` 落地后，validate 应升级为协议 Schema 校验** |
 | [test-db.ts](./test-db.ts) | 测试数据库隔离：唯一 `runId`、schema 命名 `tex_test_<runId>`（≤63 字节）、缺配置时受控跳过；连接串永不进入输出 |
+| [network-proxy.ts](./network-proxy.ts) | 双向真实 TCP 字节代理：每方向 RTT/2、固定 seed 抖动、保持字节顺序、断连/恢复及停止上游读取；转发样本仅记录字节数和时间。`close()` 清理连接及定时器 |
+| [pressure-probe.ts](./pressure-probe.ts) | 可由 Playwright 序列化的原生压力批次，每个探针请求真实 Snapshot，使用共享 ClientCommand 类型并携带已观察的 lastSequence；单测以 ClientCommandSchema 验证实际发送命令，遵守原生缓冲上限 |
+| [timeline-evidence.ts](./timeline-evidence.ts) | 服务端诊断白名单投影、跨手 DOM/动画与时钟断言、门禁执行数量校验；不导出牌面或原始消息 |
 
 ## 用法示例
 
@@ -36,3 +39,12 @@ it("示例", () => {
 - 引擎内部的 `SeededRandomSource`（docs/01-engine-spec.md §15）由 TEX-13 在 `packages/poker-engine` 实现；本目录不定义引擎接口。
 - Fixture 必须通过公开入口构造场景，禁止篡改被测模块私有状态（docs/06-testing-strategy.md §3.4）。
 - 各文件自测（`*.test.ts`）归属 unit 层（根 `pnpm test:unit`）。
+
+TEX-62 的 `websocket-text.ts` 对 Playwright 1.62 Firefox Juggler 观察器返回的 Latin-1 字节串执行严格 UTF-8 解码；Chromium/WebKit 原生文本不转换，异常编码明确失败。只修复被动测试观察，不修改应用消息。单测覆盖中文/Emoji/希腊字母、ASCII、Buffer 和非法字节。公开派奖证据只导出 handId、玩家 ID/测试昵称和金额，不导出牌面或原始 payload。
+
+终局驾驶按完整批次边界计数：普通摊牌等待 GAME_SNAPSHOT/RECONNECT_RESULT 的终局状态；Fold-to-win 等待下一手 HAND_STARTED，最终手等待 TOURNAMENT_FINISHED。SHOWDOWN_STARTED Patch 的 HAND_END 和第一条 POT_AWARDED 都不能提前完成目标，确保多 Pot 分配已收齐。hand-boundary 单测覆盖该竞争；真实目标分支仍显式校验权威分配，恢复 Snapshot 不可掩盖缺失事件。
+
+代理回归修正：每方向只由一个定时 FIFO 泵写出 TCP 块，计时到期后只从队头排空；遵守真实 write/drain 背压，resumeReads 不覆盖未解除的写压力。128 个真实分块、RTT 300ms/抖动 149ms/seed 62 的旧实现出现字节乱序，新实现完整保序。恢复到下一手 Snapshot 也可确认已收到派奖的上一手结束，分配分支仍独立校验。
+代理在队列软水位暂停原生读取并在低水位恢复；2MiB 原生突发回归验证夹具自身保持有界而不成为压力测试的故障源。
+
+AUTO_ACTION 的实际时序门禁使用权威动作日志 timestamp；Timer firedAt 属于回调入队时刻并保留为诊断。单元负例区分回调 D-1/动作 D 与动作 D-1，后者继续失败；旧 deadline 和重复开手断言保持生效。

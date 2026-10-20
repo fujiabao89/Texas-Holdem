@@ -17,6 +17,8 @@ TEX-38 新增 [animation-audio/](./animation-audio/README.md) 的动画/音频/�
 
 ## 真实链路套件（TEX-28：`real/`）
 
+TEX-62 时序与弱网扩展已接入独立 [timeline 套件](./real/timeline/README.md)，入口为 `pnpm test:e2e:timeline`（PR）与 `pnpm test:e2e:timeline:rc`（RC）；结果与阻断见 [实施卡](../../docs/00-project/TEX-62-regression-gate.md)。以下通用 trace 策略不适用于 timeline，该套件关闭原始 trace/自动页面快照并遮盖截图/录像牌面；真实 Snapshot/时钟、展示生命周期、每个客户端的诊断、网络注入与失败证据要求以 [06 §9.3](../../docs/06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求) 为准。现有 TEX-28 通过不能代替该矩阵验收。
+
 `pnpm test:e2e:real` 走完整真实链路：真实浏览器（独立 BrowserContext 身份隔离）→ 真实 apps/web → 真实本地 game-server → 真实 PostgreSQL（每次运行独立 `tex_e2e_real_<runId>` schema，结束清理）。与上面基于 Playwright WebSocket mock 的套件互补，**禁止**以 `route.fulfill`、伪造 Snapshot/Event 或直接改浏览器 store 替代被测业务链路（docs/06 §5）。
 
 - 配置：[playwright.real.config.ts](./playwright.real.config.ts)（`retries: 0`、独立 `.artifacts-real` 产物目录、独立端口段）；`tests/meta` 有入口与配置自测。

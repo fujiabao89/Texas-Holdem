@@ -36,3 +36,5 @@ TEX-60：table-fixture.ts 显式回复共享 v6 TIME_SYNC，保持校时路径�
 TEX-35 审查回归在 1366/390px 使用连续合法投影接收两手不同的分配；夹具 `resync()` 发送 RESYNC_REQUIRED，经应用现有 REQUEST_SNAPSHOT 路径返回后一手 Snapshot，避免同序列正常阶段更新被误当作恢复。DOM 须依次显示 111、222，后一手摘要独立停留后才开放第三手操作。使用真实 React 与 Playwright Clock，不修改产品 store；`--grep 'TEX-35'` 可定向执行，结果与其他受控 UI 测试一样不替代真实服务端/数据库或实机门禁。
 
 F-07 补齐第三手提前到达的顺序：第三手在第一手仍阅读、第二手尚未绘制时到达，也必须先显示第二手 222 摘要并独立停留。与第三手在第二手呈现后才到达的旧顺序一起构成两视口 × 两顺序的四项 DOM 回归。
+
+TEX-62 新增 256 个同序列 Snapshot 突发后的时钟/下注回归：经过真实 React、共享 Schema 和 WS 入口，后续 Event 的跟注必须使用最新 sequence，所有 pageerror 继续阻断。fixture 按 API WS 路径匹配，也支持 production build 中配置的独立服务端 Origin；只用于受控投影回归，不替代真实压力用例。

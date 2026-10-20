@@ -26,7 +26,10 @@ const SCHEMA_PREFIX = "tex_e2e_real_";
 const SCHEMA_NAME_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/;
 
 export function createRealRunId(now = Date.now()): string {
-  const timestamp = new Date(now).toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+  const timestamp = new Date(now)
+    .toISOString()
+    .replace(/[-:TZ.]/g, "")
+    .slice(0, 14);
   const suffix = Math.floor(Math.random() * 36 ** 6)
     .toString(36)
     .padStart(6, "0");
@@ -41,17 +44,31 @@ export function schemaNameForRunId(runId: string): string {
   return schemaName;
 }
 
-export function writeRunIdentity(identity: RealRunIdentity): void {
+export function writeRunIdentity(identity: RealRunIdentity, file = IDENTITY_FILE): RealRunIdentity {
   // Playwright worker 进程会为 project 配置重新加载 config 模块，顶层调用会再次
   // 执行——必须幂等：仅主进程（首次加载）写入，worker 一律沿用现有文件，否则
   // worker 生成的新 runId 会覆盖 schema 名，导致测试按不存在的 schema 查询。
-  if (existsSync(IDENTITY_FILE)) return;
-  writeFileSync(IDENTITY_FILE, `${JSON.stringify(identity, null, 2)}\n`, "utf8");
+  if (existsSync(file)) {
+    const existing = JSON.parse(readFileSync(file, "utf8")) as RealRunIdentity;
+    if (
+      existing.schemaName !== schemaNameForRunId(existing.runId) ||
+      existing.serverPort !== identity.serverPort ||
+      existing.webPort !== identity.webPort
+    )
+      throw new Error(
+        "existing real run identity is invalid or uses different ports; separate concurrent runs into different checkouts",
+      );
+    return existing;
+  }
+  writeFileSync(file, `${JSON.stringify(identity, null, 2)}\n`, "utf8");
+  return identity;
 }
 
 export function readRunIdentity(): RealRunIdentity {
   if (!existsSync(IDENTITY_FILE)) {
-    throw new Error(`未找到运行身份文件 ${IDENTITY_FILE}；真实链路 E2E 必须经 playwright.real.config.ts 启动`);
+    throw new Error(
+      `未找到运行身份文件 ${IDENTITY_FILE}；真实链路 E2E 必须经 playwright.real.config.ts 启动`,
+    );
   }
   return JSON.parse(readFileSync(IDENTITY_FILE, "utf8")) as RealRunIdentity;
 }
