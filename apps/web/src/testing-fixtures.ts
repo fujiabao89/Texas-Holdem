@@ -17,7 +17,7 @@ export function roomSnapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapsho
     roomId: "room-1",
     roomRevision: "1",
     status: "IN_GAME",
-    inviteCode: "ABC234",
+    inviteCode: overrides.status === "LOBBY" ? "ABC234" : null,
     hostPlayerId: "player-1",
     config: testConfig,
     activeTournamentId: "tournament-1",

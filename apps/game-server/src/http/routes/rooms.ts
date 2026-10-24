@@ -218,6 +218,11 @@ export function registerRoomRoutes(app: FastifyInstance, deps: RoomRoutesDeps): 
           let result;
           const operation = parsed.data.operation;
           switch (operation.type) {
+            case "REOPEN_LOBBY":
+              result = await deps.manager.submitCommand(request.params.roomId, {
+                type: "REOPEN_LOBBY", actorPlayerId: auth.playerId, expectedRevision,
+              });
+              break;
             case "UPDATE_CONFIG": {
               const config = deps.validateConfig(operation.config);
               result = await deps.manager.submitCommand(request.params.roomId, {

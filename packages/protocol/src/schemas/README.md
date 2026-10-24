@@ -9,3 +9,5 @@ TEX-54：`http.ts` 增加持久化赛果 GET 的严格 UUID 参数、空查询�
 TEX-58：`common.ts` 的 `HandPhaseSchema` 新增 `"SHOWDOWN_DISPLAY"` 阶段；`views.ts` 增加 `showdownDisplayUntil`（可为 null）并添加跨字段严格校验（`validateShowdownAndClockInvariants`），确保展示阶段与行动权/倒计时严格互斥。wire 主版本提升至 v5。
 
 TEX-60：common.ts 提供 MonotonicMillisecondsSchema（非负有限安全范围内小数），区分客户端采样时间与服务端 epoch 整数时间。当前 PROTOCOL_VERSION 为 6；旧版本认证/消息明确拒绝。
+
+TEX-48：RoomSnapshotSchema 要求所有非 LOBBY 快照的 inviteCode=null；内部保留原码不影响公开投影。状态相关约束与拒绝路径由服务端 `lobby-lifecycle.test.ts` 结合共享 Schema 验证。

@@ -30,3 +30,5 @@ pnpm exec vitest run --project integration apps/game-server/tests/integration/ro
 ```
 
 真实重启测试会创建并删除独立测试 schema、启动/终止测试子进程；不得指向生产库。测试跳过不是验证通过。
+
+TEX-48：终局恢复不再把真人标为 Ready；恢复 FINISHED 后，原身份连接、房主重新开放筹备大厅，再由全员确认准备。Room Host Grace 在 LOBBY/FINISHED 适用。内部原邀请码不换码，wire 仅 Lobby 可见。本任务无数据库迁移/环境配置变更；未提交终局与 LOBBY 状态冲突仍沿用 ADR-0003 隔离，检查持久化告警后处理，不根据 UI 赛果伪造根。

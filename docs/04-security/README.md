@@ -15,3 +15,5 @@ Hand History 的凭证有效期与成员资格遵循 [协议规格](../02-protoc
 TEX-53 新增 D/SB/BB 属公开投影字段，授权玩家、Bot 与淘汰观战者一致；私有牌、Deck/Burn 与凭证仍受 [协议规格](../02-protocol-spec.md) §9.4 原有隔离约束。新增字段不扩大订阅资格。
 
 TEX-54 公开赛果使用所属未关闭 Room 的 ACTIVE HUMAN 成员授权（允许同 Room 非参赛成员），仅 Bearer Header 携带 Token；无查询参数、无身份缓存。验证按持久化 `token_key_id` 从当前/保留密钥环取密钥，旧 key 必须保留到其所属 Room 关闭，未知 key 失败关闭。响应白名单、no-store、错误脱敏与保留期到期规则见 [02](../02-protocol-spec.md) / [03](../03-data-model.md) 的 TEX-54 小节。只保留现有聚合HTTP指标，不新增请求/响应/异常本体审计日志；代理必须剔除Authorization与查询字符串。
+
+TEX-48：邀请码仅作为 Room Locator，在 IN_GAME/FINISHED 的 Snapshot 中隐藏且 Join 拒绝；原成员凭证重连仍独立鉴权，隐藏邀请码不替代权限校验。重新开放仅允许当前房主并在 Room 队列校验 revision，CLOSED 后身份失效。权威错误/投影规则见 [02](../02-protocol-spec.md)，实现与验证见 [TEX-48 验收记录](../03-engineering/TEX-48-acceptance.md)。

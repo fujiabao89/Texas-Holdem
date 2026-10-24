@@ -9,3 +9,5 @@
 - [ADR-0005：Snapshot 中的权威庄位与盲注座位](./0005-tex-53-authoritative-blind-seats.md)（TEX-53，wire v4）
 
 - [ADR-0006：弱网校时与操作安全余量](./0006-tex-60-network-fair-action-clock.md)（TEX-60，wire v6）
+
+- [ADR-0007：显式重新开放下一轮筹备大厅](./0007-tex-48-reopen-lobby.md)（TEX-48，HTTP operation 增量、同邀请码暂停/恢复；前端 TEX-49）。

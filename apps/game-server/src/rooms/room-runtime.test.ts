@@ -11,7 +11,7 @@ import {
   leaveRoom,
   markTournamentFinished,
   projectRoomSnapshot,
-  returnToLobby,
+  reopenLobby,
   setReady,
   startTournament,
   transferHost,
@@ -404,8 +404,8 @@ describe("startTournament", () => {
   });
 });
 
-describe("markTournamentFinished / returnToLobby / closeRoom", () => {
-  it("比赛结束后 FINISHED，activeTournamentId 清空；returnToLobby 保留邀请码与配置回 LOBBY", () => {
+describe("markTournamentFinished / reopenLobby / closeRoom", () => {
+  it("比赛结束后 FINISHED，activeTournamentId 清空；reopenLobby 保留邀请码与配置回 LOBBY", () => {
     const { state: s } = readyRoom();
     const started = startTournament(s, {
       actorPlayerId: "host-1",
@@ -415,7 +415,7 @@ describe("markTournamentFinished / returnToLobby / closeRoom", () => {
     const finished = markTournamentFinished(started, "t-1");
     expect(finished.status).toBe("FINISHED");
     expect(finished.activeTournamentId).toBeNull();
-    const lobby = returnToLobby(finished);
+    const lobby = reopenLobby(finished, "host-1");
     expect(lobby.status).toBe("LOBBY");
     expect(lobby.inviteCode).toBe("ABC123");
     // IN_GAME 时，非活跃 tournamentId 的终局信号必须被拒（旧信号不能覆盖新比赛）

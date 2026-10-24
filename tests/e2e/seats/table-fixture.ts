@@ -70,7 +70,7 @@ export async function installSeatTable(page: Page, initialGame: GameSnapshot) {
     roomId: "room-seats",
     roomRevision: "1",
     status: "IN_GAME",
-    inviteCode: "ABC234",
+    inviteCode: null,
     hostPlayerId: initialGame.players[0]?.playerId ?? null,
     config: {
       maxPlayers: initialGame.players.length,

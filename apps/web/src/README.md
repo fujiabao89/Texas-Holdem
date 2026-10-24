@@ -9,3 +9,5 @@ TEX-23/TEX-24/TEX-21 的跨功能基础能力位于 `protocol/`、`state/`、`me
 TEX-26 的 `animations/` 和 `audio/` 仍是跨功能 presentation 能力：前者只观察连续 Event 已提交后的 canonical target，并将牌桌外左上角共享 Deck 到各座位的两轮手牌轨迹、两轮结束后的本人双牌翻面、公开 Board 和服务端 `bestFiveCards` 编排为发牌/入框/翻面/组合视觉；后者只播放预加载、本地 CC0 素材，并以全局单通道抢占避免连续事件产生叠音或漏掉后续动作；二者均不能发送 Action、推导规则或建立网络连接。
 
 TEX-44 的品牌展示层位于 `components/` 与 `app/`，通过既有 `usePresentationPreferences` 读取动态偏好，不新增投影或网络状态。功能模块的请求、幂等和服务端裁决边界保持原有实现。
+
+TEX-48 仅同步 `testing-fixtures.ts`：默认 IN_GAME 快照不含邀请码，LOBBY 可投影原码，与共享 Schema 一致；无页面/按钮/Transport 行为变更，产品接入仍属 TEX-49。

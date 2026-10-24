@@ -167,7 +167,7 @@ apps/game-server/
 | `CREATED → LOBBY` | 创建成功即进入 Lobby（《总规划》§5.1） |
 | `LOBBY → IN_GAME` | 开局条件满足（§5.3） |
 | `IN_GAME → FINISHED` | 冠军产生（[01](./01-engine-spec.md) §12） |
-| `FINISHED → LOBBY` | 保留邀请码与配置，可"再来一局" |
+| `FINISHED → LOBBY` | 当前房主显式 REOPEN_LOBBY，校验 revision；保留配置、邀请码、成员和合法座位，真人重新准备 |
 | 任意 → `CLOSED` | Lobby 关闭；或比赛中已无真人（§6.5） |
 
 Room 是邀请和人员容器，Tournament 是 Room 中的一次实际比赛；"再来一局"创建**新 Tournament**，不复用旧牌局状态（《总规划》§5.1）。`IN_GAME` 期间 Room 与一场 Tournament 一一对应（[03](./03-data-model.md) §5.3）。
@@ -177,16 +177,16 @@ Room 是邀请和人员容器，Tournament 是 Room 中的一次实际比赛；"
 - 固定使用 31 字符字母表 `ABCDEFGHJKMNPQRSTUVWXYZ23456789`，生成 6 位大写邀请码；排除 0/O、1/I/L，只定位房间、不充当身份凭证；邀请链接仅预填邀请码（《总规划》§5.1；[02](./02-protocol-spec.md) §5）。
 - 使用密码学安全随机源逐字符 rejection sampling，禁止对随机字节直接取模造成偏差。数据库以“非 CLOSED Room 的邀请码唯一”约束作最终裁决；冲突最多重新生成 10 次，每次生成完整新码。
 - 连续 10 次冲突视为服务异常：创建 Room 失败、返回可重试的 503/`INTERNAL_ERROR`、记录 Critical 指标；不得降级为更短邀请码或可预测序列。有效 Room 总量同时受 §10.3 的 130 Room 单实例硬限约束。
-- `CLOSED` 后立即失效，不能再加入或"再来一局"（《总规划》§4.2）。
+- `IN_GAME`/`FINISHED` 同一码暂停加入且不向 Snapshot 投影，原成员 Token 重连不走 Join 门禁；显式重新开放 LOBBY 后恢复。`CLOSED` 后立即失效，不能再加入或"再来一局"（《总规划》§4.2）。
 
 ### 5.3 开局条件与锁定
 
 P0 开局条件（《总规划》§2.1，server 逐一校验）：
 
 1. 至少 2 名真人参赛者；
-2. 所有真人（包括房主）均处于 Ready；
+2. 所有真人（包括房主）均在线、已入座且 Ready；
 3. 无未完成的配置变更；
-4. Room 仍在 `LOBBY`。
+4. Room 仍在 `LOBBY`，不存在活跃 Tournament；FINISHED 直接开局必须 ROOM_LOCKED。
 
 房主不能绕过自己的 Ready 状态强制开始（《总规划》§2.1）。P1 加入 AI 后：至少 2 名总参赛者且至少 1 名真人；AI 默认 Ready（《总规划》§2.1）。
 
@@ -203,7 +203,7 @@ P0 开局条件（《总规划》§2.1，server 逐一校验）：
 
 - 比赛前房主离开 → 房主权转给最早加入且仍在线的真人（《总规划》§4.2）。
 - 比赛中房主断线不影响服务端运行，也没有任何特殊扑克权限（《总规划》§4.2）。
-- Lobby 内房主断线时启动 60 秒 Host Grace Timer；60 秒内重连则取消。到期仍处于 `LOBBY` 且原房主仍离线时，Room 队列把房主权转给 `joinedAt` 最早、当前在线的真人，并递增 `roomRevision`。
+- `LOBBY`/`FINISHED` 内房主断线时启动 60 秒 Host Grace Timer；60 秒内重连则取消。到期仍处于筹备或结果阶段 且原房主仍离线时，Room 队列把房主权转给 `joinedAt` 最早、当前在线的真人，并递增 `roomRevision`。
 - 到期时没有在线真人则暂不转移；之后首位真人成功连接时，由 Room 队列在发送最新 `ROOM_SNAPSHOT` 前将其设为房主。原房主在转移后重连只作为普通成员，不自动夺回房主权。主动离开不享受 60 秒宽限，立即按第一条转移。
 
 ### 5.6 Lobby 成员
@@ -536,7 +536,7 @@ CLOSED 先广播最后 RoomSnapshot 并同步撤销邀请码/epoch/订阅/心跳
 Writer 在 enqueue 边界复制 Bundle（保留 Buffer/Date/BigInt），Runtime 卸载只标记其队列退休，pending/in-flight/隔离项仍保留，成功排空才回收。关停 latch 不因背压回落而重开入口；手间等待结束后先停止入口和 Runtime，再执行最后 flush，最后停 Writer 调度。历史继续走数据库侧 ACTIVE Room 凭证与投影校验，Runtime 卸载不延长身份有效期，也不删除数据库历史。
 
 - Tournament 进入 `FINISHED`/`ABANDONED_NO_HUMAN` 后立即取消 Timer/AI、拒绝新动作，并把最终状态复制进不可变持久化任务。旧 Tournament Runtime 转只读保留 10 分钟，供已连接客户端完成最终 Snapshot/事件同步；之后即使 DB 重试仍在进行也可卸载，因为 Writer 持有独立 Bundle。
-- Room `FINISHED → LOBBY` 后可立即创建新 Tournament；旧 Runtime 的只读保留不能占据“活跃 Tournament”名额，也不能接收新 Room 的命令。
+- Room 显式 `FINISHED → LOBBY` 后，在全员重新准备且满足开局条件时可创建新 Tournament；旧 Runtime 的只读保留不能占据“活跃 Tournament”名额，也不能接收新 Room 的命令。
 - Room 进入 `CLOSED` 后立即移除邀请码路由、使 Token 失效并关闭连接；完成正在执行的队列任务后卸载重型 Room/Tournament Runtime，同时保留轻量 `{roomId, closedReason, closedAt}` Tombstone 10 分钟，用于拒绝迟到请求，之后删除。
 - 卸载前必须满足：无正在提交的内存状态转移、所有 Timer generation 已失效、连接已解绑、持久化任务已复制到 Writer。不得仅因 JS 对象“无人引用”而把资源回收交给偶然的 GC 时机。
 
@@ -685,3 +685,5 @@ Writer 在 enqueue 边界复制 Bundle（保留 Buffer/Date/BigInt），Runtime 
 no-store 在请求 hook 中设置，覆盖限流和验证失败；全局 per-IP 限流与现有 HTTP 指标适用。服务端不记录请求、响应或异常本体，访问代理也必须剔除 Authorization 与 query。具体授权、错误与数据完整性以 02/03 的 TEX-54 契约为准。
 
 TEX-60：网关认证后直接回复 TIME_SYNC_RESULT，记录 Schema 后的接收时间与构造回复时的发送时间。该路径不进入桌队列、不修改截止时间或持久化；契约见 [02 §8.5](./02-protocol-spec.md)，决策见 [ADR-0006](./adr/0006-tex-60-network-fair-action-clock.md)。
+
+TEX-48 执行细节（ADR-0007）：RoomRuntime 拥有 Host Grace Timer 与代次；定时器仅投递 HOST_GRACE_EXPIRED，在 Room 队列复核代次、截止点、当前房主、连接与阶段，持久化 Host 成功后才提交并广播。FINISHED→LOBBY 保留同一离线 episode 的截止点；重连、进入 IN_GAME、CLOSED 和 dispose 取消旧代次。无在线后继者时保留原房主，过期后首位真人连接或无房主时由 SET_CONNECTION_STATUS 在同一队列选举并持久化，再发送连接快照。持久化失败不提交、每秒重试同一受守卫代次。重新开放严格先持久化 LOBBY，再公开 Snapshot；下一次 START_TOURNAMENT 使用新 ID、递增场号、配置初始筹码和当前参赛者新快照。旧终局信号须匹配 activeTournamentId，旧 Runtime 只读保留不占活跃名额。配置更新、Join、重新开放和开始命令共享队列，未提交配置不会被越过。

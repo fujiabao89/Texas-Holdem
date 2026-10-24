@@ -18,8 +18,8 @@ TEX-51：`registerRecovered` 仅供启动屏障使用，注册已验证的成员
 - **内存权威**：seat/ready/connectionStatus/activeTournamentId 只在内存；`rooms`/`room_players` 不落这些运行态，DB 只记录身份、成员关系、状态、配置与 Host（docs/03 §5）。
 - **串行执行**：`room-executor.ts` 每个 Room 一个串行队列；HTTP/WS 只能经 `RoomManager.submitCommand` 投递命令，不得直接 mutate。控制面先提交（先持久化成功再确认），避免半提交与检查后写入竞态；WS 的 Ready/普通离开命令在取得队列执行权时复核连接 epoch，已由 Tournament 确认的撤回只做后续成员清理。
 - **比赛中离开**：Tournament 先权威确认 `WITHDRAW_PLAYER`，再由 Room 串行移除成员、撤销 Token/转移 Host；HTTP 与 WS 走同一顺序。
-- **状态机**：`LOBBY → IN_GAME → FINISHED → LOBBY`，任意态可转 `CLOSED`；`roomRevision` 单调递增、只增不回退。「再来一局」由 `START_TOURNAMENT` 在单命令内原子完成 FINISHED→LOBBY→IN_GAME：`expectedRevision` 校验提交前状态，中间 `LOBBY` 不暴露、不落库。
-- **恢复后的再来一局**：终局恢复保持当前真人的 `ready=true`，与未重启的 FINISHED 运行时一致，使 Host 仍可直接提交下一场；LOBBY/IN_GAME 恢复不伪造 Ready。
+- **状态机**：`LOBBY → IN_GAME → FINISHED → LOBBY`，任意态可转 `CLOSED`；`roomRevision` 单调递增、只增不回退。由房主显式 `REOPEN_LOBBY` 校验 revision 并持久化 FINISHED→LOBBY；真人 Ready=false、扑克状态 ACTIVE，保留合法座位/成员/配置与原邀请码。START_TOURNAMENT 只接受 LOBBY，所有真人须在线/入座/重新准备。
+- **恢复后的再来一局**：所有恢复阶段均不伪造真人 Ready；FINISHED 先显式重新开放，再重新连接、准备和独立开局。
 - **开局**：`TournamentStarter` port（`tournament-starter.ts`）由 TEX-20 注入运行时；默认实现仅单事务落库 Tournament + locked players + Room→IN_GAME，不实现 Hand 循环、不伪造 Engine 结果。
 - **凭证**：`playerToken` 256-bit 熵、仅创建/加入响应返回；HMAC 摘要落库（`infrastructure/persistence/player-token.ts`）；鉴权由 token 摘要反查 `playerId`。
 - **邀请码**：31 字符字母表、无偏 rejection sampling、最多 10 次冲突重试（`invite-code.ts`）。
@@ -40,3 +40,5 @@ TEX-51：`registerRecovered` 仅供启动屏障使用，注册已验证的成员
 `room-lifecycle-races.test.ts` 使用真实 Room/Tournament managers 与 gateway，覆盖终局 Action 幂等重放与最终 Snapshot、延迟清理后的最后 LEAVE 回执、全下后最后真人退出的 HTTP/WS 关房交错、观察者/最终帧发送失败后的清理。
 
 `leave-coordinator.test.ts` 验证本次 CLOSED 快照 + tombstone + 已确认撤回三项证据缺一不可，排队关闭仅接受确定的关闭错误，撤回/持久化失败不被吞掉，所有路径均解除临时订阅。
+
+TEX-48：RoomRuntime 同时拥有 LOBBY/FINISHED 的 60 秒 Host Grace，代次/状态/房主在串行队列复核；连接恢复、关房、卸载取消旧 Timer，过期无人在线时等待首位真人连接。邀请码公开投影仅 LOBBY；CLOSED 仅保留 locator→三字段墓碑的拒绝路由，到期一起删除。`lobby-lifecycle.test.ts` 是本任务单元/HTTP/时序回归入口，运行 `pnpm exec vitest run --project unit apps/game-server/src/rooms`。

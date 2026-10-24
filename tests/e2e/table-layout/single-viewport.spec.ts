@@ -46,7 +46,7 @@ function roomSnapshot(seats: readonly number[], startingStack = 1000) {
     roomId: "room-1",
     roomRevision: "1",
     status: "IN_GAME",
-    inviteCode: "ABC234",
+    inviteCode: null,
     hostPlayerId: "player-1",
     config: {
       maxPlayers: seats.length,

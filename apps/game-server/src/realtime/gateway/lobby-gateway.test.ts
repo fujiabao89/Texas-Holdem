@@ -240,8 +240,8 @@ async function setupTournamentGateway(
       return snapshot === undefined
         ? undefined
         : options.terminal
-          ? { ...snapshot, status: "FINISHED", activeTournamentId: null }
-          : { ...snapshot, status: "IN_GAME", activeTournamentId: "t1" };
+          ? { ...snapshot, status: "FINISHED", inviteCode: null, activeTournamentId: null }
+          : { ...snapshot, status: "IN_GAME", inviteCode: null, activeTournamentId: "t1" };
     },
   };
   const events = createTournamentEventBus();
@@ -739,7 +739,7 @@ describe("LobbyGateway", () => {
         const snapshot = manager.getSnapshot(roomId);
         return snapshot === undefined
           ? undefined
-          : { ...snapshot, status: "IN_GAME", activeTournamentId: "t1" };
+          : { ...snapshot, status: "IN_GAME", inviteCode: null, activeTournamentId: "t1" };
       },
       submitCommand(roomId, command) {
         if (command.type === "LEAVE" && command.afterTournamentWithdrawal) {
