@@ -85,6 +85,7 @@ export const ClientCommandSchema = z.discriminatedUnion("type", [
 export const CreateRoomRequestSchema = z.strictObject({ displayName: DisplayNameSchema, config: TournamentConfigSchema });
 export const JoinRoomRequestSchema = z.strictObject({ inviteCode: InviteCodeSchema, displayName: DisplayNameSchema });
 export const RoomOperationSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("REOPEN_LOBBY") }),
   z.strictObject({ type: z.literal("UPDATE_CONFIG"), config: TournamentConfigSchema }),
   z.strictObject({ type: z.literal("KICK_PLAYER"), targetPlayerId: OpaqueIdSchema }),
   z.strictObject({ type: z.literal("CHANGE_SEAT"), seat: SeatSchema.nullable() }),

@@ -150,6 +150,8 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       () => {
         if (tombstones.get(tombstone.roomId) !== tombstone) return;
         tombstones.delete(tombstone.roomId);
+        for (const [code, roomId] of inviteByCode)
+          if (roomId === tombstone.roomId) inviteByCode.delete(code);
         tombstoneTimers.delete(tombstone.roomId);
       },
       Math.max(0, CLOSED_ROOM_RETENTION_MS - (clock() - tombstone.closedAt)),
@@ -171,8 +173,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       closedAt: clock(),
     };
     tombstones.set(state.roomId, tombstone);
-    for (const [code, roomId] of inviteByCode)
-      if (roomId === state.roomId) inviteByCode.delete(code);
+    // Retain only the locator → tombstone route for stable INVITE_EXPIRED during retention.
     publish(projectRoomSnapshot(state));
     const pending = (async () => {
       await runtime.dispose();
@@ -201,12 +202,16 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       if (state.status === "CLOSED" || state.roomRevision > revisionCeiling) {
         throw new RoomDomainError("GAME_UNAVAILABLE");
       }
-      const runtime = new RoomRuntime(state, {
+      const runtime: RoomRuntime = new RoomRuntime(state, {
         persistence: deps.persistence,
         ids: deps.ids,
         revisionCeiling,
         isConnectionCurrent: deps.isConnectionCurrent,
         onStartCommitted: deps.onStartCommitted,
+        scheduler,
+        clock,
+        onTimerResult: (result) => publishResult(runtime, result.state),
+        onTimerError: () => deps.onObserverError?.(state.roomId),
       });
       rooms.set(state.roomId, runtime);
       if (state.inviteCode !== null) inviteByCode.set(state.inviteCode, state.roomId);
@@ -218,6 +223,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       const code = runtime.current.inviteCode;
       if (code !== null && inviteByCode.get(code) === roomId) inviteByCode.delete(code);
       rooms.delete(roomId);
+      void runtime.dispose();
     },
 
     async createRoom(input) {
@@ -261,12 +267,16 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
           },
           config: input.config,
         });
-        const runtime = new RoomRuntime(state, {
+        const runtime: RoomRuntime = new RoomRuntime(state, {
           persistence: deps.persistence,
           ids: deps.ids,
           revisionCeiling: 4_294_967_295,
           isConnectionCurrent: deps.isConnectionCurrent,
           onStartCommitted: deps.onStartCommitted,
+          scheduler,
+          clock,
+          onTimerResult: (result) => publishResult(runtime, result.state),
+          onTimerError: () => deps.onObserverError?.(state.roomId),
         });
         rooms.set(roomId, runtime);
         inviteByCode.set(inviteCode, roomId);
@@ -288,6 +298,7 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
       if (roomId === undefined) {
         throw new RoomDomainError("INVALID_INVITE_CODE");
       }
+      if (tombstones.has(roomId)) throw new RoomDomainError("INVITE_EXPIRED");
       const runtime = rooms.get(roomId);
       if (runtime === undefined) {
         throw new RoomDomainError("INVALID_INVITE_CODE");

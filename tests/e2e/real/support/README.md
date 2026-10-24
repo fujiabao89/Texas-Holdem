@@ -8,3 +8,5 @@ timeline 模式用 Node --import tsx 直接启动应用并保存匹配 schema �
 
 配置必须使用 writeRunIdentity 返回的实际身份，不能在旧文件仍存在时另用新 schema。不同端口的并发运行明确拒绝；身份一致性与中断续用由 tests/support/run-identity.test.ts 使用独立临时文件验证。
 createRoomViaUi 的可选 baseURL 仅用于真实原生默认 context 的绝对导航，不改变应用请求或房间配置。
+
+TEX-48：api.ts 的 reopenLobbyFromLegacyResult 先断言旧结果页入口收到 ROOM_LOCKED，再使用该已认证请求的身份调用真实 REOPEN_LOBBY；凭证只在测试内存使用、不输出、不改浏览器 store。之后由现有 Lobby UI 重新准备和开局。此桥接用于保留旧赛果隔离回归，不宣称 TEX-49 的新按钮/导航已实现。

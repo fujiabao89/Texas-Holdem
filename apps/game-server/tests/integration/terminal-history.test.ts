@@ -19,7 +19,8 @@ import {
   createHandHistoryRepository,
   createRoomRepository,
 } from "../../src/infrastructure/persistence/repositories";
-import { roomPlayers, rooms as roomTable } from "../../src/infrastructure/persistence/schema";
+import { DEALING_DISPLAY_MS, SHOWDOWN_DISPLAY_MS } from "../../src/tournaments/tournament-executor";
+import { roomPlayers, rooms as roomTable, tournaments as tournamentTable, tournamentPlayers } from "../../src/infrastructure/persistence/schema";
 import { createPersistenceWriter } from "../../src/persistence/persistence-writer";
 import { createRoomManager, type RoomManager } from "../../src/rooms/room-manager";
 import { createRoomPersistence } from "../../src/rooms/room-persistence";
@@ -123,7 +124,7 @@ describeTestDatabase(
       const app = Fastify({ logger: false });
       registerHandHistoryRoutes(app, {
         repository: createHandHistoryRepository(testDb!.database),
-        tokenSecret: TOKEN_SECRET,
+        tokenSecretForKeyId: (keyId) => keyId === "test-key" ? TOKEN_SECRET : undefined,
         rateLimit: { max: 1000, timeWindow: "1 minute" },
         now: () => clock.now(),
         makeTraceId: randomUUID,
@@ -182,6 +183,8 @@ describeTestDatabase(
           })) as CommandResultPayload;
           expect(result.status).toBe("APPLIED");
         }
+        clock.advance(DEALING_DISPLAY_MS);
+        await tournaments.setConnection(tournamentId, host.playerId, true);
         // The first hand ends without revealing either player's cards.
         await action({ type: "FOLD" });
         expect(handIds).toHaveLength(1);
@@ -192,7 +195,13 @@ describeTestDatabase(
           i < 100 && tournaments.getView(tournamentId)!.status === "RUNNING";
           i += 1
         ) {
-          const legal = tournaments.getView(tournamentId)!.currentLegalActions!;
+          const view = tournaments.getView(tournamentId)!;
+          if (view.presentationPhase === "DEALING" || view.presentationPhase === "SHOWDOWN_DISPLAY") {
+            clock.advance(view.presentationPhase === "DEALING" ? DEALING_DISPLAY_MS : SHOWDOWN_DISPLAY_MS);
+            await tournaments.setConnection(tournamentId, host.playerId, true);
+            continue;
+          }
+          const legal = view.currentLegalActions!;
           await action(
             legal.canAllIn
               ? { type: "ALL_IN" }
@@ -271,6 +280,39 @@ describeTestDatabase(
           expect(burns).toHaveLength(3);
           for (const burn of burns) expect(burn.payload).not.toHaveProperty("card");
         }
+
+        // TEX-48: explicit durable Lobby, same locator, fresh tournament rows and old history.
+        await rooms.submitCommand(host.roomId, {
+          type: "REOPEN_LOBBY", actorPlayerId: host.playerId,
+          expectedRevision: Number(rooms.getSnapshot(host.roomId)!.roomRevision),
+        });
+        const [reopenedRoom] = await testDb!.database.db.select().from(roomTable).where(eq(roomTable.id, host.roomId));
+        expect(reopenedRoom!.status).toBe("LOBBY");
+        expect(reopenedRoom!.inviteCode).toBe(host.roomSnapshot.inviteCode);
+        expect(rooms.getSnapshot(host.roomId)!.players.every((p) => !p.ready && p.pokerStatus === "ACTIVE")).toBe(true);
+        for (const session of [host, guest]) await rooms.submitCommand(host.roomId, { type: "SET_READY", playerId: session.playerId, ready: true });
+        const nextTournamentId = randomUUID();
+        await rooms.submitCommand(host.roomId, {
+          type: "START_TOURNAMENT", actorPlayerId: host.playerId, tournamentId: nextTournamentId,
+          expectedRevision: Number(rooms.getSnapshot(host.roomId)!.roomRevision),
+        });
+        await tournaments.setConnection(nextTournamentId, host.playerId, true);
+        const rounds = await testDb!.database.db.select().from(tournamentTable).where(eq(tournamentTable.roomId, host.roomId));
+        expect(rounds.map((t) => t.tournamentNo).sort()).toEqual([1, 2]);
+        expect(rounds.find((t) => t.id === tournamentId)!.status).toBe("FINISHED");
+        const newPlayers = await testDb!.database.db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, nextTournamentId));
+        expect(newPlayers).toHaveLength(2);
+        expect(newPlayers.every((p) => p.startingStack === 1000n && p.pokerStatus === "ACTIVE" && p.rank === null)).toBe(true);
+        for (const session of [host, guest]) {
+          const oldHistory = await app.inject({ method: "GET", url: detailUrl, headers: { authorization: `Bearer ${session.playerToken}` } });
+          expect(oldHistory.statusCode).toBe(200);
+        }
+        await expect(rooms.submitCommand(host.roomId, { type: "TOURNAMENT_FINISHED", tournamentId })).rejects.toThrow("TOURNAMENT_NOT_ACTIVE");
+        expect(rooms.getSnapshot(host.roomId)!.activeTournamentId).toBe(nextTournamentId);
+        // End the new runtime through its withdrawal path before testing ordinary FINISHED leave.
+        await tournaments.submit(nextTournamentId, { type: "WITHDRAW_PLAYER", playerId: guest.playerId, reason: "USER_LEFT" });
+        await settleRoomCommands();
+        await writer.flush();
 
         // Runtime expiry must not extend a departed member's authorization.
         await rooms.submitCommand(host.roomId, {

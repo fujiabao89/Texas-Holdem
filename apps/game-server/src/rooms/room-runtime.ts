@@ -8,7 +8,7 @@
  * - 每个状态迁移返回新的不可变 RoomState，`roomRevision` 单调递增，只增不回退；
  *   HTTP/WS 不得直接 mutate，必须经 Room 串行执行器。
  * - 开局条件（§5.3）：LOBBY、无活跃 Tournament、Host、至少 2 名真人、
- *   所有真人已入座、所有真人 Ready、expectedRoomRevision 精确匹配。
+ *   所有真人在线、已入座且 Ready、expectedRoomRevision 精确匹配。
  */
 
 import type { RoomSnapshot, TournamentConfig } from "@texas-holdem/protocol";
@@ -78,7 +78,7 @@ function toMember(seed: RoomMemberSeed): RoomMember {
     tokenDigest: seed.tokenDigest ?? null,
     tokenKeyId: seed.tokenKeyId ?? null,
     seat: null,
-    ready: false,
+    ready: seed.kind === "BOT",
     connectionStatus: "CONNECTED",
     pokerStatus: "ACTIVE",
     joinedAt: seed.joinedAt,
@@ -195,7 +195,11 @@ export function setReady(state: RoomState, playerId: string, ready: boolean): Ro
 }
 
 /** 改配置：仅 Host、仅 LOBBY；任何配置变更重置全员 Ready（不得让旧 Ready 绕过条件）。 */
-export function updateConfig(state: RoomState, actorPlayerId: string, config: TournamentConfig): RoomState {
+export function updateConfig(
+  state: RoomState,
+  actorPlayerId: string,
+  config: TournamentConfig,
+): RoomState {
   requireLobby(state);
   requireHost(state, actorPlayerId);
   if (config.maxPlayers < humanMemberCount(state)) {
@@ -205,13 +209,17 @@ export function updateConfig(state: RoomState, actorPlayerId: string, config: To
   for (const member of state.members.values()) {
     // 容量缩小后清掉越界座位（同时重置 Ready），避免残留 seat >= maxPlayers 被写入开局快照。
     const seat = member.seat !== null && member.seat >= config.maxPlayers ? null : member.seat;
-    members.set(member.playerId, { ...member, seat, ready: false });
+    members.set(member.playerId, { ...member, seat, ready: member.kind === "BOT" });
   }
   return advance(state, { config, members });
 }
 
 /** 踢人：仅 Host、仅 LOBBY；不能踢自己或不存在成员。 */
-export function kickPlayer(state: RoomState, actorPlayerId: string, targetPlayerId: string): RoomState {
+export function kickPlayer(
+  state: RoomState,
+  actorPlayerId: string,
+  targetPlayerId: string,
+): RoomState {
   requireLobby(state);
   requireHost(state, actorPlayerId);
   if (targetPlayerId === actorPlayerId) {
@@ -282,28 +290,30 @@ function pickNextHost(state: RoomState): string | null {
  * + expectedRoomRevision；通过后冻结房间进入 IN_GAME 并记录 activeTournamentId。
  */
 export function startTournament(state: RoomState, input: StartTournamentInput): RoomState {
+  requireLobby(state);
   if (input.expectedRevision !== state.roomRevision) {
     throw new RoomDomainError("STALE_ROOM_STATE", {
       details: { currentRoomRevision: String(state.roomRevision) },
     });
   }
-  requireLobby(state);
   if (state.activeTournamentId !== null) {
     throw new RoomDomainError("ROOM_LOCKED");
   }
   requireHost(state, input.actorPlayerId);
-  const seatedHumans = [...state.members.values()].filter(
-    (member) => member.kind === "HUMAN" && member.seat !== null,
-  );
-  if (seatedHumans.length < 2) {
+  const participants = [...state.members.values()];
+  const humans = participants.filter((member) => member.kind === "HUMAN");
+  const hasBots = participants.some((member) => member.kind === "BOT");
+  if (hasBots ? humans.length < 1 || participants.length < 2 : humans.length < 2) {
     throw new RoomDomainError("INVALID_ACTION");
   }
   for (const member of state.members.values()) {
-    if (member.kind !== "HUMAN") continue;
-    if (member.seat === null) {
+    if (
+      member.seat === null ||
+      (member.kind === "HUMAN" && member.connectionStatus !== "CONNECTED")
+    ) {
       throw new RoomDomainError("INVALID_ACTION");
     }
-    if (!member.ready) {
+    if (member.kind === "HUMAN" && !member.ready) {
       throw new RoomDomainError("INVALID_ACTION");
     }
   }
@@ -322,12 +332,31 @@ export function markTournamentFinished(state: RoomState, tournamentId: string): 
   return advance(state, { status: "FINISHED", activeTournamentId: null });
 }
 
-/** 再来一局：FINISHED → LOBBY，保留邀请码与配置（TEX-20 驱动）。 */
-export function returnToLobby(state: RoomState): RoomState {
-  if (state.status !== "FINISHED") {
+/** 房主显式重新开放：保留合法座位与成员，真人重新准备，不带入旧扑克状态。 */
+export function reopenLobby(state: RoomState, actorPlayerId: string): RoomState {
+  requireHost(state, actorPlayerId);
+  if (state.status !== "FINISHED" || state.activeTournamentId !== null) {
     throw new RoomDomainError("ROOM_LOCKED");
   }
-  return advance(state, { status: "LOBBY" });
+  const members = new Map<string, RoomMember>();
+  const occupied = new Set<number>();
+  for (const member of state.members.values()) {
+    const validSeat =
+      member.seat !== null &&
+      Number.isInteger(member.seat) &&
+      member.seat >= 0 &&
+      member.seat < state.config.maxPlayers &&
+      !occupied.has(member.seat);
+    const seat = validSeat ? member.seat : null;
+    if (seat !== null) occupied.add(seat);
+    members.set(member.playerId, {
+      ...member,
+      seat,
+      ready: member.kind === "BOT",
+      pokerStatus: "ACTIVE",
+    });
+  }
+  return advance(state, { status: "LOBBY", members });
 }
 
 /** 关闭房间：CLOSED、邀请码立即失效（置空）、记录关闭原因。 */
@@ -337,7 +366,7 @@ export function closeRoom(state: RoomState, reason: string): RoomState {
 
 /**
  * 投影 RoomSnapshot（docs/02-protocol-spec.md §9.1）：
- * CLOSED 时 inviteCode=null；绝不包含 Token；玩家按 seat 升序、未入座最后按 playerId 稳定排序。
+ * 仅 LOBBY 时 inviteCode 非空；绝不包含 Token；玩家按 seat 升序、未入座最后按 playerId 稳定排序。
  */
 export function projectRoomSnapshot(state: RoomState): RoomSnapshot {
   const players = [...state.members.values()].sort((a, b) => {
@@ -351,7 +380,7 @@ export function projectRoomSnapshot(state: RoomState): RoomSnapshot {
     roomId: state.roomId,
     roomRevision: String(state.roomRevision),
     status: state.status,
-    inviteCode: state.status === "CLOSED" ? null : state.inviteCode,
+    inviteCode: state.status === "LOBBY" ? state.inviteCode : null,
     hostPlayerId: state.hostPlayerId,
     config: state.config,
     activeTournamentId: state.activeTournamentId,

@@ -19,3 +19,5 @@ pnpm exec playwright test -c tests/e2e/playwright.config.ts seats
 夹具拦截 `**/api/v1/ws`，兼容同源代理和开发环境独立 game-server 地址；不会连接真实牌局。
 
 TEX-60：table-fixture.ts 使用共享 TIME_SYNC mock 支持 v6，座位与权威行动回归不会绕过校时路径。
+
+TEX-48：比赛快照夹具的 inviteCode 改为 null，以符合共享 RoomSnapshotSchema；测试行为和页面实现不变。

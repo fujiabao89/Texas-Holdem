@@ -35,7 +35,7 @@ export const RoomSnapshotSchema = z.strictObject({
   activeTournamentId: OpaqueIdSchema.nullable(),
   players: z.array(RoomPlayerSchema).max(10),
 }).superRefine((value, context) => {
-  if (value.status === "CLOSED" && value.inviteCode !== null) context.addIssue({ code: "custom", message: "closed rooms have no invite code" });
+  if (value.status !== "LOBBY" && value.inviteCode !== null) context.addIssue({ code: "custom", message: "only lobby snapshots expose invite codes" });
 });
 
 const PlayerPublicViewSchema = z.strictObject({

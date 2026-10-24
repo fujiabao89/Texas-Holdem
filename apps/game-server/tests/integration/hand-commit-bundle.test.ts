@@ -619,6 +619,20 @@ describeTestDatabase("hand commit bundle: 原子性与幂等", (context) => {
     expect(room.status).toBe("IN_GAME");
   });
 
+  it("TEX-48: delayed terminal bundle preserves an explicitly reopened LOBBY", async () => {
+    const fixture = await createTournamentFixture("Reopened");
+    await createRoomRepository(testDb!.database).setRoomStatus(fixture.roomId, "LOBBY");
+    const finishedAt = new Date("2026-10-24T00:00:00Z");
+    const bundle: HandCommitBundle = {
+      ...buildBundle({ tournamentId: fixture.tournamentId, handId: randomUUID(), handNumber: 1, firstSequence: 1n, eventCount: 2, participantId: fixture.participantId }),
+      tournamentFinish: { status: "FINISHED", championTournamentPlayerId: fixture.participantId, finishedAt, retentionExpiresAt: new Date(finishedAt.getTime() + 180 * 24 * 3600 * 1000), roomStatus: "FINISHED" },
+    };
+    await expect(createHandCommitRepository(testDb!.database).commitHandBundle(bundle)).resolves.toBe("committed");
+    const [room] = await testDb!.database.db.select().from(rooms).where(eq(rooms.id, fixture.roomId));
+    const [tournament] = await testDb!.database.db.select().from(tournaments).where(eq(tournaments.id, fixture.tournamentId));
+    expect(room!.status).toBe("LOBBY"); expect(tournament!.status).toBe("FINISHED");
+  });
+
   it("控制面 TOURNAMENT_FINISHED 写失败时终局 Bundle 兜底写 FINISHED（P2）", async () => {
     const fixture = await createTournamentFixture("Kappa");
     const repo = createHandCommitRepository(testDb!.database);

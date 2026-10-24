@@ -15,6 +15,7 @@
 import { expect, type Page } from "@playwright/test";
 
 import { test } from "../fixtures/observability";
+import { reopenLobbyFromLegacyResult } from "./support/api";
 import {
   countTournamentsForRoom,
 } from "./support/db";
@@ -130,12 +131,22 @@ test.describe("TEX-55 赛果页刷新与直接访问", () => {
     await anonymousContext.close();
 
     // 7. 路径验证四：下一轮开局后旧赛果隔离共存
-    // 房主在原页面点击「再来一局」开启第二场比赛
-    await page.getByRole("button", { name: "再来一局" }).click();
+    // TEX-48：旧入口拒绝；通过显式 HTTP 重新开放，现有 Lobby 全员重新准备。
+    diagnostics.allow(/Failed to load resource: the server responded with a status of 409/);
+    await reopenLobbyFromLegacyResult(page, roomId);
+    for (const current of [page, bob]) {
+      await current.goto(`/room/${roomId}`);
+      const ready = current.getByRole("button", { name: "准备", exact: true });
+      await expect(ready).toBeEnabled({ timeout: 30_000 });
+      await ready.click();
+      await expect(current.getByRole("button", { name: "取消准备" })).toBeEnabled();
+    }
+    await startTournamentViaUi(page);
     await expect(page).toHaveURL(new RegExp(`/room/${roomId}/table$`), { timeout: 30_000 });
     expect(await countTournamentsForRoom(roomId)).toBe(2);
 
-    // 玩家乙页面 bob 依然停留在第一场比赛赛果页，验证旧赛果未被破坏
+    // 玩家乙回到第一场结果 URL，验证新比赛不覆盖旧赛果。
+    await bob.goto(resultUrl);
     await expect(bob.getByRole("heading", { name: "比赛结果" })).toBeVisible();
     await expect(bob.getByRole("table").locator("tbody tr")).toHaveCount(2);
     expect(await sumFinalChips(bob)).toBe(40);

@@ -6,7 +6,7 @@ import type { Page } from "@playwright/test";
 import { message } from "../../../apps/web/src/messages/zh-CN";
 
 const roomSnapshot = {
-  snapshotVersion: 1, roomId: "room-1", roomRevision: "1", status: "IN_GAME", inviteCode: "ABC234", hostPlayerId: "player-1",
+  snapshotVersion: 1, roomId: "room-1", roomRevision: "1", status: "IN_GAME", inviteCode: null, hostPlayerId: "player-1",
   config: { maxPlayers: 2, startingStack: 1000, smallBlind: 5, bigBlind: 10, blindMode: "fixed", blindStructure: [{ smallBlind: 5, bigBlind: 10 }], actionTime: 30, timeBank: 60 },
   activeTournamentId: "tournament-1",
   players: [

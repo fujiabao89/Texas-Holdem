@@ -89,7 +89,7 @@
 - `packages/protocol` 必须导出每个 HTTP 成功响应的运行时 Schema；创建/加入使用 `CreateRoomResponseSchema` / `JoinRoomResponseSchema`，Lobby 控制面使用 `UpdateRoomResponseSchema`、`StartTournamentResponseSchema` 与 `LeaveRoomResponseSchema`。客户端不得在本地重新拼装这些响应 DTO。
 - `LEAVE_ROOM` 以 HTTP 为权威入口；WS 的 `LEAVE_ROOM` 命令保留给已连接客户端，二者必须进入同一服务端命令处理路径并具有相同行为。
 
-HTTP 请求最小结构：创建房间为 `{ displayName, config: TournamentConfig }`；加入为 `{ inviteCode, displayName }`；`PATCH /rooms/{roomId}` 为 `{ expectedRoomRevision, operation }`，其中 `operation` 是 `{ type: "UPDATE_CONFIG", config } | { type: "KICK_PLAYER", targetPlayerId } | { type: "CHANGE_SEAT", seat }`，`seat` 为合法座位号或 `null`（离座）。前两种仅房主可用，`CHANGE_SEAT` 只移动当前身份。`POST /rooms/{roomId}/tournaments` 为 `{ expectedRoomRevision }`，仅房主且满足开局条件时创建新 Tournament。
+HTTP 请求最小结构：创建房间为 `{ displayName, config: TournamentConfig }`；加入为 `{ inviteCode, displayName }`；`PATCH /rooms/{roomId}` 为 `{ expectedRoomRevision, operation }`，其中 `operation` 是 `{ type: "UPDATE_CONFIG", config } | { type: "KICK_PLAYER", targetPlayerId } | { type: "CHANGE_SEAT", seat } | { type: "REOPEN_LOBBY" }`，`seat` 为合法座位号或 `null`（离座）。前两种仅房主可用，`CHANGE_SEAT` 只移动当前身份。`REOPEN_LOBBY` 仅当前房主在 `FINISHED` 且无活跃 Tournament 时执行，返回 `UpdateRoomResponseSchema` 的权威 Snapshot；同幂等键同 Payload 重放原结果，不同键使用过期 revision 返回 `STALE_ROOM_STATE`，非房主返回 `NOT_HOST`，错误状态返回 `ROOM_LOCKED`。`POST /rooms/{roomId}/tournaments` 为 `{ expectedRoomRevision }`，只允许 `LOBBY` 的房主在至少两名真人且全部在线、入座、Ready，无未完成配置变更或活跃比赛时创建新 Tournament；`FINISHED` 直接开局返回 `ROOM_LOCKED`，不再隐式双迁移。P1 如已有 Bot，沿用至少两名总参赛者且至少一名真人、Bot 默认 Ready 的条件。
 
 Hand History 列表使用 `GET /tournaments/{tournamentId}/hands?cursor=<opaque>&limit=20`；`limit` 默认 20、范围 1–50，按 `handNumber DESC` 稳定分页，响应 `{ tournamentId, items, nextCursor }`。`items[]` 至少为 `{ handId, handNumber, startedAt, endedAt, smallBlind, bigBlind, communityCards, endReason, potTotal, winnerPlayerIds }`，只包含已经手末原子提交的 Hand。详情响应为 `{ tournamentId, handId, startSequence, endSequence, events }`，其中 `events` 使用与请求者权限一致的 §6.3 投影，绝不返回内部完整事件。列表与详情均要求该 Tournament 所属 Room 的有效 `playerToken`。
 
@@ -261,7 +261,8 @@ TEX-60：Time Bank 同样使用 Schema 后固定的 receivedAt。原机会尚未
 | 创建房间 | HTTP | `POST /rooms`；携带昵称与比赛配置，服务端最终校验 | 《总规划》§5.2；《区块6-10 v0.2》§10.11 |
 | 邀请码加入 | HTTP | `POST /rooms/join`；邀请码 + 昵称 → 签发身份 | 《区块1-5 v0.1》§4.3；《总规划》§5.2 |
 | 低频设置变更 | HTTP | `PATCH /rooms/{roomId}`；仅 Lobby、仅房主，使用显式的配置 Patch Schema；开局后锁定 | 《总规划》§5.2/§7.1 |
-| 开始比赛/再来一局 | HTTP | `POST /rooms/{roomId}/tournaments`；仅房主，原子校验 `expectedRoomRevision` 与开局条件 | 《总规划》§2.1/§5.1 |
+| 重新开放下一轮大厅 | HTTP | `PATCH /rooms/{roomId}`；REOPEN_LOBBY、expectedRoomRevision，仅当前房主 FINISHED→LOBBY | TEX-48；§4.2/§10 |
+| 开始比赛（筹备完成后） | HTTP | `POST /rooms/{roomId}/tournaments`；仅房主，原子校验 `expectedRoomRevision` 与开局条件 | 《总规划》§2.1/§5.1 |
 | `SET_READY` | WS | `{ ready: boolean }`；仅 Lobby | 《区块6-10 v0.2》§7.7 |
 | `SUBMIT_ACTION` | WS | §7.2 的动作联合类型 | 《总规划》§3.2；01 §5.1 |
 | `USE_TIME_BANK` | WS | `{ tournamentId, expectedSequence }`；以 `requestId` 幂等；Server 控制命令，不进入 Engine Action 联合类型；不限时/未轮到/余额为零时拒绝 | 《区块6-10 v0.2》§7.7；《总规划》§3.1 |
@@ -402,7 +403,7 @@ type RoomSnapshot = {
 
 - `roomRevision` 是房间内全量 Snapshot 的递增版本，也编码为十进制字符串；只用于丢弃乱序 Room Snapshot，不用于提交扑克 Action。
 - 客户端接受首份 Room Snapshot 后，只应用 `roomRevision` 更大的后续版本；相等或更小的版本视为重复/乱序并忽略。Room revision 允许跳号，因为每条消息都是全量 Snapshot。
-- `inviteCode` 在 `CLOSED` 时为 `null`；Snapshot 永不包含任何玩家的 Token。
+- `inviteCode` 仅在 `LOBBY` 时投影原码；`IN_GAME`、`FINISHED`、`CLOSED` 必须为 `null`（共享 Schema 同步拒绝泄漏）；Snapshot 永不包含任何玩家的 Token。
 - 玩家数组按 `seat` 升序、未入座玩家最后并按 `playerId` 稳定排序，避免客户端因无意义重排产生闪烁。
 
 ### 9.2 GameSnapshot / PlayerView【规范性决定】
@@ -495,7 +496,7 @@ TEX-61 已落实每连接发送背压；阈值唯一来源为 [04 §9.5](./04-ga
 - 断线满 10 分钟或用户确认"主动离开比赛" → `EXIT_PENDING` → 安全结算点转 `WITHDRAWN`（状态转移与筹码语义见 [01 §13](./01-engine-spec.md)；协议层负责 `LEAVE_ROOM` 消息与状态推送）。
 - 多设备接管：新连接完成认证并建立 Snapshot 屏障后，服务端原子提升其 `connectionEpoch`；旧连接从这一刻起提交的命令均返回 `SESSION_REPLACED`。服务端尽力向旧连接发送 `SESSION_REPLACED`，随后以 WS Close Code `4001` 关闭；即使通知丢失，旧连接也不得再取得控制权。
 - 房间关闭：房间中已无真人 → 停止计时与 AI 决策、房间转 `CLOSED`、比赛记录为 `ABANDONED_NO_HUMAN`、邀请码立即失效（《总规划》§4.2）。
-- `FINISHED → LOBBY` 保留邀请码与配置；"再来一局"创建**新 Tournament**，不复用旧牌局状态（《总规划》§5.1；《区块6-10 v0.2》§7.3）。
+- `FINISHED → LOBBY` 必须经显式 `REOPEN_LOBBY`，保留邀请码、配置、当前房主/成员与合法座位；真人 Ready 重置 false、PokerStatus 恢复 ACTIVE，已移除成员不复活；"再来一局"创建**新 Tournament**，不复用旧牌局状态（《总规划》§5.1；《区块6-10 v0.2》§7.3）。
 
 P0 不做“从 lastSequence 增量续传”：所有首次连接、刷新、网络切换、后台恢复都先取完整 Snapshot，再从屏障后的下一个 Event 继续。`RESYNC_REQUIRED` 可由服务端在发送队列积压超过实现阈值时主动发出；该连接之后的旧积压事件可丢弃，但必须用新 Snapshot 重新建立屏障。
 
@@ -655,3 +656,5 @@ HTTP 推荐映射：Schema 400、认证 401、权限 403、不存在 404、冲�
 成功使用严格 `TournamentResultResponseSchema`：`{ data: { tournamentId, status: "FINISHED", championPlayerId: string | null, rankings, players, finishedAt } }`。`rankings` 复用 PlayerView 的 `{ playerId, placement: {from,to}, displayOrder }`；`players` 为所有锁定参赛者的 `{playerId, displayName, seat, kind, pokerStatus, finalStack}`，按 seat 排序，撤回者无排名。公开排名在排除 WITHDRAWN 后按持久化组顺序压缩为连续 `1..N`，并列组保持完整，不允许撤回者掩盖名次空洞。`finishedAt` 是 epoch milliseconds；筹码是安全非负整数；冠军、排名与参赛者身份必须一致，禁止重复或不完整排名，允许既有无冠军终局。
 
 错误均严格 ErrorEnvelope：401 `AUTH_REQUIRED`/`AUTH_FAILED`；400 `INVALID_MESSAGE`（路径/查询）；404 `TOURNAMENT_NOT_FOUND`（不存在或保留期到期）；409 `TOURNAMENT_NOT_FINISHED`（IN_GAME 或 ABANDONED_NO_HUMAN）；503 `TOURNAMENT_RESULT_INCOMPLETE`（终局资料缺失、版本/checksum/语义不一致，可重试）；500 `INTERNAL_ERROR`（读取服务故障，可重试）；429 `RATE_LIMITED`。所有响应 `Cache-Control: no-store`，不输出内部错误、事件、牌面、Token。此 HTTP 增量不改变既有 wire 版本。决策见 [ADR-0004](./adr/0004-tex-54-persisted-tournament-result.md)。
+
+TEX-48 Join 门禁：邀请码只是定位信息；加入命令在 Room 队列执行时只接受 LOBBY，IN_GAME/FINISHED 为 ROOM_LOCKED。CLOSED 的轻量 locator→tombstone 路由在 10 分钟保留期返回 INVITE_EXPIRED，回收后沿用 INVALID_INVITE_CODE；两者均不能再加入原 Room。未知码仍为 INVALID_INVITE_CODE。该保留不含身份/Token/快照，且不延长 Room 生命周期；邀请码数据库唯一性策略仍见 [03 §5.1](./03-data-model.md)。

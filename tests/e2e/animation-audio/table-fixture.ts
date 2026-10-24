@@ -48,7 +48,7 @@ export async function freezeClock(page: Page): Promise<void> {
 /** Wire-only UI fixture. Never imports or mutates the browser's projection store. */
 export async function installTable(page: Page, initialGame = tableSnapshot()) {
   const room: RoomSnapshot = {
-    snapshotVersion: 1, roomId: "room-38", roomRevision: "1", status: "IN_GAME", inviteCode: "ABC234", hostPlayerId: "player-1",
+    snapshotVersion: 1, roomId: "room-38", roomRevision: "1", status: "IN_GAME", inviteCode: null, hostPlayerId: "player-1",
     config: { maxPlayers: initialGame.players.length, startingStack: 1000, smallBlind: 5, bigBlind: 10, blindMode: "fixed", blindStructure: [{ smallBlind: 5, bigBlind: 10 }], actionTime: "UNLIMITED", timeBank: 0 },
     activeTournamentId: initialGame.tournamentId,
     players: initialGame.players.map(({ playerId, displayName, seat }) => ({ playerId, displayName, seat, ready: true, connectionStatus: "CONNECTED", pokerStatus: "ACTIVE" })),

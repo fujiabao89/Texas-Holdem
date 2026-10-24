@@ -19,7 +19,7 @@ import {
   kickPlayer,
   leaveRoom,
   markTournamentFinished,
-  returnToLobby,
+  reopenLobby,
   setConnectionStatus,
   type LeaveReason,
   type RoomMemberSeed,
@@ -30,6 +30,13 @@ import {
   updateConfig,
 } from "./room-runtime";
 import type { TournamentStartRequest } from "./tournament-starter";
+import {
+  createNodeTimerScheduler,
+  type TimerHandle,
+  type TimerScheduler,
+} from "../scheduler/timer-scheduler";
+
+export const HOST_GRACE_MS = 60_000;
 
 export type RoomCommand =
   | { type: "JOIN"; member: RoomMemberSeed }
@@ -68,7 +75,8 @@ export type RoomCommand =
       tournamentId: string;
     }
   | { type: "TOURNAMENT_FINISHED"; tournamentId: string }
-  | { type: "RETURN_TO_LOBBY" }
+  | { type: "REOPEN_LOBBY"; actorPlayerId: string; expectedRevision: number }
+  | { type: "HOST_GRACE_EXPIRED"; hostPlayerId: string; generation: number }
   | { type: "CLOSE_ROOM"; reason: string; tournamentId?: string };
 
 export interface RoomCommandResult {
@@ -78,6 +86,10 @@ export interface RoomCommandResult {
 }
 
 export interface RoomRuntimeDeps {
+  readonly clock?: () => number;
+  readonly scheduler?: TimerScheduler;
+  readonly onTimerResult?: (result: RoomCommandResult) => Promise<void>;
+  readonly onTimerError?: () => void;
   readonly persistence: RoomPersistence;
   readonly ids: IdSource;
   /** 启动时持久预留的 revision 号段；不得向其他进程的号段溢出（ADR-0003）。 */
@@ -97,10 +109,17 @@ export class RoomRuntime {
   private queue: Promise<unknown> = Promise.resolve();
   private readonly deps: RoomRuntimeDeps;
   private disposed = false;
+  private readonly scheduler: TimerScheduler;
+  private hostGeneration = 0;
+  private hostGrace:
+    | { hostPlayerId: string; generation: number; deadline: number; handle: TimerHandle | null }
+    | undefined;
 
   constructor(state: RoomState, deps: RoomRuntimeDeps) {
     this.state = state;
     this.deps = deps;
+    this.scheduler = deps.scheduler ?? createNodeTimerScheduler();
+    this.reconcileHostGrace();
   }
 
   /** 当前权威状态（只读；只有串行队列任务可替换）。 */
@@ -122,6 +141,7 @@ export class RoomRuntime {
   /** 关闭入口，等已取得执行权的事务结束；尚在排队的命令不得继续 mutate。 */
   async dispose(): Promise<void> {
     this.disposed = true;
+    this.cancelHostGrace();
     await this.queue;
   }
 
@@ -147,6 +167,7 @@ export class RoomRuntime {
       await this.persist(before, next, command, startRequest);
     }
     this.state = next;
+    this.reconcileHostGrace();
     // TEX-28 F-7：只在 Room 内存态提交 IN_GAME 之后注册 Tournament 运行时并驱动首手。
     // 此前 create 发生在 persist（提交前），首手事件先于含 activeTournamentId 的快照
     // 产出，网关按 room 快照过滤事件时静默丢弃开局首批事件（HAND_STARTED/BLIND/DEAL）。
@@ -177,11 +198,21 @@ export class RoomRuntime {
       case "SET_READY":
         assertConnectionCurrent(before, command, this.deps);
         return { next: setReady(before, command.playerId, command.ready), persisted: false };
-      case "SET_CONNECTION_STATUS":
-        return {
-          next: setConnectionStatus(before, command.playerId, command.connectionStatus),
-          persisted: false,
-        };
+      case "SET_CONNECTION_STATUS": {
+        let next = setConnectionStatus(before, command.playerId, command.connectionStatus);
+        if (
+          this.isPreparatory(next) &&
+          command.connectionStatus === "CONNECTED" &&
+          (next.hostPlayerId === null ||
+            (this.hostGrace?.hostPlayerId === next.hostPlayerId &&
+              this.hostGrace.deadline <= this.now() &&
+              next.members.get(next.hostPlayerId)?.connectionStatus === "DISCONNECTED"))
+        ) {
+          const elected = transferHost(next);
+          if (elected.hostPlayerId !== null) next = elected;
+        }
+        return { next, persisted: next.hostPlayerId !== before.hostPlayerId };
+      }
       case "CHANGE_SEAT":
         assertRevision(before, command.expectedRevision);
         return { next: changeSeat(before, command.playerId, command.seat), persisted: false };
@@ -200,24 +231,10 @@ export class RoomRuntime {
       case "TRANSFER_HOST":
         return { next: transferHost(before), persisted: true };
       case "START_TOURNAMENT": {
-        // 再来一局（docs/02-protocol-spec.md「开始比赛/再来一局」）：FINISHED 房间经
-        // 既定 FINISHED→LOBBY 迁移后再开局，单命令内原子完成，不暴露中间 LOBBY。
-        // expectedRevision 始终校验客户端实际看到的提交前状态；迁移后以新 revision 接力。
-        let base = before;
-        let expectedRevision = command.expectedRevision;
-        if (before.status === "FINISHED") {
-          if (command.expectedRevision !== before.roomRevision) {
-            throw new RoomDomainError("STALE_ROOM_STATE", {
-              details: { currentRoomRevision: String(before.roomRevision) },
-            });
-          }
-          base = returnToLobby(before);
-          expectedRevision = base.roomRevision;
-        }
         return {
-          next: startTournamentTransition(base, {
+          next: startTournamentTransition(before, {
             actorPlayerId: command.actorPlayerId,
-            expectedRevision,
+            expectedRevision: command.expectedRevision,
             tournamentId: command.tournamentId,
           }),
           persisted: true,
@@ -226,8 +243,24 @@ export class RoomRuntime {
       }
       case "TOURNAMENT_FINISHED":
         return { next: markTournamentFinished(before, command.tournamentId), persisted: true };
-      case "RETURN_TO_LOBBY":
-        return { next: returnToLobby(before), persisted: true };
+      case "REOPEN_LOBBY":
+        assertRevision(before, command.expectedRevision);
+        return { next: reopenLobby(before, command.actorPlayerId), persisted: true };
+      case "HOST_GRACE_EXPIRED": {
+        if (
+          !this.isPreparatory(before) ||
+          before.hostPlayerId !== command.hostPlayerId ||
+          before.members.get(command.hostPlayerId)?.connectionStatus !== "DISCONNECTED" ||
+          this.hostGrace?.generation !== command.generation ||
+          this.hostGrace.deadline > this.now()
+        ) {
+          return { next: before, persisted: false };
+        }
+        const next = transferHost(before);
+        return next.hostPlayerId === null
+          ? { next: before, persisted: false }
+          : { next, persisted: true };
+      }
       case "CLOSE_ROOM":
         if (
           command.tournamentId !== undefined &&
@@ -237,6 +270,63 @@ export class RoomRuntime {
         }
         return { next: closeRoom(before, command.reason), persisted: true };
     }
+  }
+
+  private now(): number {
+    return (this.deps.clock ?? this.deps.ids.now)();
+  }
+
+  private isPreparatory(state: RoomState): boolean {
+    return state.status === "LOBBY" || state.status === "FINISHED";
+  }
+
+  private cancelHostGrace(): void {
+    if (this.hostGrace?.handle) this.scheduler.clearTimeout(this.hostGrace.handle);
+    this.hostGrace = undefined;
+    this.hostGeneration += 1;
+  }
+
+  private reconcileHostGrace(): void {
+    const host = this.state.hostPlayerId;
+    if (
+      this.disposed ||
+      !this.isPreparatory(this.state) ||
+      host === null ||
+      this.state.members.get(host)?.connectionStatus !== "DISCONNECTED"
+    ) {
+      this.cancelHostGrace();
+      return;
+    }
+    // FINISHED → LOBBY preserves the same offline episode and deadline.
+    if (this.hostGrace?.hostPlayerId === host) return;
+    this.cancelHostGrace();
+    const grace = {
+      hostPlayerId: host,
+      generation: this.hostGeneration,
+      deadline: this.now() + HOST_GRACE_MS,
+      handle: null as TimerHandle | null,
+    };
+    this.hostGrace = grace;
+    const expire = () => {
+      grace.handle = null;
+      void this.submit({
+        type: "HOST_GRACE_EXPIRED",
+        hostPlayerId: host,
+        generation: grace.generation,
+      })
+        .then((result) => this.deps.onTimerResult?.(result))
+        .catch(() => {
+          try {
+            this.deps.onTimerError?.();
+          } catch {
+            /* diagnostics cannot own lifecycle */
+          }
+          // Transient persistence failure keeps authority unchanged; retry the same guarded episode.
+          if (!this.disposed && this.hostGrace === grace)
+            grace.handle = this.scheduler.setTimeout(expire, 1000);
+        });
+    };
+    grace.handle = this.scheduler.setTimeout(expire, HOST_GRACE_MS);
   }
 
   /** 控制面先提交：持久化成功后客户端才收到成功结果；失败不提交内存状态。 */
@@ -281,6 +371,8 @@ export class RoomRuntime {
           this.deps.ids.now(),
         );
         return;
+      case "SET_CONNECTION_STATUS":
+      case "HOST_GRACE_EXPIRED":
       case "TRANSFER_HOST":
         await p.setRoomHost(before.roomId, next.hostPlayerId);
         return;
@@ -293,7 +385,7 @@ export class RoomRuntime {
       case "TOURNAMENT_FINISHED":
         await p.setRoomStatus(before.roomId, "FINISHED");
         return;
-      case "RETURN_TO_LOBBY":
+      case "REOPEN_LOBBY":
         await p.setRoomStatus(before.roomId, "LOBBY");
         return;
       case "CLOSE_ROOM":
@@ -332,21 +424,21 @@ function assertConnectionCurrent(
   }
 }
 
-/** 开局：把当前已入座真人冻结为 Tournament 参赛快照（起始筹码 = config.startingStack）。 */
+/** 开局：把当前已入座成员冻结为 Tournament 参赛快照（起始筹码 = config.startingStack）。 */
 function buildTournamentStartRequest(
   state: RoomState,
   command: Extract<RoomCommand, { type: "START_TOURNAMENT" }>,
   ids: IdSource,
 ): TournamentStartRequest {
   const players = [...state.members.values()]
-    .filter((member) => member.kind === "HUMAN" && member.seat !== null)
+    .filter((member) => member.seat !== null)
     .sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0))
     .map((member) => ({
       id: ids.uuid(),
       playerId: member.playerId,
       displayName: member.displayName,
       seatIndex: member.seat as number,
-      kind: "HUMAN" as const,
+      kind: member.kind,
       startingStack: BigInt(state.config.startingStack),
     }));
   return {

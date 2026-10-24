@@ -13,3 +13,5 @@
 错误映射原则：稳定 `error.code` 分支；不泄露堆栈、SQL、Token 或内部房间状态。
 
 - **持久化赛果**（`routes/tournament-result.ts`，TEX-54）：共享 UUID/无查询参数 Schema、Room 有效 HUMAN 成员 HMAC 授权、只读一致性事务、严格公开终局响应。排名只覆盖非 WITHDRAWN 玩家并必须形成 `1..N` 连续名次（并列区间可占多个名次），不能让退出玩家掩盖名次空洞。`app.ts` 在限流前设置 no-store，覆盖早期失败；失败只影响该请求且不记录异常本体。完整契约、错误与保留期见 [02](../../../../docs/02-protocol-spec.md) 的 TEX-54 小节，真实 PG 回归见 `tests/integration/tournament-result-read.test.ts`。
+
+TEX-48：PATCH Room 新增 REOPEN_LOBBY，复用共享 Schema、Bearer 鉴权、Idempotency-Key 和 Room revision。仅房主 FINISHED→LOBBY，响应仍为 UpdateRoomResponseSchema；START 从 FINISHED 返回 ROOM_LOCKED。端点成功、拒绝、幂等和邀请码门禁回归见 `../rooms/lobby-lifecycle.test.ts`，真实 WS 联调见 `../../tests/ws/lobby-lifecycle.test.ts`。

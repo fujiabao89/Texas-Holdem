@@ -60,3 +60,5 @@ TEX-44 在 [create-room/](./create-room/README.md) 增加品牌首页键盘开�
 - 手机及桌面金额面板的快捷额、Slider、±、精确输入、返回、全下与提交全部在行动区预留带内可达，无页面或面板内部滚动；`Number.MAX_SAFE_INTEGER` 筹码值在手机竖屏及短横屏中也会完整折行、不溢出快捷额/全下/提交控件；断点边界另覆盖 640×800 与 1467×897（两步全下与 `ALL_IN` 信封由 `betting/table.spec.ts` 覆盖）。
 
 运行：`pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout`。该套件只验证受控投影下的前端布局，不替代真实 game-server/PostgreSQL 联调，也不替代 docs/06 §9.1 的实机发布验收。
+
+TEX-48 同步所有 IN_GAME mock Snapshot 的 inviteCode=null（betting/reconnect/animation-audio/seats/table-layout）。真实多人/赛果第二场通过已认证 HTTP 显式重开后重新准备；TEX-49 新入口尚未实现，不能把桥接 helper 当作页面验收。
