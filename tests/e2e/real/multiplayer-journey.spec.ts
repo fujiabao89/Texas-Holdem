@@ -3,12 +3,13 @@
  *
  * 链路：真实浏览器（独立 BrowserContext，身份与 sessionStorage 隔离）→
  * 真实 apps/web → 真实本地 game-server → 真实 PostgreSQL（隔离 schema）。
- * 全程经 UI 与服务端权威结果推进；不使用 route.fulfill / 伪造 Snapshot /
+ * 首场经 UI 与服务端权威结果推进；下一轮按 TEX-48 经真实 HTTP 显式重开后用现有 UI 准备；不使用 route.fulfill / 伪造 Snapshot /
  * 修改浏览器 store（docs/06 §5）。洗牌由 TEX_TEST_RNG_SEED 固定，可重放。
  */
 import { expect, type Page } from "@playwright/test";
 
 import { test } from "../fixtures/observability";
+import { reopenLobbyFromLegacyResult } from "./support/api";
 import {
   countTournamentsForRoom,
   fetchTournamentGroundTruth,
@@ -103,10 +104,19 @@ test.describe("真实链路多人主流程", () => {
       for (const cards of hand.holeCardsBySeat.values()) expect(cards.length).toBe(2);
     }
 
-    // 房主「再来一局」：全新 Tournament，旧比赛状态不污染新比赛。
+    // TEX-48：显式筹备后创建全新 Tournament（按钮接入由 TEX-49 交付）。
     const oldTournamentId = tournamentId;
     expect(await countTournamentsForRoom(roomId)).toBe(1);
-    await page.getByRole("button", { name: "再来一局" }).click();
+    diagnostics.allow(/Failed to load resource: the server responded with a status of 409/);
+    await reopenLobbyFromLegacyResult(page, roomId);
+    for (const current of [page, bob]) {
+      await current.goto(`/room/${roomId}`);
+      const ready = current.getByRole("button", { name: "准备", exact: true });
+      await expect(ready).toBeEnabled({ timeout: 30_000 });
+      await ready.click();
+      await expect(current.getByRole("button", { name: "取消准备" })).toBeEnabled();
+    }
+    await startTournamentViaUi(page);
     await expect(page).toHaveURL(new RegExp(`/room/${roomId}/table$`), { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "牌桌", exact: true })).toBeVisible({
       timeout: 30_000,

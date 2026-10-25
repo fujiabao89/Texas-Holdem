@@ -84,6 +84,7 @@ function harness(records: RoomRecoveryRecord[]) {
     ids,
     tokenSecret: TOKEN_SECRET,
     tokenKeyId: KEY_ID,
+    scheduler: clock,
   });
   const recoveryRepo = createFakeRecoveryRepository();
   recoveryRepo.setActive(
@@ -382,7 +383,7 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
       status: "FINISHED",
       activeTournamentId: null,
     });
-    expect(recoveredRoom.players.every((player) => player.ready)).toBe(true);
+    expect(recoveredRoom.players.every((player) => !player.ready)).toBe(true);
     if (roomStatus === "IN_GAME") expect(h.setRoomStatus).toHaveBeenCalledWith(record.roomId, "FINISHED");
     else expect(h.setRoomStatus).not.toHaveBeenCalled();
     expect(manager.getView("t2")).toMatchObject({
@@ -392,7 +393,7 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
     });
     expect(manager.activeTournamentIds()).toEqual([]);
     expect(manager.runtimeCounts()).toEqual({ registered: 1, running: 0, finishedRetained: 1, frozen: 0 });
-    expect(h.clock.pendingTimers()).toBe(1); // Only bounded retention, no action/blind/grace timers.
+    expect(h.clock.pendingTimers()).toBe(2); // Terminal retention + Room host grace; no Tournament timers.
 
     // Drive the real gateway after the startup barrier with an original persisted token.
     let handler!: (socket: EventEmitter) => void;
@@ -434,15 +435,23 @@ describe("TEX-51 complete Room/identity/Tournament startup barrier", () => {
     for (let i = 0; i < 10; i++) await Promise.resolve();
     expect(manager.getView("t2")).toBeUndefined();
 
-    const readyForNextRound = h.roomManager.getSnapshot(record.roomId)!;
-    await expect(
-      h.roomManager.submitCommand(record.roomId, {
-        type: "START_TOURNAMENT",
-        actorPlayerId: record.hostPlayerId!,
-        expectedRevision: Number(readyForNextRound.roomRevision),
-        tournamentId: "t3",
-      }),
-    ).resolves.toMatchObject({ state: { status: "IN_GAME", activeTournamentId: "t3" } });
+    const finishedRoom = h.roomManager.getSnapshot(record.roomId)!;
+    await expect(h.roomManager.submitCommand(record.roomId, {
+      type: "START_TOURNAMENT", actorPlayerId: finishedRoom.hostPlayerId!,
+      expectedRevision: Number(finishedRoom.roomRevision), tournamentId: "t3",
+    })).rejects.toThrow("ROOM_LOCKED");
+    await h.roomManager.submitCommand(record.roomId, {
+      type: "REOPEN_LOBBY", actorPlayerId: finishedRoom.hostPlayerId!,
+      expectedRevision: Number(finishedRoom.roomRevision),
+    });
+    for (const player of h.roomManager.getSnapshot(record.roomId)!.players) {
+      await h.roomManager.submitCommand(record.roomId, { type: "SET_CONNECTION_STATUS", playerId: player.playerId, connectionStatus: "CONNECTED" });
+      await h.roomManager.submitCommand(record.roomId, { type: "SET_READY", playerId: player.playerId, ready: true });
+    }
+    await expect(h.roomManager.submitCommand(record.roomId, {
+      type: "START_TOURNAMENT", actorPlayerId: h.roomManager.getSnapshot(record.roomId)!.hostPlayerId!,
+      expectedRevision: Number(h.roomManager.getSnapshot(record.roomId)!.roomRevision), tournamentId: "t3",
+    })).resolves.toMatchObject({ state: { status: "IN_GAME", activeTournamentId: "t3" } });
 
     await manager.dispose();
     await h.roomManager.dispose();

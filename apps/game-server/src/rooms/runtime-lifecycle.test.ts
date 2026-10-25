@@ -172,6 +172,11 @@ function lifecycle() {
   }
 
   async function start(host: PlayerSession): Promise<string> {
+    if (rooms.getSnapshot(host.roomId)!.status === "FINISHED") {
+      await rooms.submitCommand(host.roomId, { type: "REOPEN_LOBBY", actorPlayerId: host.playerId, expectedRevision: Number(rooms.getSnapshot(host.roomId)!.roomRevision) });
+      for (const player of rooms.getSnapshot(host.roomId)!.players)
+        await rooms.submitCommand(host.roomId, { type: "SET_READY", playerId: player.playerId, ready: true });
+    }
     const tournamentId = ids.uuid();
     await rooms.submitCommand(host.roomId, {
       type: "START_TOURNAMENT",

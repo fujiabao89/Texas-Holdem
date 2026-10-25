@@ -42,3 +42,5 @@ TEX_TEST_DATABASE_URL=postgres://postgres:tex18test@localhost:55432/postgres pnp
 重启测试由父测试进程迁移一次独立 schema，子进程直接执行生产入口；不能用会重建 schema 的 E2E/Performance launcher 代替。监听端口由系统分配，子进程只绑定 loopback；每个用例结束先停止其子进程并关闭 WebSocket，再清理自己的 schema。等待监听日志、真实帧或 PostgreSQL 已提交水位，有明确超时，不通过任意 sleep 推进被测业务。序列恢复锚定已提交水位，允许丢弃崩溃时尚未提交的一手；不会把旧进程最后一条实时事件当作持久化承诺。
 
 TEX-54：`tournament-result-read.test.ts` 从真实 Executor 生成未经改造的生产 Bundle，覆盖冠军/并列、手内主动退出、无冠军、同 Room 非参赛成员与多场隔离、无 Runtime 的新 app、失效授权/到期、11 类损坏、投影隐私和限流 no-store。运行：`TEX_TEST_DATABASE_URL=<隔离测试库> pnpm exec vitest run --project integration apps/game-server/tests/integration/tournament-result-read.test.ts`。已知手间写入缺口见 [验收记录](../../../../docs/03-engineering/TEX-54-acceptance.md)。
+
+TEX-48：`terminal-history.test.ts` 追加显式重开后的数据库 LOBBY、原邀请码、新场号/初始筹码/空排名与旧历史权限检查；测试按生产展示阶段推进，使用当前 HMAC 密钥解析器。`hand-commit-bundle.test.ts` 追加延迟旧终局不能覆写 LOBBY。运行这两个文件即可核对本任务持久化边界。

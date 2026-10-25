@@ -38,3 +38,5 @@ TEX-35 审查回归在 1366/390px 使用连续合法投影接收两手不同的�
 F-07 补齐第三手提前到达的顺序：第三手在第一手仍阅读、第二手尚未绘制时到达，也必须先显示第二手 222 摘要并独立停留。与第三手在第二手呈现后才到达的旧顺序一起构成两视口 × 两顺序的四项 DOM 回归。
 
 TEX-62 新增 256 个同序列 Snapshot 突发后的时钟/下注回归：经过真实 React、共享 Schema 和 WS 入口，后续 Event 的跟注必须使用最新 sequence，所有 pageerror 继续阻断。fixture 按 API WS 路径匹配，也支持 production build 中配置的独立服务端 Origin；只用于受控投影回归，不替代真实压力用例。
+
+TEX-48：比赛快照夹具的 inviteCode 改为 null，以符合共享 RoomSnapshotSchema；测试行为和页面实现不变。

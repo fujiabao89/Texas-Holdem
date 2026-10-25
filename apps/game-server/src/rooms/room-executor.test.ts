@@ -194,13 +194,18 @@ describe("RoomRuntime（串行执行器）", () => {
     expect(runtime.current.status).toBe("IN_GAME");
   });
 
-  it("再来一局：FINISHED 房间经 FINISHED→LOBBY 迁移后成功开局新 Tournament", async () => {
+  it("显式重新开放后全员重新准备才能开始新 Tournament", async () => {
     const { runtime, persistence } = makeRuntime();
     await readyForStart(runtime);
     await runtime.submit({ type: "START_TOURNAMENT", actorPlayerId: "host-1", expectedRevision: runtime.current.roomRevision, tournamentId: "t-1" });
     await runtime.submit({ type: "TOURNAMENT_FINISHED", tournamentId: "t-1" });
     expect(runtime.current.status).toBe("FINISHED");
 
+    await expect(runtime.submit({ type: "START_TOURNAMENT", actorPlayerId: "host-1", expectedRevision: runtime.current.roomRevision, tournamentId: "blocked" })).rejects.toThrow("ROOM_LOCKED");
+    await runtime.submit({ type: "REOPEN_LOBBY", actorPlayerId: "host-1", expectedRevision: runtime.current.roomRevision });
+    expect([...runtime.current.members.values()].every((member) => !member.ready)).toBe(true);
+    await runtime.submit({ type: "SET_READY", playerId: "host-1", ready: true });
+    await runtime.submit({ type: "SET_READY", playerId: "alice", ready: true });
     const result = await runtime.submit({
       type: "START_TOURNAMENT",
       actorPlayerId: "host-1",
@@ -210,12 +215,12 @@ describe("RoomRuntime（串行执行器）", () => {
     expect(result.state.status).toBe("IN_GAME");
     expect(result.state.activeTournamentId).toBe("t-2");
     expect(result.tournamentId).toBe("t-2");
-    // 两次开局各落库一次；中间 LOBBY 不持久化（单命令原子完成）
+    // 两次独立开局，筹备大厅先提交落库。
     expect(persistence.calls.filter((c) => c.startsWith("start:"))).toEqual(["start:t-1", "start:t-2"]);
-    expect(persistence.calls).not.toContain("status:LOBBY");
+    expect(persistence.calls).toContain("status:LOBBY");
   });
 
-  it("再来一局：FINISHED 状态下 revision 过期或非 Host 被拒且不提交内存状态", async () => {
+  it("重新开放：FINISHED 状态下 revision 过期或非 Host 被拒且不提交内存状态", async () => {
     const { runtime, persistence } = makeRuntime();
     await readyForStart(runtime);
     await runtime.submit({ type: "START_TOURNAMENT", actorPlayerId: "host-1", expectedRevision: runtime.current.roomRevision, tournamentId: "t-1" });
@@ -223,10 +228,10 @@ describe("RoomRuntime（串行执行器）", () => {
     const before = runtime.current;
 
     await expect(
-      runtime.submit({ type: "START_TOURNAMENT", actorPlayerId: "host-1", expectedRevision: before.roomRevision - 1, tournamentId: "t-2" }),
+      runtime.submit({ type: "REOPEN_LOBBY", actorPlayerId: "host-1", expectedRevision: before.roomRevision - 1 }),
     ).rejects.toThrowError("STALE_ROOM_STATE");
     await expect(
-      runtime.submit({ type: "START_TOURNAMENT", actorPlayerId: "alice", expectedRevision: before.roomRevision, tournamentId: "t-3" }),
+      runtime.submit({ type: "REOPEN_LOBBY", actorPlayerId: "alice", expectedRevision: before.roomRevision }),
     ).rejects.toThrowError("NOT_HOST");
     expect(runtime.current).toBe(before);
     expect(runtime.current.status).toBe("FINISHED");

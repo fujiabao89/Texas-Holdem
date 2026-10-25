@@ -482,3 +482,11 @@ TEX-53 增加公开 D/SB/BB 契约回归：协议必填/nullable/范围与 v3 �
 TEX-60 弱网回归：server-clock.test.ts 覆盖 50/100/300/500ms RTT、非对称抖动、处理耗时、延迟渲染与时间跳变；time-sync.test.ts 覆盖 v6 严格契约与未知/非法字段；websocket-transport.test.ts 覆盖单探针/失联/重复回显/关闭清理、重连原字节与失效 pending、Event-before-ACK 回收；Gateway 验证入口时间先于慢访问检查及校时无状态副作用；Executor 用 Fake Clock 比较 D-1/D/D+1 两种入队顺序。betting/table.spec.ts 用受控浏览器时钟验证四档 RTT、校时/安全余量/超时提示、迟到 Snapshot、本地墙钟跳变及 Time Bank 延长，不以 sleep 或重试通过冒充验证。真实公网与完整时序门禁仍由 TEX-62 承担。
 
 TEX-60 PR #69 R1 增加 Time Bank 独立截止窗口浏览器回归：安全余量已耗尽且估计服务器 deadline 尚未到达时保留延时入口，验证 pending、权威延期恢复下注及估计 deadline 到期关闭；不把客户端余量当作服务端 Time Bank 截止。
+
+## TEX-48 下一轮筹备回归
+
+`src/rooms/lobby-lifecycle.test.ts` 覆盖显式重新开放、HTTP 并发幂等/键冲突、房主/状态/revision 拒绝、同码恢复、所有保留真人在线/入座/Ready 门禁、新人未入座、离开身份不复活、配置/换座重置、加入与开局两种队列顺序、旧终局/关闭信号拒绝及 Host Grace 59999/60000ms、重连取消与无人在线后的首位连接。`tests/ws/lobby-lifecycle.test.ts` 经真实 HTTP+WS、真实 Tournament 引擎验证比赛/结果阶段原 Token 重连、邀请暂停、显式重开、WS 重新准备、新 ID/初始筹码与旧 Runtime 共存。`tests/integration/terminal-history.test.ts` 验证 PostgreSQL 的 LOBBY 提交、新场身份/场号/筹码/空排名、旧历史授权和撤销；`hand-commit-bundle.test.ts` 验证旧终局 Bundle 延迟提交不覆写 LOBBY/新赛。恢复回归移除 FINISHED 自动 Ready，bounded lifecycle soak 每轮显式重开并准备。
+
+浏览器结果页按钮、导航和文案由 TEX-49 接入；TEX-48 不以旧“直接再来一局”浏览器用例作为新行为的验收证据。
+
+TEX-48 浏览器兼容回归：既有多人旅程和赛果恢复用例通过真实 HTTP 桥接 REOPEN_LOBBY，再使用现有 Lobby UI 重新准备/开局；先断言旧结果页直接开局为 ROOM_LOCKED。不跳过用例、不伪造状态，也不将该桥接视为 TEX-49 新产品入口已交付。

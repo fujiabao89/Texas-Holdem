@@ -19,3 +19,5 @@ TEX-28 多客户端联调与安全测试基础设施（Multiplayer/WS 层）。
 - 故障注入测试必须记录故障脚本和 seed，明确区分真实链路与协议模拟（docs/06 §6）。
 
 TEX-53 扩展 `server-harness.test.ts`：真实 HTTP/WS 的 HAND_STARTED 与重连/GAP→RESYNC Snapshot 具有相同 D/SB/BB；两名玩家共享公开座位，私有底牌继续隔离。
+
+TEX-48：server harness 的 Room Host Grace 与 Tournament 共用 Fake Clock，close 同时 dispose 两类 Manager，避免真实计时器或终局运行时遗留。

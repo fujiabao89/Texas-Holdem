@@ -7,6 +7,7 @@ import {
   LeaveRoomResponseSchema,
   StartTournamentResponseSchema,
   UpdateRoomResponseSchema,
+  UpdateRoomRequestSchema,
   CommandResultPayloadSchema,
   DisplayNameSchema,
   GameEventSchema,
@@ -61,6 +62,18 @@ const source = {
 };
 
 describe("protocol wire contracts", () => {
+  it("TEX-48: REOPEN_LOBBY is a strict HTTP operation with required revision", () => {
+    const body = { expectedRoomRevision: "7", operation: { type: "REOPEN_LOBBY" } };
+    expect(UpdateRoomRequestSchema.safeParse(body).success).toBe(true);
+    expect(UpdateRoomRequestSchema.safeParse({ operation: body.operation }).success).toBe(false);
+    expect(UpdateRoomRequestSchema.safeParse({ ...body, operation: { ...body.operation, playerId: "forged" } }).success).toBe(false);
+  });
+
+  it.each(["IN_GAME", "FINISHED", "CLOSED"] as const)("TEX-48: %s snapshots must hide invite codes", (status) => {
+    expect(RoomSnapshotSchema.safeParse({ ...roomSnapshot, status, inviteCode: null }).success).toBe(true);
+    expect(RoomSnapshotSchema.safeParse({ ...roomSnapshot, status }).success).toBe(false);
+  });
+
   it.each([1, 2, 3, 4, 5, 7])("rejects wire version %i in both directions", (protocolVersion) => {
     expect(validateClientCommand({ type: "AUTHENTICATE", protocolVersion, requestId, payload: { roomId: "room_1", playerToken: "x".repeat(43) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });
     expect(validateServerMessage({ type: "GAME_SNAPSHOT", protocolVersion, serverTime: 1, payload: { snapshotVersion: 1, reason: "INITIAL", tournamentId: "tournament_1", sequence: "1", ...projectPlayerView(source) } })).toEqual({ success: false, errorCode: "UNSUPPORTED_PROTOCOL_VERSION" });

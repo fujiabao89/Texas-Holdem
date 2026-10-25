@@ -6,6 +6,8 @@
  * - 错误信封断言（未认证 / 非法 Token / 越权 / 非法 body）。
  */
 import { randomUUID } from "node:crypto";
+import { expect, type Page } from "@playwright/test";
+import { UpdateRoomResponseSchema } from "../../../../packages/protocol/src/index";
 
 import { readRunIdentity } from "./run-identity";
 
@@ -81,4 +83,26 @@ export async function changeSeatHttp(session: JoinSession, seat: number | null):
   if (status !== 200) throw new Error(`change seat failed: HTTP ${status} ${JSON.stringify(body)}`);
   const revision = (body as { data: { roomSnapshot: { roomRevision: string } } }).data.roomSnapshot.roomRevision;
   return revision;
+}
+/** TEX-48 bridge until TEX-49: assert legacy UI denial, then reopen via the real HTTP contract.
+ * Uses the existing browser request credential only in memory; never logs it or mutates stores.
+ */
+export async function reopenLobbyFromLegacyResult(page: Page, roomId: string): Promise<void> {
+  const responsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v1/rooms/${roomId}/tournaments`);
+  await page.getByRole("button", { name: "再来一局" }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(409);
+  expect((await response.json()).error.code).toBe("ROOM_LOCKED");
+  const request = response.request();
+  const authorization = (await request.allHeaders()).authorization;
+  if (!authorization?.startsWith("Bearer ")) throw new Error("expected authenticated result command");
+  const payload = request.postDataJSON() as { expectedRoomRevision: string };
+  const reopened = await patchJson(`/api/v1/rooms/${roomId}`, {
+    expectedRoomRevision: payload.expectedRoomRevision, operation: { type: "REOPEN_LOBBY" },
+  }, { token: authorization.slice(7) });
+  expect(reopened.status).toBe(200);
+  const snapshot = UpdateRoomResponseSchema.parse(reopened.body).data.roomSnapshot;
+  expect(snapshot.status).toBe("LOBBY");
+  expect(snapshot.players.every((player) => !player.ready && player.pokerStatus === "ACTIVE")).toBe(true);
 }

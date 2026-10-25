@@ -131,6 +131,8 @@ export async function startServerHarness(options: { seed: number }): Promise<Ser
     ids,
     tokenSecret: WS_TEST_TOKEN_SECRET,
     tokenKeyId: "ws-test",
+    clock: () => clock.now(),
+    scheduler: clock,
     isConnectionCurrent: connectionEpochs.isCurrent,
     isPersistenceAvailable: () => true,
     onStartCommitted: registerRuntime.register,
@@ -185,6 +187,8 @@ export async function startServerHarness(options: { seed: number }): Promise<Ser
     joinRoom,
     async close() {
       await app.close();
+      await roomManager.dispose();
+      await tournamentManager.dispose();
       clock.dispose();
     },
   };

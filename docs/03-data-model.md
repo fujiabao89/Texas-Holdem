@@ -431,3 +431,5 @@ P1 单人模式也创建 `rooms`、`room_players`、`tournaments` 及后续 Hand
 赛果仓储在单个 REPEATABLE READ / READ ONLY 事务读取 Tournament、所属 Room 的 ACTIVE HUMAN 凭证、锁定 Participant、与 `last_committed_sequence` 对齐的终局 Snapshot 及终局事件标记。只接受 FINISHED，校验终局时间、保留期、Snapshot 版本/checksum/终局阶段/序列，交叉核对完整参赛者、最终筹码、状态、冠军与排名。并列范围来自 Snapshot `finalStandings`；`tournament_players.rank = placementRange.from + displayOrder - 1` 仅作持久化事实一致性校验，不能逆推并列。公开投影排除 WITHDRAWN 后按原分组顺序压缩为连续 `1..N`，并列组不拆分；WITHDRAWN 无排名而保留公开最终筹码。
 
 读取不依赖 Runtime/RoomManager，不回放事件或修改数据。截止 `retention_expires_at` 即不再开放赛果；180 天既有保留期不因请求续期，清理任务仍属后续范围。私有 Snapshot 只进入服务端白名单投影，底牌、Deck、Burn、serverTimeBank、内部 ID、凭证摘要与原始事件永不出 wire。无新增表、迁移或复制的赛果事实。接口见 02 的 TEX-54 契约。
+
+TEX-48 持久化事实：无需数据库迁移；重新开放只更新 rooms.status=LOBBY，内部 rooms.invite_code 继续保留原码，非 Lobby 的 wire 隐藏规则见 [02 §9.1](./02-protocol-spec.md)。ready/presence/seat 仍属运行态，重新开放将真人 Ready 清空、扑克状态恢复 ACTIVE，不回写/复用旧 Tournament 结果。新场由既有 startTournament 事务创建新 ID、tournament_no+1、配置初始 starting_stack、ACTIVE 参赛快照和空排名。旧赛果/历史按原授权独立保留；延迟终局 Bundle 在 Room 行锁保护下不能覆写已重新开放的 LOBBY 或新 IN_GAME。完整启动恢复仍采用 ADR-0003 的保守隔离：尚未提交的终局在进程崩溃后不能伪造恢复，已有 LOBBY 与旧 IN_GAME 记录矛盾时隔离并人工核查。
