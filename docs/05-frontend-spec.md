@@ -201,7 +201,7 @@ apps/web/
 - 刷新与直接访问（TEX-55）：首选内存快照立即展示；缺失或直接通过 URL `/room/[roomId]/result/[tournamentId]` 访问时，经 `GET /api/v1/tournaments/{tournamentId}/result`（TEX-54）请求权威持久化赛果。赛果按 `tournamentId` 本地缓存，新比赛开启（`room.status === "IN_GAME"`）后旧赛果仍可独立查看，不与新快照混合。
 - 竞态与身份保护：URL 切换或卸载时使用 `AbortController` 取消请求；Tournament 资源 GET 返回 `AUTH_FAILED` 时展示权限错误并引导重新加入，但不误清有效 Room 凭证；凭证清理仍遵循既有 Room 资源保护边界。
 - TEX-49：仅当前房主在 FINISHED 显示“返回大厅，筹备下一局”，调用 `PATCH /rooms/{roomId}` 的 REOPEN_LOBBY + expectedRoomRevision；仅接受服务端 RoomSnapshot，成功后进入同一 Room 大厅，不创建 Tournament。非房主等待，LOBBY 快照到达后提供返回大厅入口。权限始终跟随当前 hostPlayerId；IN_GAME 的旧赛果只提供前往牌桌入口，不再提供重开操作。
-- 大厅重新开放后的座位、Ready 重置全部读取快照；全员重新准备后才从 Lobby START。Lobby 只在 room.activeTournamentId 匹配新 GameSnapshot 时自动进入牌桌，避免旧终局/动画/历史混入下一场。旧结果 URL 继续按 tournamentId GET 恢复，赛果页增加同场 Hand History Drawer 入口。
+- 大厅重新开放后的座位、Ready 重置全部读取快照；全员重新准备后才从 Lobby START。Lobby 收到 IN_GAME 的新 activeTournamentId 而尚无对应 GameSnapshot 时，使用既有单连接 Transport 对该场号执行一次重新认证，立即恢复权威初始快照；不等待 ACTION_OPEN 阶段才恢复。仅在场号匹配后自动进入牌桌，避免旧终局/动画/历史混入下一场。旧结果 URL 继续按 tournamentId GET 恢复，赛果页增加同场 Hand History Drawer 入口。
 - 重复点击用同步锁拦截；重试只在完整 payload 不变时复用 Idempotency-Key；STALE_ROOM_STATE 展示稳定中文提示并重新认证获取当前 Room/Game 快照，由用户重新确认。请求卸载时取消，HTTP 迟到响应不能覆盖更高 revision；Ready 回执只用于错误反馈，不能模拟成员状态。
 - 无真人关房（`CLOSED`/`ABANDONED_NO_HUMAN`）时展示房间已关闭（《总规划》§4.2）。
 

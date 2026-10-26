@@ -21,16 +21,30 @@ export function LobbyPage({ roomId }: { readonly roomId: string }) {
   const { run, pending, feedback, setFeedback } = useRoomMutation(roomId);
   const [readyPending, setReadyPending] = useState(false);
   const readyRequest = useRef<string | null>(null);
+  const recoveringTournament = useRef<string | null>(null);
   const router = useRouter();
   const isBrowser = useSyncExternalStore(subscribeNever, () => true, () => false);
   useLobbyConnection(roomId);
 
   // Enter only after the new tournament's authoritative snapshot has arrived.
   useEffect(() => {
-    if (connectionState === "CONNECTED" && room?.roomId === roomId && room.status === "IN_GAME" && room.activeTournamentId === game?.tournamentId) {
-      router.replace(`/room/${roomId}/table`);
+    if (room?.roomId !== roomId || room.status !== "IN_GAME" || room.activeTournamentId === null) {
+      recoveringTournament.current = null;
+      return;
     }
-  }, [connectionState, room, game?.tournamentId, roomId, router]);
+    if (connectionState !== "CONNECTED") return;
+    if (room.activeTournamentId === game?.tournamentId) {
+      router.replace(`/room/${roomId}/table`);
+    } else if (recoveringTournament.current !== room.activeTournamentId) {
+      // The lobby can receive the initial events before it has any game baseline.
+      // Authenticate once for the new tournament instead of waiting for ACTION_OPEN.
+      const token = tokens.get(roomId);
+      if (token !== null) {
+        recoveringTournament.current = room.activeTournamentId;
+        websocket.connect(roomId, token);
+      }
+    }
+  }, [connectionState, room, game?.tournamentId, roomId, router, tokens, websocket]);
   useEffect(() => websocket.subscribeCommandResults((next, result) => {
     if (next.requestId !== readyRequest.current) return;
     // Rejections release the UI lock; only the snapshot owns Ready.

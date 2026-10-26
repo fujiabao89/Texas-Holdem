@@ -39,3 +39,13 @@
 - 不更改既有结果持久化路径的限制，见 TEX-54 验收记录；不修改引擎、服务端裁决或协议版本。
 - 本任务未处理现存 PR 审查评论，故无“已修正”线程回复。未调用 DeepSeek Harness 或触发 Greptile。
 - 仅交付可审查 PR，合并与部署由用户决定。
+
+## PR #85 时序检查修复
+
+用户报告 [e2e-timeline 失败](https://github.com/fujiabao89/Texas-Holdem/actions/runs/40317676432/job/121554252253?pr=85)。该次 9 项中 R1/R4 在 Chromium/Firefox/WebKit 均失败，其余 6 项通过。产物证明首手 sequence=1～7 的事件到达时客户端尚无 GameSnapshot 基线；首份完整快照已经是 ACTION_OPEN（sequence=7、deadline 非空），而非此前发牌闭合状态，不能把此失败归为网络抖动或放宽断言。
+
+修复 Lobby 的恢复触发：IN_GAME 新场号与现有 GameSnapshot 不匹配时，立即通过原 WebSocketTransport 对该新场号重新认证一次，恢复初始权威 Room/Game 快照，再执行原匹配后入桌流程。旧场和缺失场均不作为新事件基线；既有连接重试继续由 Transport 管理。不修改扑克规则、服务端、协议、Timer、门禁断言或 CI 配置。
+
+补充受控回归模拟只发送新 RoomSnapshot、不主动发送 GameSnapshot，要求立即恢复并进入牌桌，精确核验认证次数，禁止依赖延迟的 ACTION_OPEN。8 项 next-round 浏览器回归通过；Web lint/typecheck、定向 E2E ESLint 与根测试类型检查通过；`TEX_TEST_DATABASE_URL=<独立 loopback 库> pnpm test:e2e:timeline` 完整 9 项通过（Chromium 5、Firefox 2、WebKit 2，零重试），`gate.json` 为 passed=true、exitCode=0、expectedCount=9、validReport=true。该本地执行使用未提交候选，明确保留 worktreeDirty=true；提交后以 GitHub 同名检查确认候选 SHA。
+
+该失败来自 Actions 检查，没有对应的原始 PR 审查评论线程；无需构造“已修正”评论或回复其他审查线程。相关目录 README 与 05 规格已同步；协议、服务端、数据库、安全/运维与 CI 配置已检查，无需更新，因为修复限于使用既有认证屏障的前端时机。

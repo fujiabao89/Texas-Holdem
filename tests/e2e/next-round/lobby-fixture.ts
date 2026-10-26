@@ -9,6 +9,8 @@ export function nextRoundFixture() {
   const sockets = new Map<WebSocketRoute, string>();
   let game = false;
   let sequence = "1";
+  let broadcastGame = true;
+  const authentications: string[] = [];
   const requests: { method: string; body: Record<string, unknown>; key: string }[] = [];
   let fail: string | null = null;
   let pause: Promise<void> | null = null;
@@ -28,7 +30,7 @@ export function nextRoundFixture() {
   const broadcast = () => {
     for (const [socket, playerId] of sockets) {
       send(socket, { type: "ROOM_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: Date.now(), payload: room });
-      if (game) send(socket, { type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: Date.now(), payload: gameFor(playerId) });
+      if (game && broadcastGame) send(socket, { type: "GAME_SNAPSHOT", protocolVersion: PROTOCOL_VERSION, serverTime: Date.now(), payload: gameFor(playerId) });
     }
   };
   const change = (changes: Partial<RoomSnapshot>) => {
@@ -37,6 +39,8 @@ export function nextRoundFixture() {
   };
   return {
     requests,
+    authentications,
+    onlyRoomOnStart() { broadcastGame = false; },
     newHandEvent() {
       sequence = String(BigInt(sequence) + 1n);
       for (const socket of sockets.keys()) send(socket, { type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: Date.now(), payload: { tournamentId: "new-49", handId: "new-hand-49", sequence, event: { type: "HAND_STARTED", payload: { handNumber: 1, dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1, blindLevel: 0 } }, patch: {} } });
@@ -58,7 +62,10 @@ export function nextRoundFixture() {
         socket.onClose(() => { sockets.delete(socket); });
         socket.onMessage(raw => {
           const cmd = JSON.parse(raw.toString());
-          if (cmd.type === "AUTHENTICATE") send(socket, { type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: Date.now(), payload: { connectionId: "connection-49", resumed: true, tookOver: false, roomSnapshot: room, gameSnapshot: game ? gameFor(playerId) : null } });
+          if (cmd.type === "AUTHENTICATE") {
+            authentications.push(playerId);
+            send(socket, { type: "RECONNECT_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: Date.now(), payload: { connectionId: "connection-49", resumed: true, tookOver: false, roomSnapshot: room, gameSnapshot: game ? gameFor(playerId) : null } });
+          }
           if (cmd.type === "TIME_SYNC") { const time = Date.now(); send(socket, { type: "TIME_SYNC_RESULT", protocolVersion: PROTOCOL_VERSION, serverTime: time, payload: { requestId: cmd.requestId, clientSentAt: cmd.payload.clientSentAt, serverReceivedAt: time, serverSentAt: time } }); }
           if (cmd.type === "SET_READY") change({ players: room.players.map(p => p.playerId === playerId ? { ...p, ready: cmd.payload.ready } : p) });
         });

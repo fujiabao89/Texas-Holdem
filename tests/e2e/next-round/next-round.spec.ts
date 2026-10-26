@@ -6,6 +6,21 @@ import { nextRoundFixture } from "./lobby-fixture";
 const resultUrl = "/room/room-49/result/old-49";
 const reopenName = "返回大厅，筹备下一局";
 
+test("开局仅推送房间场号时，立即认证恢复初始快照而不等待行动开放", async ({ page }) => {
+  const fixture = nextRoundFixture();
+  fixture.change({ status: "LOBBY", inviteCode: "ABC234" });
+  fixture.onlyRoomOnStart();
+  await fixture.install(page);
+  await page.goto("/room/room-49");
+  await page.getByRole("button", { name: "开始比赛" }).click();
+  await expect(page).toHaveURL(/\/room\/room-49\/table$/);
+  await expect(page.locator("[data-seat]")).toHaveCount(2);
+  // Initial Lobby authentication, one new-tournament recovery, then the table mount.
+  await expect.poll(() => fixture.authentications.length).toBe(3);
+  await expect(page.getByRole("button", { name: "弃牌", exact: true })).toHaveCount(0);
+  expect(fixture.snapshot().activeTournamentId).toBe("new-49");
+});
+
 test("房主重开、外部加入、全员准备进入新比赛，旧赛果与历史可独立刷新", async ({ page, browser }, info) => {
   const fixture = nextRoundFixture();
   const memberContext = await browser.newContext();
