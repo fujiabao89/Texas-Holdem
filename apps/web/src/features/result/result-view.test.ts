@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { gameSnapshot, roomSnapshot } from "../../testing-fixtures";
-import { canPlayAgain, resultAvailableFor, resultChampion, resultRows, resultSnapshotUnreachable } from "./result-view";
+import { canReopenLobby, resultAvailableFor, resultChampion, resultRows, resultSnapshotUnreachable } from "./result-view";
 
 const finishedGame = gameSnapshot({
   tournamentStatus: "FINISHED",
@@ -195,13 +195,13 @@ describe("resultSnapshotUnreachable", () => {
   });
 });
 
-describe("canPlayAgain", () => {
-  it("allows only the host and only when room is FINISHED or LOBBY (never IN_GAME or CLOSED)", () => {
-    expect(canPlayAgain("FINISHED", true)).toBe(true);
-    expect(canPlayAgain("LOBBY", true)).toBe(true);
-    expect(canPlayAgain("IN_GAME", true)).toBe(false);
-    expect(canPlayAgain("CLOSED", true)).toBe(false);
-    expect(canPlayAgain("FINISHED", false)).toBe(false);
-    expect(canPlayAgain("LOBBY", false)).toBe(false);
+describe("canReopenLobby", () => {
+  it("allows only the host and only when room is FINISHED (never LOBBY, IN_GAME or CLOSED)", () => {
+    expect(canReopenLobby("FINISHED", true)).toBe(true);
+    expect(canReopenLobby("LOBBY", true)).toBe(false);
+    expect(canReopenLobby("IN_GAME", true)).toBe(false);
+    expect(canReopenLobby("CLOSED", true)).toBe(false);
+    expect(canReopenLobby("FINISHED", false)).toBe(false);
+    expect(canReopenLobby("LOBBY", false)).toBe(false);
   });
 });

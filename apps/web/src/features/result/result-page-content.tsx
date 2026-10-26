@@ -8,8 +8,10 @@ import type { ErrorCode, GameSnapshot, TournamentResult } from "@texas-holdem/pr
 
 import { errorMessage, formatMessage, message } from "../../messages/zh-CN";
 import { useLobbyConnection, useRoomClient } from "../lobby/room-client";
+import { HandHistoryDrawer } from "../hand-history/hand-history-drawer";
+import { useRoomMutation } from "../lobby/use-room-mutation";
 import { useProjectionState } from "../../state/use-projection-state";
-import { canPlayAgain, resultAvailableFor, resultChampion, resultRows } from "./result-view";
+import { canReopenLobby, resultAvailableFor, resultChampion, resultRows } from "./result-view";
 
 const numberFormat = new Intl.NumberFormat("zh-CN");
 
@@ -28,16 +30,12 @@ export interface HttpResultError {
  * via GET /api/v1/tournaments/{tournamentId}/result upon page refresh or direct URL
  * access (TEX-54 / TEX-55).
  *
- * "Play again" goes through the existing host-only POST /rooms/{roomId}/tournaments
- * flow — it creates a brand-new tournament and never reuses finished-hand state.
+ * Reopening only prepares the next lobby; Lobby owns the separate start flow.
  */
 export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: string; readonly tournamentId: string }) {
   const { http, projection, tokens } = useRoomClient();
   const state = useProjectionState(projection);
-  const router = useRouter();
-
-  const [pending, setPending] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // Authoritative results recovered via HTTP (keyed by tournamentId)
   const [recoveredResults, setRecoveredResults] = useState<Record<string, GameSnapshot | TournamentResult>>({});
@@ -57,6 +55,7 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
   if (prevParams.roomId !== roomId || prevParams.tournamentId !== tournamentId) {
     setPrevParams({ roomId, tournamentId });
     setError(null);
+    setHistoryOpen(false);
   }
 
   // Matching snapshot from live projection (if present and FINISHED)
@@ -101,20 +100,20 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
 
   if (!isBrowser) return <ResultFrame><p aria-live="polite">{message("result.loading")}</p></ResultFrame>;
 
-  if (tokens.get(roomId) === null) {
-    return (
-      <ResultFrame>
-        <p role="alert">{message("result.missingSession")}</p>
-        <Link className="underline" href="/join">{message("room.joinTitle")}</Link>
-      </ResultFrame>
-    );
-  }
-
   if (room !== null && room.roomId === roomId && room.status === "CLOSED") {
     return (
       <ResultFrame>
         <p role="alert">{message("result.roomClosed")}</p>
         <Link className="underline" href="/">{message("result.backHome")}</Link>
+      </ResultFrame>
+    );
+  }
+
+  if (tokens.get(roomId) === null) {
+    return (
+      <ResultFrame>
+        <p role="alert">{message("result.missingSession")}</p>
+        <Link className="underline" href="/join">{message("room.joinTitle")}</Link>
       </ResultFrame>
     );
   }
@@ -133,6 +132,7 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
             <Link className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50" href="/">{message("result.backHome")}</Link>
           </nav>
         </header>
+        <ResultLobbyControls roomId={roomId} />
         <section aria-labelledby="error-heading" className="rr-panel">
           <h2 id="error-heading" className="font-semibold text-red-900">{message("result.loadFailed")}</h2>
           <p className="mt-2 text-sm text-red-700" role="alert">{errorMessage(error.code)}</p>
@@ -174,23 +174,6 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
 
   const rows = resultRows(activeResult);
   const champ = resultChampion(activeResult);
-  const playerId = tokens.getPlayerId(roomId);
-  const isHost = playerId !== null && room !== null && room.hostPlayerId === playerId;
-
-  const playAgain = async () => {
-    if (room === null) return;
-    setPending(true);
-    setFeedback(null);
-    setRecoveredResults((prev) => ({ ...prev, [tournamentId]: activeResult }));
-    const result = await http.startTournament(roomId, { expectedRoomRevision: room.roomRevision });
-    setPending(false);
-    if (!result.ok) {
-      setFeedback(errorMessage(result.error.code));
-      return;
-    }
-    projection.acceptRoomSnapshot(result.data.data.roomSnapshot);
-    router.push(`/room/${roomId}/table`);
-  };
 
   return (
     <ResultFrame>
@@ -239,17 +222,10 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
         </table>
       </section>
 
-      {room !== null && canPlayAgain(room.status, isHost) && (
-        <section aria-labelledby="play-again-heading" className="rr-panel">
-          <h2 id="play-again-heading" className="font-semibold">{message("result.playAgain")}</h2>
-          <p className="mt-1 text-sm text-slate-600">{message("room.startNeedPlayers")}</p>
-          <button className="rr-button rr-button-primary mt-3" disabled={pending} onClick={() => void playAgain()} type="button">
-            {pending ? message("room.operationPending") : message("result.playAgain")}
-          </button>
-        </section>
-      )}
+      <ResultLobbyControls roomId={roomId} />
+      <button className="rr-button w-fit" type="button" onClick={() => setHistoryOpen(true)}>{message("history.open")}</button>
+      {historyOpen && <HandHistoryDrawer key={tournamentId} roomId={roomId} tournamentId={tournamentId} onClose={() => setHistoryOpen(false)} />}
 
-      {feedback !== null && <p className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900" role="alert">{feedback}</p>}
     </ResultFrame>
   );
 }
@@ -259,3 +235,33 @@ function ResultFrame({ children }: { readonly children: React.ReactNode }) {
 }
 
 function subscribeNever(): () => void { return () => undefined; }
+
+/** Permissions always follow the current room, independently of the archived result. */
+function ResultLobbyControls({ roomId }: { readonly roomId: string }) {
+  const { projection, tokens, connectionState } = useRoomClient();
+  const { room } = useProjectionState(projection);
+  const router = useRouter();
+  const { run, pending, feedback } = useRoomMutation(roomId);
+  if (room === null || room.roomId !== roomId || room.status === "CLOSED") return null;
+  const playerId = tokens.getPlayerId(roomId);
+  const isHost = playerId !== null && room.hostPlayerId === playerId;
+  const reopen = async () => {
+    const current = projection.getSnapshot().room;
+    if (current?.roomId !== roomId || !canReopenLobby(current.status, current.hostPlayerId === tokens.getPlayerId(roomId))) return;
+    const accepted = await run({ type: "REOPEN_LOBBY" });
+    if (accepted?.roomId === roomId && accepted.status === "LOBBY") router.push(`/room/${roomId}`);
+  };
+  return <section className="rr-panel" aria-label={message("result.nextRound")}>
+    {canReopenLobby(room.status, isHost) ? <>
+      <p>{message("result.reopenHint")}</p>
+      <button className="rr-button rr-button-primary mt-3" type="button" disabled={pending || connectionState !== "CONNECTED"} onClick={() => void reopen()}>{pending ? message("room.operationPending") : message("result.reopenLobby")}</button>
+    </> : room.status === "LOBBY" ? <>
+      <p>{message("result.lobbyOpen")}</p>
+      <Link className="rr-button mt-3" href={`/room/${roomId}`}>{message("result.backToLobby")}</Link>
+    </> : <p>{message(room.status === "IN_GAME" ? "result.nextStarted" : "result.waitForHost")}</p>}
+    <p className="mt-2 text-sm text-slate-600">{message(room.status === "LOBBY" ? "room.inviteAvailable" : "room.invitePaused")}</p>
+    {room.status === "IN_GAME" && <Link className="rr-button mt-3" href={`/room/${roomId}/table`}>{message("result.backToTable")}</Link>}
+    {connectionState !== "CONNECTED" && <p role="status">{message("room.disconnected")}</p>}
+    {feedback !== null && <p className="rr-feedback" role="alert">{feedback}</p>}
+  </section>;
+}

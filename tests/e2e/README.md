@@ -62,3 +62,5 @@ TEX-44 在 [create-room/](./create-room/README.md) 增加品牌首页键盘开�
 运行：`pnpm exec playwright test -c tests/e2e/playwright.config.ts table-layout`。该套件只验证受控投影下的前端布局，不替代真实 game-server/PostgreSQL 联调，也不替代 docs/06 §9.1 的实机发布验收。
 
 TEX-48 同步所有 IN_GAME mock Snapshot 的 inviteCode=null（betting/reconnect/animation-audio/seats/table-layout）。真实多人/赛果第二场通过已认证 HTTP 显式重开后重新准备；TEX-49 新入口尚未实现，不能把桥接 helper 当作页面验收。
+
+TEX-49 完成新产品入口：受控 [next-round](./next-round/README.md) 测试验证权限、邀请/成员状态、过期 revision、离线/踢人、并发加入与多轮隔离；real 多人旅程/赛果恢复改为直接点击“返回大厅，筹备下一局”，删除 TEX-48 的临时 HTTP 桥接。

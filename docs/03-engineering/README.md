@@ -52,3 +52,5 @@ DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它�
 - [TEX-60-acceptance.md](./TEX-60-acceptance.md)：弱网四时间戳校时、安全余量、截止仲裁与重连命令的验证和部署边界。
 
 - [TEX-48-acceptance.md](./TEX-48-acceptance.md)：显式下一轮筹备、邀请码暂停/恢复、Host Grace、协议/HTTP/WS/PostgreSQL 回归与前端交接边界。
+
+- [TEX-49-acceptance.md](./TEX-49-acceptance.md)：赛果重开大厅、成员开局门禁、邀请状态、新旧场隔离的前端与真实浏览器验证。

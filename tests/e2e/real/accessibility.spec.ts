@@ -107,9 +107,7 @@ test.describe("真实链路无障碍", () => {
     await expect(start).toBeEnabled({ timeout: 15_000 });
     // 房主纯键盘开局。
     await pressOn(page, start);
-    const enterTable = page.getByRole("link", { name: "进入牌桌" });
-    await expect(enterTable).toBeVisible({ timeout: 30_000 });
-    await pressOn(page, enterTable);
+
     await expect(page.getByRole("heading", { name: "牌桌", exact: true })).toBeVisible({
       timeout: 30_000,
     });

@@ -3,13 +3,13 @@
  *
  * 链路：真实浏览器（独立 BrowserContext，身份与 sessionStorage 隔离）→
  * 真实 apps/web → 真实本地 game-server → 真实 PostgreSQL（隔离 schema）。
- * 首场经 UI 与服务端权威结果推进；下一轮按 TEX-48 经真实 HTTP 显式重开后用现有 UI 准备；不使用 route.fulfill / 伪造 Snapshot /
+ * 首场经 UI 与服务端权威结果推进；下一轮按 TEX-49 经结果页按钮重开，再邀请第三人并全员重新准备；不使用 route.fulfill / 伪造 Snapshot /
  * 修改浏览器 store（docs/06 §5）。洗牌由 TEX_TEST_RNG_SEED 固定，可重放。
  */
 import { expect, type Page } from "@playwright/test";
 
 import { test } from "../fixtures/observability";
-import { reopenLobbyFromLegacyResult } from "./support/api";
+import { reopenLobbyViaUi } from "./support/ui";
 import {
   countTournamentsForRoom,
   fetchTournamentGroundTruth,
@@ -54,7 +54,7 @@ test.describe("真实链路多人主流程", () => {
     await createRoomViaUi(page, {
       displayName: "玩家甲",
       startingStack: 20,
-      maxPlayers: 2,
+      maxPlayers: 3,
       smallBlind: 1,
       bigBlind: 2,
     });
@@ -104,13 +104,22 @@ test.describe("真实链路多人主流程", () => {
       for (const cards of hand.holeCardsBySeat.values()) expect(cards.length).toBe(2);
     }
 
-    // TEX-48：显式筹备后创建全新 Tournament（按钮接入由 TEX-49 交付）。
+    // TEX-49：真实页面重新开放；第三名外部玩家加入并阻塞开局。
     const oldTournamentId = tournamentId;
     expect(await countTournamentsForRoom(roomId)).toBe(1);
-    diagnostics.allow(/Failed to load resource: the server responded with a status of 409/);
-    await reopenLobbyFromLegacyResult(page, roomId);
+    await bob.getByRole("link", { name: "查看比赛结果" }).click();
+    await expect(bob.getByRole("heading", { name: "比赛结果" })).toBeVisible();
+    await reopenLobbyViaUi(page, roomId);
+    expect(await countTournamentsForRoom(roomId)).toBe(1);
+    expect(await readInviteCode(page)).toBe(inviteCode);
+    const carolContext = await browser.newContext();
+    const carol = await carolContext.newPage();
+    await joinViaUi(carol, inviteCode, "下一轮新玩家");
+    await expect(page.getByText("下一轮新玩家 尚未入座。")).toBeVisible();
+    await expect(page.getByRole("button", { name: "开始比赛" })).toBeDisabled();
+    await takeSeatAndReady(carol);
     for (const current of [page, bob]) {
-      await current.goto(`/room/${roomId}`);
+      if (current === bob) await current.getByRole("link", { name: "返回大厅", exact: true }).last().click();
       const ready = current.getByRole("button", { name: "准备", exact: true });
       await expect(ready).toBeEnabled({ timeout: 30_000 });
       await ready.click();
@@ -127,7 +136,6 @@ test.describe("真实链路多人主流程", () => {
     // 新比赛第一手可行动（Bob 经大厅重新进入牌桌）：当前玩家有行动按钮，
     // 另一方看到服务端权威的当前行动者。Clock 仅在没有 deadline 时显示通用等待文案，
     // 因而不能把该文案当作非当前玩家的唯一可观察状态。
-    await bob.goto(`/room/${roomId}`);
     await enterTableWhenReady(bob);
     for (const current of [page, bob]) {
       // strict mode：当前行动者也会显示在桌面上，且本人可能同时有弃牌按钮；
@@ -140,6 +148,7 @@ test.describe("真实链路多人主流程", () => {
       ).toBeVisible({ timeout: 30_000 });
     }
 
+    await carolContext.close();
     await bobContext.close();
   });
 

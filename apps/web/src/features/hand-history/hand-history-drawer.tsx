@@ -98,7 +98,7 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
           const element = event.currentTarget;
           if (element.scrollTop + element.clientHeight >= element.scrollHeight - 48) loadMore();
         }}>
-          {currentHandInProgress(state.game?.handPhase ?? null, state.currentHandEvents.length) && (
+          {state.game?.tournamentId === tournamentId && currentHandInProgress(state.game.handPhase, state.currentHandEvents.length) && (
             <section aria-labelledby="current-hand-heading" className="border-b border-neutral-200 bg-emerald-50/60 p-4">
               <h3 className="text-sm font-semibold text-emerald-900" id="current-hand-heading">{message("history.currentHand")}</h3>
               <p className="mt-0.5 text-xs text-emerald-800">{message("history.currentHandHint")}</p>

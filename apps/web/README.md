@@ -54,3 +54,5 @@ PR 审查回归同时把牌桌座位筹码文字调整为满足深色桌面上�
 TEX-46 把牌桌页收敛为单一视口：站点页头之外的剩余高度交给页面，牌桌在剩余空间内自适应，并固定预留操作区域。操作区只在服务端投影表明轮到本人且存在 `LegalActions` 时出现，隐藏与显示都不改变牌桌几何。对手信息卡和手牌缩小约三分之一，自己的手牌保留更大尺寸，Seat 跨坐桌沿；当前下注为桌内独立筹码标记，不参与 Seat 高度。短横屏手机采用左侧牌桌、右侧完整操作列，竖屏仍可完成对局并提示横屏建议。本手结果层为覆盖层。标题、权威盲注和历史/音效/连接状态位于共用顶栏。回归见 [tests/e2e/table-layout](../../tests/e2e/table-layout/single-viewport.spec.ts) 与 [前端规格](../../docs/05-frontend-spec.md) §7.5/§8.1。
 
 TEX-60：传输层每连接 5 秒应用层校时，10 秒无回复重连；ProjectionStore 持有单调接收锚点与 RTT 安全余量。牌桌显示可提交剩余时间及校时/高延迟/时间不足提示，重连不续发行动时间。规格见 [05 §11.1](../../docs/05-frontend-spec.md)，验收见 [TEX-60](../../docs/03-engineering/TEX-60-acceptance.md)。
+
+TEX-49 完成赛果→重新开放筹备大厅→全员在线/入座/重新准备→独立开赛。结果页不再调用 startTournament；开局由 Lobby 负责，新比赛快照匹配后进入牌桌。邀请码按 LOBBY/IN_GAME/FINISHED/CLOSED 展示可邀请、暂时停用或永久失效；旧赛果与同场历史仍可访问。见 [前端规格 §6.4/§6.6](../../docs/05-frontend-spec.md) 与 [验收记录](../../docs/03-engineering/TEX-49-acceptance.md)。

@@ -110,9 +110,9 @@ export function resultAvailableFor(game: GameSnapshot | null, tournamentId: stri
   return game !== null && game.tournamentId === tournamentId && game.tournamentStatus === "FINISHED";
 }
 
-/** The room is playable for "play again" only through the host's start flow when finished or in lobby. */
-export function canPlayAgain(roomStatus: string, isHost: boolean): boolean {
-  return isHost && (roomStatus === "FINISHED" || roomStatus === "LOBBY");
+/** Only the current host can reopen a finished room; Lobby owns the separate start flow. */
+export function canReopenLobby(roomStatus: string, isHost: boolean): boolean {
+  return isHost && roomStatus === "FINISHED";
 }
 
 /**

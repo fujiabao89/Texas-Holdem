@@ -15,3 +15,5 @@ TEX-45：`globals.css` 仅新增对 `features/poker-table/poker-table.css` 的�
 TEX-46 整体布局将 `globals.css` 中旧的移动端座位坐标迁入 `features/poker-table/poker-table.css`，由牌桌作用域统一管理人数模板和横竖屏布局；全局动画关键帧不变。
 
 TEX-46：`features/poker-table/poker-table.css` 的**牌桌路由专属**站点层规则使用 `:has()` 将站点容器改为占满一个 `100dvh` 的 flex 列，让 `#page-content` 填充页头之外的剩余高度，并使顶栏铺满视口、品牌标识靠左。牌桌标题与操作控件分别进入 `SiteChrome` 的顶栏插槽，内容区不再有独立白色页头；窄屏插槽在顶栏内换行。其他路由的滚动布局与 `SiteChrome` 结构不变；牌桌路由也不再有页脚。
+
+TEX-49 复用原赛果与 Lobby 路由：重开成功进入 `/room/[roomId]`；Lobby 在新 Tournament 的 RoomSnapshot/GameSnapshot ID 匹配后自动进入 `/room/[roomId]/table`。旧赛果 URL 与其历史入口继续独立可访问。

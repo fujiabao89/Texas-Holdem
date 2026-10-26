@@ -15,3 +15,5 @@ TEX-46 的 `table.landscapeHint` 提供手机竖屏下非阻断的横屏对局�
 TEX-54 只补共享新增赛果错误码的中文映射，确保按 ErrorCode 展示兼容；赛果页面的 HTTP 恢复逻辑仍属后续任务。
 
 TEX-60：table.clockCalibrating/networkSlow/timeInsufficient 明确校时、高延迟与安全窗口耗尽；remainingTime 表示“可提交剩余时间”。ACTION_TIMEOUT 只说明操作到达服务端时超时，不宣称已自动弃牌，等待权威状态。
+
+TEX-49 增加重新开放筹备大厅、成员在线/未入座/未准备阻塞、邀请暂停/永久失效文案；ROOM_LOCKED 指向当前大厅未开放，避免 FINISHED 被错误描述为已开始。文案只解释状态，不替代服务端开局裁决。
