@@ -19,6 +19,16 @@
 
 ## 验证与闭环
 
+### 新提交 CI 的后续 finding（不属于初始 5 条审查意见）
+
+**F-06 / P2，确认的测试前提缺失，阻塞 CI。** [d4aa61ea 的 e2e-real](https://github.com/fujiabao89/Texas-Holdem/actions/runs/40463973332/job/122055122375) 为 18 passed / 1 failed；WebKit 安全用例在 `security.spec.ts:260` 断言 Alice 他人脱敏 DEAL 计数 `>0`，实际 `0`。日志显示该场只有同一 handId 的 ALL_IN/CALL，12.7 秒结束；这不是已发现的底牌泄露，原始私有牌/字段断言并未失败。
+
+核验：Lobby 新场恢复及入桌都会重新认证，首手 DEAL 可以早于后续牌桌 socket；用例直接全下可能只打一手，缺少“连接稳定后再观察一次在线发牌”的前提。原有本人底牌/公开牌断言能审计 Snapshot，却不保证收到 DEAL Event。保持原代码的本地 WebKit 对应测试为 1 passed（2.0m），日志有多手，说明不能靠单次通过排除该调度路径。
+
+最小修复仅调整该安全用例：双方入桌后真实 UI 弃牌一手，等待双方实际收到他人脱敏 DEAL，再执行原全下/数据库审计；数据库手数要求从至少 1 手加强到至少 2 手。保留全部原泄露、逐 socket、本人/公开牌和非空检查，不改产品、协议、超时或重试。此项为本 PR 开局导航适配所暴露的 CI 验证前提，未捎带安全模块重构。修复与本记录同一提交交付：真实 PostgreSQL 下 Chromium / Firefox / WebKit 均通过，ESLint / 测试 TypeScript 检查通过；新提交 CI 由 PR 追踪，不以旧提交成功结果替代。
+
+### 初始审查线程
+
 修复提交 `bc8b8002` 已推送到 PR 源分支，随后完成全部原始行内线程回复；已通过 GitHub 返回的 `in_reply_to_id` 验证对应关系：
 
 - F-01 Codex：[原线程回复“已修正”](https://github.com/fujiabao89/Texas-Holdem/pull/85#discussion_r4385882163)。
@@ -41,7 +51,9 @@
 | `pnpm exec tsc --noEmit -p tsconfig.test.json` | 通过 |
 | `pnpm --filter @texas-holdem/web build` | 通过 |
 | `git diff --check` | 通过 |
+| `pnpm exec playwright test -c tests/e2e/playwright.real.config.ts security.spec.ts --grep 'WS 投影隔离'` | F-06 修复后 3 passed（2.7m），真实 PostgreSQL，三种浏览器，零重试 |
+| `pnpm exec eslint tests/e2e/real/security.spec.ts`；`pnpm exec tsc --noEmit -p tsconfig.test.json` | F-06 修复后均通过 |
 
-文档同步：已更新 result、hand-history、next-round 目录 README、前端权威规格、测试策略及工程索引。本轮仅纠正已有归档数据的显示与测试等待；产品范围、架构/协议、引擎、服务端、安全/运维、任务路线图及上层 README **已检查，无需更新**，原因是未改变职责、接口、运行流程或验收范围。Linear 保持 In Review，PR 不自动合并。
+文档同步：已更新 result、hand-history、next-round、real 目录 README、前端权威规格、测试策略及工程索引。本轮仅纠正已有归档数据的显示、测试等待和安全用例前提；产品范围、架构/协议、引擎、服务端、安全/运维、任务路线图及上层 README **已检查，无需更新**，原因是未改变职责、接口、运行流程或安全要求。Linear 保持 In Review，PR 不自动合并。
 
-验证边界：这两项回归使用 HTTP/WS 投影夹具验证客户端行为；本轮未重跑服务端真实 PostgreSQL 多人旅程或实机移动端。未改变服务端权威规则、协议或计时逻辑；原 CI 时序修复基线已有成功的 9 项门禁，不能将其当作本次新提交的 CI 结果。
+验证边界：两项昵称回归使用 HTTP/WS 投影夹具验证客户端行为；F-06 另用真实 PostgreSQL 和浏览器验证 WS 安全场景。本轮本地未重跑 `multiplayer-journey`、`result-recovery` 或实机移动端。未改变服务端权威规则、协议或计时逻辑；最新完整 CI 结果须以具体提交为准。

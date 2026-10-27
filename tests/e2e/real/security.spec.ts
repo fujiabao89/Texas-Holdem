@@ -202,13 +202,24 @@ test.describe("真实链路字段级安全", () => {
     await takeSeatAndReady(bob);
     await startTournamentViaUi(page);
     await enterTableWhenReady(bob);
+    // 大厅到牌桌会重新认证；首手 DEAL 可能早于牌桌 socket 建立。
+    // 双方入桌后先弃牌推进一手，确定性观察一次在线发牌，不依赖首手恰好被捕获。
+    const fold = await Promise.any([page, bob].map(async (player) => {
+      const button = player.getByRole("button", { name: "弃牌", exact: true });
+      await button.waitFor({ state: "visible" });
+      return button;
+    }));
+    await fold.click();
+    await expect.poll(() => [aliceSockets, bobSockets].every((sockets) =>
+      sockets.some((socket) => socket.url.includes("/api/v1/ws") && auditSocket(socket).dealEventsToOthers > 0),
+    ), { message: "双方入桌后应观察到他人脱敏发牌事件" }).toBe(true);
     await driveTournamentToFinish([page, bob]);
     await expect(page.getByText("比赛已结束")).toBeVisible();
 
     // 数据库权威事实：全部真实底牌 + 公开牌（公共牌与摊牌亮牌）。
     const tournamentId = await latestTournamentIdForRoom(roomId);
     const hands = await fetchTournamentGroundTruth(tournamentId);
-    expect(hands.length).toBeGreaterThanOrEqual(1);
+    expect(hands.length).toBeGreaterThanOrEqual(2);
     const publicCards = new Set<string>();
     for (const hand of hands) {
       for (const card of hand.boardCards) publicCards.add(truthCardKey(card));

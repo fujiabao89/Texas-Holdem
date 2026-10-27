@@ -498,3 +498,5 @@ TEX-48 浏览器兼容回归：既有多人旅程和赛果恢复用例通过真�
 真实 `multiplayer-journey` 与 `result-recovery` 删除旧按钮拒绝后的 HTTP 桥接，直接经新 UI 重开；第三人用恢复的邀请码加入、入座并准备后新开局，以 PostgreSQL Tournament 数量和 ID 验证没有在重开时创建比赛，并复验旧结果刷新。具体命令、结果和实机边界见 [TEX-49 验收](./03-engineering/TEX-49-acceptance.md)。
 
 TEX-49 / PR #85 审查回归：next-round 的非空历史列表和详情覆盖无实时快照、下一场缺席原玩家与同 ID 改名，断言归档赢家/动作/派奖昵称；普通数组的请求计数须等实际 route 回调写入，不以按钮 pending 作为请求到达证明。逐 finding 的有效性、严重度和跳过依据见 [Findings Ledger](./03-engineering/TEX-49-findings-ledger.md)。
+
+TEX-49 CI 后续：真实 WS 安全用例需在双方牌桌连接建立后，通过 UI 弃牌推进到下一手，并以实际收到脱敏 DEAL 为屏障，再完成锦标赛及数据库对照。不得把首手事件跨重认证必达当作测试前提；保持逐 socket 泄露检查、本人底牌和公开牌可见性检查，至少两手保证在线发牌审计非空。
