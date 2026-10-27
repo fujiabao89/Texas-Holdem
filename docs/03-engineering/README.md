@@ -54,3 +54,5 @@ DeepSeek Harness 审查由用户手动启动；工程 Agent 不自行调用它�
 - [TEX-48-acceptance.md](./TEX-48-acceptance.md)：显式下一轮筹备、邀请码暂停/恢复、Host Grace、协议/HTTP/WS/PostgreSQL 回归与前端交接边界。
 
 - [TEX-49-acceptance.md](./TEX-49-acceptance.md)：赛果重开大厅、成员开局门禁、邀请状态、新旧场隔离的前端与真实浏览器验证。
+
+- [TEX-49-findings-ledger.md](./TEX-49-findings-ledger.md)：PR #85 的 Codex、Greptile、CodeRabbit 逐条核验、阻塞修复、重复合并和 P3 建议处置。

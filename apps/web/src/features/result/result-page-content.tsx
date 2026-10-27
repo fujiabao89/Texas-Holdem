@@ -224,7 +224,7 @@ export function ResultPageContent({ roomId, tournamentId }: { readonly roomId: s
 
       <ResultLobbyControls roomId={roomId} />
       <button className="rr-button w-fit" type="button" onClick={() => setHistoryOpen(true)}>{message("history.open")}</button>
-      {historyOpen && <HandHistoryDrawer key={tournamentId} roomId={roomId} tournamentId={tournamentId} onClose={() => setHistoryOpen(false)} />}
+      {historyOpen && <HandHistoryDrawer key={tournamentId} roomId={roomId} tournamentId={tournamentId} playerNames={new Map(activeResult.players.map((player) => [player.playerId, player.displayName]))} onClose={() => setHistoryOpen(false)} />}
 
     </ResultFrame>
   );

@@ -496,3 +496,5 @@ TEX-48 浏览器兼容回归：既有多人旅程和赛果恢复用例通过真�
 `lobby-view.test.ts` 覆盖 P0 人数、在线/入座/Ready、活跃比赛门禁和邀请码可见性；`result-view.test.ts` 覆盖 FINISHED 当前房主权限。`tests/e2e/next-round` 用共享 Schema 的 HTTP/WS 投影夹具驱动真实浏览器，验证重开不直接开赛、全员 Ready 重置、新加入/离线/踢人/房主转移、revision 竞态、重复提交锁、刷新、CLOSED 凭证清理提示、新比赛快照导航与旧赛果/历史隔离，含 axe 严重违规检查。补充开局缺失 GameSnapshot 基线回归：仅广播新 RoomSnapshot 时，要求一次主动认证恢复并自动入桌，不依赖 ACTION_OPEN 后的快照。该夹具不代替服务端权威测试。
 
 真实 `multiplayer-journey` 与 `result-recovery` 删除旧按钮拒绝后的 HTTP 桥接，直接经新 UI 重开；第三人用恢复的邀请码加入、入座并准备后新开局，以 PostgreSQL Tournament 数量和 ID 验证没有在重开时创建比赛，并复验旧结果刷新。具体命令、结果和实机边界见 [TEX-49 验收](./03-engineering/TEX-49-acceptance.md)。
+
+TEX-49 / PR #85 审查回归：next-round 的非空历史列表和详情覆盖无实时快照、下一场缺席原玩家与同 ID 改名，断言归档赢家/动作/派奖昵称；普通数组的请求计数须等实际 route 回调写入，不以按钮 pending 作为请求到达证明。逐 finding 的有效性、严重度和跳过依据见 [Findings Ledger](./03-engineering/TEX-49-findings-ledger.md)。

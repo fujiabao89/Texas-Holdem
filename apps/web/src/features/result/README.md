@@ -16,3 +16,5 @@
 排名、名次（含并列区间）与最终筹码全部来自服务端，客户端严禁计算或重排赛果。
 
 TEX-49：旧赛果按 URL 的 tournamentId 独立缓存/GET 恢复；同场“牌局记录”打开既有 HandHistoryDrawer，不显示新 Tournament 的本手事件。关闭快照优先于凭证清理后的缺失提示。运行与验证见 [验收记录](../../../../../docs/03-engineering/TEX-49-acceptance.md)。
+
+PR #85 审查修复：历史入口将 `activeResult.players` 的归档昵称传给 Drawer，刷新后无实时快照、以及旧比赛玩家不在下一场时，列表赢家与详情动作/派奖仍使用该比赛的名称。

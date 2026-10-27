@@ -2,6 +2,7 @@ import { expect, test } from "../fixtures/observability";
 import { scanAxeViolations } from "../fixtures/a11y";
 import { joinViaUi, takeSeatAndReady } from "../real/support/ui";
 import { nextRoundFixture } from "./lobby-fixture";
+import { HandHistoryDetailResponseSchema, HandHistoryListResponseSchema, PROTOCOL_VERSION, type GameEvent } from "../../../packages/protocol/src";
 
 const resultUrl = "/room/room-49/result/old-49";
 const reopenName = "返回大厅，筹备下一局";
@@ -97,7 +98,7 @@ test("过期 revision、重开失败与重复点击不伪造大厅；刷新后�
   fixture.failNext("STALE_ROOM_STATE");
   await page.getByRole("button", { name: reopenName }).click();
   await expect(page.getByRole("button", { name: "正在提交，请稍候。" })).toBeDisabled();
-  expect(fixture.requests).toHaveLength(1);
+  await expect.poll(() => fixture.requests.length).toBe(1);
   fixture.release();
   await expect(page.getByText("房间信息已更新，请重新确认操作。")).toBeVisible();
   await expect(page).toHaveURL(/\/result\/old-49$/);
@@ -144,5 +145,48 @@ for (const status of ["IN_GAME", "FINISHED", "CLOSED"] as const) {
     await expect(page.getByText(status === "CLOSED" ? "房间已关闭，邀请码已永久失效。" : "比赛进行中或已结束，邀请码暂时停用，当前不可加入。")).toBeVisible();
     await expect(page.getByRole("button", { name: "复制邀请码" })).toHaveCount(0);
     await expect(page.locator(".rr-invite-code")).toHaveCount(0);
+  });
+}
+
+for (const laterRound of [false, true]) {
+  test(`归档历史昵称：${laterRound ? "下一场缺席成员及改名成员" : "刷新后无实时快照"}`, async ({ page }) => {
+    const fixture = nextRoundFixture();
+    if (laterRound) fixture.change({ status: "LOBBY", inviteCode: "ABC234", players: [
+      { ...fixture.snapshot().players[0]!, displayName: "下一场甲" },
+      { ...fixture.snapshot().players[1]!, playerId: "later-only", displayName: "下一场新玩家" },
+    ] });
+    await fixture.install(page);
+    const events: GameEvent[] = [
+      { type: "HAND_STARTED", payload: { handNumber: 1, dealerSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1, blindLevel: 0 } },
+      { type: "PLAYER_CHECKED", payload: { playerId: "player-1", seat: 0, source: "HUMAN_SOCKET" } },
+      { type: "POT_AWARDED", payload: { potIndex: 0, potAmount: 20, awards: [{ playerId: "player-2", amount: 20 }], winningHandRank: null } },
+    ];
+    const list = HandHistoryListResponseSchema.parse({ data: { tournamentId: "old-49", nextCursor: null, items: [{
+      handId: "archive-hand", handNumber: 1, startedAt: 100, endedAt: 1000, smallBlind: 5, bigBlind: 10,
+      communityCards: [], endReason: "FOLD_TO_WIN", potTotal: 20, winnerPlayerIds: ["player-2"],
+    }] } });
+    const detail = HandHistoryDetailResponseSchema.parse({ data: { tournamentId: "old-49", handId: "archive-hand", startSequence: "1", endSequence: "3", events: events.map((event, i) => ({
+      type: "GAME_EVENT", protocolVersion: PROTOCOL_VERSION, serverTime: 1000 + i,
+      payload: { tournamentId: "old-49", handId: "archive-hand", sequence: String(i + 1), event, patch: {} },
+    })) } });
+    await page.route("**/api/v1/tournaments/old-49/hands?*", route => route.fulfill({ json: list }));
+    await page.route("**/api/v1/tournaments/old-49/hands/archive-hand", route => route.fulfill({ json: detail }));
+    if (laterRound) {
+      await page.goto("/room/room-49");
+      await page.getByRole("button", { name: "开始比赛" }).click();
+      await expect(page).toHaveURL(/\/room\/room-49\/table$/);
+    }
+    await page.goto(resultUrl);
+    await page.reload();
+    await page.getByRole("button", { name: "牌局记录", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "牌局记录", exact: true });
+    await expect(dialog).toContainText("赢家：玩家乙");
+    await dialog.getByRole("button", { name: /第 1 手/ }).click();
+    await expect(dialog.getByText(/玩家甲.*过牌/)).toBeVisible();
+    await expect(dialog).toContainText("玩家乙 获得 20");
+    await expect(dialog).not.toContainText("player-1");
+    await expect(dialog).not.toContainText("player-2");
+    await expect(dialog).not.toContainText("下一场甲");
+    await expect(dialog).not.toContainText("下一场新玩家");
   });
 }

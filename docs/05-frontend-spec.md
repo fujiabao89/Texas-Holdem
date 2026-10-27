@@ -506,6 +506,7 @@ TEX-60 审查修正：Time Bank 独立于普通下注的网络安全窗口。在
 - **淘汰观战**：被淘汰者角色变为 `ELIMINATED_SPECTATOR`，只读公开牌局状态与最终排名（《总规划》§5.3；《区块1-5 v0.1》§4.9），可继续观看或退出；UI 不显示任何操作区。P0 无外部自由观战。
 - **赛果**：§6.6。
 - **Hand History（用户版）**：桌面端使用右侧 Drawer（宽 360–420px），移动端使用全屏 Sheet；从牌桌页的“牌局记录”入口打开，打开/关闭不改变牌局状态或动画队列。
+- 赛果页历史的昵称优先使用该场 `activeResult.players`；只在实时 `GameSnapshot.tournamentId` 等于请求场号时，才可用实时玩家昵称回退。刷新无实时快照、下一场玩家缺席或改名时，不得丢失或混用归档昵称。
 - 顶层按 `handNumber` 倒序分页，每页 20 手；列表项展示手号、结束时间、盲注、最终公共牌、总 Pot、赢家和结束原因。通过 `GET /api/v1/tournaments/{tournamentId}/hands?cursor&limit=20` 获取；滚动到底加载下一页，保留当前选中项和滚动位置。
 - 点击一手进入按 `Pre-Flop / Flop / Turn / River / Showdown / Result` 分组的时间线，展示座位、公开动作、动作后目标投入、公共牌、已合法公开的底牌/牌型、各 Pot 与赢家；不展示原始 JSON、sequence、内部 ID、Burn 牌面或任何未公开底牌。详情通过 `GET /api/v1/tournaments/{tournamentId}/hands/{handId}` 获取。
 - 当前未结束 Hand 不进入持久化历史列表；可以在 Drawer 顶部显示“本手进行中”并只读渲染客户端已接收的合法 Event，标记“暂存，结算后归档”。重连后以服务端列表为准，丢弃本地暂存历史。
