@@ -83,7 +83,7 @@
 | `/join` | Join Room | 邀请码 + 昵称；邀请链接仅预填邀请码 | P0 |
 | `/room/[roomId]` | Room Lobby | 座位、选座/随机入座、Ready、配置摘要、邀请码、房主权限、开始比赛 | P0 |
 | `/room/[roomId]/table` | Poker Table | 完整牌局体验（§7/§8/§9/§11）；新 Tournament 沿用稳定房间 URL | P0 |
-| `/room/[roomId]/result/[tournamentId]` | Game Result | 排名、冠军、"再来一局"、返回；保留具体 Tournament 身份 | P0 |
+| `/room/[roomId]/result/[tournamentId]` | Game Result | 排名、冠军、重新开放筹备大厅、同场历史与返回；保留具体 Tournament 身份 | P0 |
 | `/settings` | Settings / Rules | 基础设置（音效开关等）与规则说明 | P0 |
 | `/single` | Single Player Setup | 单人模式人数与比赛设置 | **P1**（P0 不显示入口） |
 
@@ -185,9 +185,9 @@ apps/web/
 
 ### 6.4 Room Lobby
 
-- 展示：座位图（空位/真人，P1 加 AI）、Ready 状态、房间配置摘要、邀请码（可复制 + 邀请链接）。
+- 展示：座位图（空位/真人，P1 加 AI）、每位成员在线/入座/Ready 状态，未入座成员单列，房间配置摘要。邀请码只在 LOBBY 展示并允许复制/邀请；IN_GAME/FINISHED 明示暂时停用且不可加入，CLOSED 明示房间关闭且邀请码永久失效。
 - 操作：可选空 Seat 或随机入座；Ready/UNREADY；房主可改配置、踢人、开始（仅 Lobby）。
-- 开局条件 UI（《总规划》§2.1）：至少 2 名真人 + 所有真人 Ready + 无未完成配置变更；开始按钮据此可用/禁用并展示原因。房主不能绕过自己的 Ready 强制开始。
+- 开局条件 UI（TEX-49）：LOBBY 且无 activeTournamentId，至少 2 名真人，所有保留真人在线、已入座且 Ready；本地无未完成操作且实时连接正常。按成员姓名逐项展示离线（可等待重连或由房主移出）、未入座、未准备原因；开始按钮据此禁用，房主也必须准备。P0 RoomSnapshot 只投影真人，不另建成员 DTO 或推测 Bot。
 - 开局后锁定：不显示配置、选座、踢人等控件（《总规划》§2.3）。
 - 房主标识随转移更新（比赛前房主离开 → 转给最早加入且在线的真人，《总规划》§4.2）。
 
@@ -199,8 +199,10 @@ apps/web/
 
 - 排名（并列展示顺序由服务端结果给定，UI 只展示；《总规划》§2.1）、冠军、各玩家最终筹码/名次。
 - 刷新与直接访问（TEX-55）：首选内存快照立即展示；缺失或直接通过 URL `/room/[roomId]/result/[tournamentId]` 访问时，经 `GET /api/v1/tournaments/{tournamentId}/result`（TEX-54）请求权威持久化赛果。赛果按 `tournamentId` 本地缓存，新比赛开启（`room.status === "IN_GAME"`）后旧赛果仍可独立查看，不与新快照混合。
-- 竞态与身份保护：URL 切换或卸载时使用 `AbortController` 取消请求；HTTP 返回 `AUTH_FAILED` 时安全清除被拒凭证，引导重新加入。
-- `FINISHED → LOBBY` 后提供"再来一局"（新建 Tournament，不复用旧牌局状态，《总规划》§5.1）与返回。
+- 竞态与身份保护：URL 切换或卸载时使用 `AbortController` 取消请求；Tournament 资源 GET 返回 `AUTH_FAILED` 时展示权限错误并引导重新加入，但不误清有效 Room 凭证；凭证清理仍遵循既有 Room 资源保护边界。
+- TEX-49：仅当前房主在 FINISHED 显示“返回大厅，筹备下一局”，调用 `PATCH /rooms/{roomId}` 的 REOPEN_LOBBY + expectedRoomRevision；仅接受服务端 RoomSnapshot，成功后进入同一 Room 大厅，不创建 Tournament。非房主等待，LOBBY 快照到达后提供返回大厅入口。权限始终跟随当前 hostPlayerId；IN_GAME 的旧赛果只提供前往牌桌入口，不再提供重开操作。
+- 大厅重新开放后的座位、Ready 重置全部读取快照；全员重新准备后才从 Lobby START。Lobby 收到 IN_GAME 的新 activeTournamentId 而尚无对应 GameSnapshot 时，使用既有单连接 Transport 对该场号执行一次重新认证，立即恢复权威初始快照；不等待 ACTION_OPEN 阶段才恢复。仅在场号匹配后自动进入牌桌，避免旧终局/动画/历史混入下一场。旧结果 URL 继续按 tournamentId GET 恢复，赛果页增加同场 Hand History Drawer 入口。
+- 重复点击用同步锁拦截；重试只在完整 payload 不变时复用 Idempotency-Key；STALE_ROOM_STATE 展示稳定中文提示并重新认证获取当前 Room/Game 快照，由用户重新确认。请求卸载时取消，HTTP 迟到响应不能覆盖更高 revision；Ready 回执只用于错误反馈，不能模拟成员状态。
 - 无真人关房（`CLOSED`/`ABANDONED_NO_HUMAN`）时展示房间已关闭（《总规划》§4.2）。
 
 ### 6.7 Settings / Rules
@@ -495,7 +497,7 @@ TEX-60 审查修正：Time Bank 独立于普通下注的网络安全窗口。在
 | 开局 | 开始按钮可用条件（§6.4）→ `IN_GAME` → 进入 Poker Table；之后配置/座位控件全部锁定 | 《总规划》§2.3 |
 | 房主 | 仅 Lobby：改配置、踢人、开始；开局后只是普通参赛者 | 《总规划》§7.1 |
 | 离开 | 主动离开走确认流程；断线 ≠ 离开（§11.2） | 《总规划》§4.1 |
-| 终局 | Game Result → "再来一局"（新 Tournament）或返回 | 《总规划》§5.1 |
+| 终局 | Game Result → 房主重新开放同房间大厅 → 全员在线、入座并重新准备 → 房主开局创建新 Tournament | [02 §4.2](./02-protocol-spec.md)；TEX-48/49 |
 
 - 邀请链接仅预填邀请码，不携带身份凭证（[02](./02-protocol-spec.md) §5）；`playerToken` 绝不进入 URL 或日志（[02](./02-protocol-spec.md) §11）。
 
@@ -504,6 +506,7 @@ TEX-60 审查修正：Time Bank 独立于普通下注的网络安全窗口。在
 - **淘汰观战**：被淘汰者角色变为 `ELIMINATED_SPECTATOR`，只读公开牌局状态与最终排名（《总规划》§5.3；《区块1-5 v0.1》§4.9），可继续观看或退出；UI 不显示任何操作区。P0 无外部自由观战。
 - **赛果**：§6.6。
 - **Hand History（用户版）**：桌面端使用右侧 Drawer（宽 360–420px），移动端使用全屏 Sheet；从牌桌页的“牌局记录”入口打开，打开/关闭不改变牌局状态或动画队列。
+- 赛果页历史的昵称优先使用该场 `activeResult.players`；只在实时 `GameSnapshot.tournamentId` 等于请求场号时，才可用实时玩家昵称回退。刷新无实时快照、下一场玩家缺席或改名时，不得丢失或混用归档昵称。
 - 顶层按 `handNumber` 倒序分页，每页 20 手；列表项展示手号、结束时间、盲注、最终公共牌、总 Pot、赢家和结束原因。通过 `GET /api/v1/tournaments/{tournamentId}/hands?cursor&limit=20` 获取；滚动到底加载下一页，保留当前选中项和滚动位置。
 - 点击一手进入按 `Pre-Flop / Flop / Turn / River / Showdown / Result` 分组的时间线，展示座位、公开动作、动作后目标投入、公共牌、已合法公开的底牌/牌型、各 Pot 与赢家；不展示原始 JSON、sequence、内部 ID、Burn 牌面或任何未公开底牌。详情通过 `GET /api/v1/tournaments/{tournamentId}/hands/{handId}` 获取。
 - 当前未结束 Hand 不进入持久化历史列表；可以在 Drawer 顶部显示“本手进行中”并只读渲染客户端已接收的合法 Event，标记“暂存，结算后归档”。重连后以服务端列表为准，丢弃本地暂存历史。
@@ -545,7 +548,7 @@ TEX-60 审查修正：Time Bank 独立于普通下注的网络安全窗口。在
 | `ROOM_FULL` | 房间已满，暂时无法加入。 | 加入表单内联 |
 | `NICKNAME_INVALID` | 昵称需为 2–16 个字符。 | 昵称字段内联并聚焦 |
 | `NICKNAME_TAKEN` | 该昵称已被使用，请换一个。 | 昵称字段内联并聚焦 |
-| `ROOM_LOCKED` | 牌局已经开始，当前不能修改房间设置。 | Toast；刷新 Room Snapshot |
+| `ROOM_LOCKED` | 房间当前未开放筹备大厅，请等待房主重新开放后再操作。 | 内联状态提示；等待最新 RoomSnapshot |
 | `NOT_HOST` | 只有房主可以执行此操作。 | Toast；刷新 Room Snapshot |
 | `PLAYER_NOT_SEATED` | 请先选择座位。 | Lobby 内联；聚焦座位区 |
 | `STALE_ROOM_STATE` | 房间信息已更新，请重新确认操作。 | Toast；接受最新 Room Snapshot |
@@ -686,3 +689,5 @@ E2E 固定使用 **Playwright**，可访问性自动扫描使用 **axe-core**；
 规划书是产品意图、非实现事实：本文所有实现类陈述在代码落地前一律视为设计意图（见文首标记）。
 
 TEX-48/TEX-49 交接：服务端已将结果阶段的直接 START_TOURNAMENT 改为 ROOM_LOCKED。下一轮产品流程为房主显式 REOPEN_LOBBY → 保留成员/合法座位且真人重新准备的筹备大厅 → 独立开局；wire 契约以 [02 §4.2/§9.1](./02-protocol-spec.md) 为准。本次只同步测试夹具，不改赛果页按钮、导航、HttpTransport 或文案；现有页面入口仍待 TEX-49 接入，以上早期“再来一局”入口实现记录为历史状态。
+
+TEX-49 已完成上述前端交接：新入口、邀请码状态、逐成员开局阻塞和新快照导航以 §6.4/§6.6/§12 为准；旧 TEX-48“尚待接入”段落为历史记录。验证见 [TEX-49 验收](./03-engineering/TEX-49-acceptance.md)。

@@ -123,19 +123,15 @@ export async function startTournamentViaUi(page: Page): Promise<void> {
   const start = page.getByRole("button", { name: "开始比赛" });
   await expect(start).toBeEnabled({ timeout: LOBBY_READY_TIMEOUT });
   await start.click();
-  const enterTable = page.getByRole("link", { name: "进入牌桌" });
-  await expect(enterTable).toBeVisible({ timeout: 30_000 });
-  await enterTable.click();
+
   await expect(page.getByRole("heading", { name: "牌桌", exact: true })).toBeVisible({
     timeout: 30_000,
   });
 }
 
-/** 非开局者等待牌桌入口出现后进入。 */
+/** 非开局者等待最新比赛快照到达后自动进入牌桌。 */
 export async function enterTableWhenReady(page: Page): Promise<void> {
-  const enterTable = page.getByRole("link", { name: "进入牌桌" });
-  await expect(enterTable).toBeVisible({ timeout: 30_000 });
-  await enterTable.click();
+
   await expect(page.getByRole("heading", { name: "牌桌", exact: true })).toBeVisible({
     timeout: 30_000,
   });
@@ -214,4 +210,12 @@ export async function playUntilTournamentFinished(page: Page): Promise<void> {
 /** 多页并发驱动到全部结束。 */
 export async function driveTournamentToFinish(pages: readonly Page[]): Promise<void> {
   await Promise.all(pages.map((page) => playUntilTournamentFinished(page)));
+}
+
+/** TEX-49: use the real result button; no API bridge or direct state mutation. */
+export async function reopenLobbyViaUi(page: Page, roomId: string): Promise<void> {
+  await page.getByRole("button", { name: "返回大厅，筹备下一局" }).click();
+  await expect(page).toHaveURL(new RegExp(`/room/${roomId}$`), { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "房间大厅" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "准备", exact: true })).toBeEnabled();
 }

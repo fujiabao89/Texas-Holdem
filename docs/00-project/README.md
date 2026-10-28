@@ -33,3 +33,5 @@ TEX-54 持久化赛果读取已实现，任务验收与明确非范围见 [TEX-5
 - [TEX-60 修正弱网环境下的倒计时与操作提交公平性](https://linear.app/texas-holdem/issue/TEX-60)：用户直接委派 Codex；分支 fix/TEX-60-network-fair-action-clock，依赖 TEX-58/TEX-59。范围见 [ADR-0006](../adr/0006-tex-60-network-fair-action-clock.md)，[验收记录](../03-engineering/TEX-60-acceptance.md)；不暂停整桌或给单玩家延长时钟，背压/完整门禁由 TEX-61/TEX-62 承担。
 
 - [TEX-48 下一轮筹备大厅与邀请码生命周期](https://linear.app/texas-holdem/issue/TEX-48)：用户将实现委派 Codex，分支 `feat/TEX-48-reopen-lobby-and-invite-lifecycle`；范围为共享协议与服务端，替代 TEX-37 的隐式双迁移。决策见 [ADR-0007](../adr/0007-tex-48-reopen-lobby.md)，验证及交接见 [验收记录](../03-engineering/TEX-48-acceptance.md)。前端页面接入仍由 TEX-49 完成。
+
+- [TEX-49 赛果页返回筹备大厅与下一轮开局交互](https://linear.app/texas-holdem/issue/TEX-49)：用户委派 Codex 继续完成，分支 `feat/TEX-49-result-lobby-next-round`，基于 TEX-48/55 的现有协议与赛果 GET。范围为 Web、浏览器测试和对应文档，见 [验收记录](../03-engineering/TEX-49-acceptance.md)。

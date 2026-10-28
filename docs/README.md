@@ -83,3 +83,5 @@ TEX-54 持久化赛果 GET 的权威契约已加入 02/03/04/06，决策见 [ADR
 TEX-60 的应用层校时与网络安全余量见 [ADR-0006](./adr/0006-tex-60-network-fair-action-clock.md)、02 §8.5、05 §11.1；验证与部署边界见 [验收记录](./03-engineering/TEX-60-acceptance.md) / [运行说明](./05-operations/network-action-clock.md)。当前 wire 为 v6，客户端/服务端须协同升级。
 
 TEX-48 将 TEX-37 的 FINISHED 直接再开局替换为显式重新开放筹备大厅；服务端/协议事实以 02/03/04/06 的对应更新为准，架构决策见 [ADR-0007](./adr/0007-tex-48-reopen-lobby.md)，证据见 [验收记录](./03-engineering/TEX-48-acceptance.md)。上方涉及“直接再来一局”的历史实现记录不再作为当前行为；前端入口由 TEX-49 接入。
+
+TEX-49 已接入赛果→重新开放筹备大厅→全员重新准备→独立开赛的新前端流程，取代旧赛果按钮直接 startTournament。权威交互见 [05 §6.4/§6.6](./05-frontend-spec.md)，验证见 [验收记录](./03-engineering/TEX-49-acceptance.md)。

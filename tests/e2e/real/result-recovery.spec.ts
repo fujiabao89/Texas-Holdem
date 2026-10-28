@@ -15,7 +15,7 @@
 import { expect, type Page } from "@playwright/test";
 
 import { test } from "../fixtures/observability";
-import { reopenLobbyFromLegacyResult } from "./support/api";
+import { reopenLobbyViaUi } from "./support/ui";
 import {
   countTournamentsForRoom,
 } from "./support/db";
@@ -131,11 +131,10 @@ test.describe("TEX-55 赛果页刷新与直接访问", () => {
     await anonymousContext.close();
 
     // 7. 路径验证四：下一轮开局后旧赛果隔离共存
-    // TEX-48：旧入口拒绝；通过显式 HTTP 重新开放，现有 Lobby 全员重新准备。
-    diagnostics.allow(/Failed to load resource: the server responded with a status of 409/);
-    await reopenLobbyFromLegacyResult(page, roomId);
+    // TEX-49：通过结果页新按钮重新开放，现有 Lobby 全员重新准备。
+    await reopenLobbyViaUi(page, roomId);
     for (const current of [page, bob]) {
-      await current.goto(`/room/${roomId}`);
+      if (current === bob) await current.getByRole("link", { name: "返回大厅", exact: true }).last().click();
       const ready = current.getByRole("button", { name: "准备", exact: true });
       await expect(ready).toBeEnabled({ timeout: 30_000 });
       await ready.click();

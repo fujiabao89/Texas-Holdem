@@ -28,7 +28,7 @@ const stageNameKey: Record<TimelineStage, MessageKey> = {
  * or closing it never touches table state; load failures keep the table
  * mounted and offer a local retry.
  */
-export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly roomId: string; readonly tournamentId: string; readonly onClose: () => void }) {
+export function HandHistoryDrawer({ roomId, tournamentId, onClose, playerNames }: { readonly roomId: string; readonly tournamentId: string; readonly onClose: () => void; readonly playerNames?: ReadonlyMap<string, string> }) {
   const { http, projection } = useRoomClient();
   const state = useProjectionState(projection);
   const [list, dispatchList] = useReducer(reduceHandHistoryList, initialListState);
@@ -40,7 +40,11 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
   // ref 写入在事件处理内即时生效，杜绝重复分页。
   const loadMoreInFlight = useRef(false);
 
-  const names = useMemo(() => new Map((state.game?.players ?? []).map((player) => [player.playerId, player.displayName])), [state.game]);
+  const names = useMemo(() => {
+    const result = new Map((state.game?.tournamentId === tournamentId ? state.game.players : []).map((player) => [player.playerId, player.displayName]));
+    for (const [playerId, displayName] of playerNames ?? []) result.set(playerId, displayName);
+    return result;
+  }, [state.game, tournamentId, playerNames]);
   const lookup = useCallback((playerId: string) => names.get(playerId) ?? playerId, [names]);
 
   const load = useCallback(async (cursor?: string) => {
@@ -98,7 +102,7 @@ export function HandHistoryDrawer({ roomId, tournamentId, onClose }: { readonly 
           const element = event.currentTarget;
           if (element.scrollTop + element.clientHeight >= element.scrollHeight - 48) loadMore();
         }}>
-          {currentHandInProgress(state.game?.handPhase ?? null, state.currentHandEvents.length) && (
+          {state.game?.tournamentId === tournamentId && currentHandInProgress(state.game.handPhase, state.currentHandEvents.length) && (
             <section aria-labelledby="current-hand-heading" className="border-b border-neutral-200 bg-emerald-50/60 p-4">
               <h3 className="text-sm font-semibold text-emerald-900" id="current-hand-heading">{message("history.currentHand")}</h3>
               <p className="mt-0.5 text-xs text-emerald-800">{message("history.currentHandHint")}</p>
