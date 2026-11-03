@@ -26,10 +26,15 @@
 | --- | --- |
 | 前置任务 | 2026-11-03 查询：TEX-35/46/47/49/55/62 均为 Done；状态本身不证明实机通过 |
 | [当前基线 CI](https://github.com/fujiabao89/Texas-Holdem/actions/runs/40658969854) | `headSha=d675f726…`，2026-10-28，7 job success：quality、e2e、e2e-real、e2e-timeline、perf-smoke、workflow-lint、repository-hygiene。核验了 job 状态；未把 job success 推导为已审计全部原始产物 |
-| [本轮固定 SHA 完整 RC](https://github.com/fujiabao89/Texas-Holdem/actions/runs/41589752410) | 已用 `timeline.yml` 输入上述完整 SHA 启动；运行中，最终计数、审计和产物待回填。未通过前不得借用旧 SHA 的 20/20 记录 |
+| [本轮固定 SHA 完整 RC](https://github.com/fujiabao89/Texas-Holdem/actions/runs/41589752410) | 20/20：timeline 18（Chromium 14 / Firefox 2 / WebKit 2）、split 1、原生 background 1；每项一次 passed，retry/skip/xfail/flaky=0，三份报告 runner errors=0。`gate.json` 的 SHA 为上述基线，dirty=false，passed=true，三场 exitCode=0/validReport=true |
+| RC 产物与审计 | `timeline-rc-d675f726821c5f54c1afd97d37b6be1f2c9a8b3f`，artifact ID `13209898007`，digest `sha256:8fdc46cb7127103bf145f0287f569d3448613d6a2f8ba94ea0a745d6e6ca87e8`。CI 上传前审计和下载后独立 `audit.ts` 均通过，9 文件；保留 90 天，正式发布前需按既有受控档案流程保存 |
+| [草稿 PR #88 首次 CI](https://github.com/fujiabao89/Texas-Holdem/actions/runs/41590142476) | 文档提交 `407776ae602c8a93993c91293c82c5fdc68071c9` 的七个常规 CI job 全通过；不是实机验收。PR Policy 首次因正文缺少固定行失败，补上 `Linear: TEX-56` 后新运行通过，历史失败保留 |
 | TEX-30 / TEX-43 | 查询时均为 Backlog；容量/Soak、目标部署、真实告警、恢复/回滚和用户发布批准不由本记录替代 |
+| 本次文档校验 | 原工作区已安装的 Prettier 对 6 份修改文档检查通过；Python 核验 157 个本地文件链接，无缺失；`git diff --check` 通过。未为文档改动新增业务测试 |
 
-本轮命令：`git fetch origin`、`git log -1 origin/main`、`Get-FileHash pnpm-lock.yaml -Algorithm SHA256`、`gh run list --commit <完整基线 SHA>`、`gh run view 40658969854 --json jobs,url,headSha,conclusion`、`gh workflow run timeline.yml --ref main -f sha=<完整基线 SHA>`，以及对上述公网入口的只读 `Invoke-WebRequest`。没有运行生产写入、负载测试或故障注入。
+本轮命令：`git fetch origin`、`git log -1 origin/main`、`Get-FileHash pnpm-lock.yaml -Algorithm SHA256`、`gh run list --commit <完整基线 SHA>`、`gh run view 40658969854 --json jobs,url,headSha,conclusion`、`gh workflow run timeline.yml --ref main -f sha=<完整基线 SHA>`，以及对上述公网入口的只读 `Invoke-WebRequest`。没有对生产执行写入、负载测试或故障注入。
+
+产物复核：`gh run download 41589752410 --name timeline-rc-d675f726821c5f54c1afd97d37b6be1f2c9a8b3f --dir tests/e2e/.artifacts-timeline`；使用原工作区已安装的 tsx 执行当前基线的 `tests/e2e/real/timeline/audit.ts`，结果 `Timeline artifact audit passed (9 files)`。另逐项核对三份 UTF-8 JSON 的测试结果/浏览器分布及总报告，不只读取 Actions 的绿色状态。下载内容保留在 gitignore 路径，未纳入提交。该基线后续只增加验收文档；实际部署候选一旦确定，仍需核实或重跑其受影响证据。
 
 ## 设备登记（未执行）
 
