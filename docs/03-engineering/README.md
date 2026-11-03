@@ -13,6 +13,8 @@
 
 ## 索引
 
+- [TEX-56-acceptance.md](./TEX-56-acceptance.md)：同候选自动化核验、真实手机/真人两轮复玩矩阵、环境与证据缺口；配合 [实机运行手册](../../tests/e2e/manual/README.md)，未实测不记为通过。
+
 - [TEX-62 门禁实施卡](../00-project/TEX-62-regression-gate.md)：实施顺序、运行环境与验收证据；测试要求以 [06 §9.3](../06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求) 为准，实际运行结果见实施卡。
 - [TEX-62-findings-ledger.md](./TEX-62-findings-ledger.md)：PR #80 的 Actions 失败核验、无效压力命令修复及排除项。
 

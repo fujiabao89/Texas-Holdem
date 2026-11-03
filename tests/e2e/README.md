@@ -2,6 +2,8 @@
 
 从玩家操作到服务端结果的完整流程测试（Playwright + axe-core）。
 
+TEX-56 真实手机/真人多人复玩按 [实机运行手册](./manual/README.md) 执行，逐设备结果、候选与发布证据见 [验收记录](../../docs/03-engineering/TEX-56-acceptance.md)。自动化通过不能替代该记录中的实机项目；未执行保持 NOT_RUN。
+
 ## 入口与配置
 
 ```bash
