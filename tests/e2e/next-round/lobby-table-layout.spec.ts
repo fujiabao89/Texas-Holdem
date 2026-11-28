@@ -68,6 +68,8 @@ for (const maxPlayers of [2, 6, 10] as const) {
     expect(plaque!.bottom).toBeLessThanOrEqual(felt!.bottom);
 
     for (let i = 0; i < maxPlayers; i += 1) {
+      // Ready chip must never overlap its OWN seat card!
+      expect(overlaps(chips[i]!, cards[i]!, 0)).toBe(false);
       expect(overlaps(cards[i]!, plaque!)).toBe(false);
       expect(overlaps(chips[i]!, plaque!)).toBe(false);
       for (let j = i + 1; j < maxPlayers; j += 1) {
@@ -113,6 +115,8 @@ for (const maxPlayers of [2, 6, 10] as const) {
     expect(watermark!.width).toBeGreaterThan(0);
 
     for (let i = 0; i < maxPlayers; i += 1) {
+      // Ready chip must never overlap its OWN seat card!
+      expect(overlaps(chips[i]!, cards[i]!, 0)).toBe(false);
       // Zero horizontal clipping at 375px.
       expect(cards[i]!.left).toBeGreaterThanOrEqual(0);
       expect(cards[i]!.right).toBeLessThanOrEqual(375);

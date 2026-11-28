@@ -76,6 +76,7 @@ export function LobbyPage({ roomId }: { readonly roomId: string }) {
   const locked = room.status !== "LOBBY";
   const disabled = pending || readyPending || connectionState !== "CONNECTED";
   const seats = lobbySeats(room);
+  const seatedCount = room.players.filter((player) => player.seat !== null).length;
   const readiness = lobbyReadiness(room);
   const inviteCode = lobbyInviteCode(room);
   const update = (operation: Parameters<typeof run>[0]) => run(operation);
@@ -101,12 +102,18 @@ export function LobbyPage({ roomId }: { readonly roomId: string }) {
   };
 
   return <LobbyFrame>
-    <div className="rr-lobby-header flex flex-wrap items-center justify-between gap-3">
-      <div className="lobby-title-block">
-        <p className="rr-kicker lobby-kicker">{message("brand.lobbyKicker")}</p>
-        <h1 className="text-3xl font-bold">{message("room.lobbyTitle")}</h1>
+    <div className="rr-lobby-header">
+      <div className="lobby-title-row">
+        <h1>{message("room.lobbyTitle")}</h1>
+        {!locked && <span className="lobby-phase-badge" data-ready={readiness.canStart}>
+          {message(readiness.canStart ? "room.phaseReady" : "room.phasePreparing")}
+        </span>}
       </div>
-      <p aria-live="polite" className="rr-status" data-connected={connectionState === "CONNECTED"}>{connectionState === "CONNECTED" ? message("room.connected") : message("room.disconnected")}</p>
+      <div className="lobby-head-metrics">
+        <span className="lobby-metric-pill">{message("room.seatCountPill")} <strong>{seatedCount}/{room.config.maxPlayers}</strong></span>
+        <span className="lobby-metric-pill">{message("room.readyCountPill")} <strong>{readiness.ready}/{readiness.members}</strong></span>
+        <p aria-live="polite" className="rr-status" data-connected={connectionState === "CONNECTED"}>{connectionState === "CONNECTED" ? message("room.connected") : message("room.disconnected")}</p>
+      </div>
     </div>
     {locked && <div className="lobby-locked-bar" role="status">
       <p>{message(room.status === "FINISHED" ? "room.finished" : "room.locked")}</p>
