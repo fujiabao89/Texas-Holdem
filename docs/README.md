@@ -24,6 +24,8 @@
 
 ## 文档地图
 
+TEX-56 的真实移动设备、真人多人两轮复玩与发布体验按 [实机运行手册](../tests/e2e/manual/README.md) 执行；候选、逐设备矩阵、证据与未验收项见 [验收记录](./03-engineering/TEX-56-acceptance.md)。CI、模拟视口与健康检查不能替代真实设备或实际部署身份确认。
+
 TEX-62 的真实链路时序/弱网门禁已实现，组合候选 PR 9 项与 Linux RC 20 项已通过；范围、依赖、固定 SHA 证据及实机/发布边界见 [实施卡](./00-project/TEX-62-regression-gate.md)，测试要求以 [06 §9.3](./06-testing-strategy.md#93-tex-62-牌局时序与弱网真实链路门禁实施要求) 为准。后续发布候选须在自身完整 SHA 重新执行门禁。
 
 TEX-64 的 PR 风险观察器配置、授权与 TEX-61 试用步骤见 [接入说明](./03-engineering/ai-pr-router-observer.md)。观察结果不替代本项目的 CI、业务验收、用户手动深审与人工合并。
